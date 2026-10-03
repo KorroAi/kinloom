@@ -1,0 +1,7 @@
+{
+  "role:mover": [
+    "{\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"crate\",\"param\":\"color_name\",\"value\":\"blue\"}},{\"tool\":\"invoke\",\"args\":{\"thing\":\"crate\",\"function\":\"push\",\"args\":{\"force\":3}}},{\"tool\":\"create\",\"args\":{\"type\":\"Box\",\"args\":{}}},{\"tool\":\"say\",\"args\":{\"text\":\"Pushed!\"}}]}",
+    "{\"actions\":[{\"tool\":\"say\",\"args\":{\"text\":\"Hello there.\"}}]}"
+  ],
+  "generator:label": [ "{\"value\":{\"text\":\"Heavy\"}}" ]
+}

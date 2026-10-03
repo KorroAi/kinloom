@@ -1,0 +1,20 @@
+{
+  "description": "Starter manifest written by kinloom init. Replace it with your game's own things, events and roles (see kinloom/docs/reference.md).",
+  "types": {
+    "Screen": {
+      "description": "The on-screen interface.",
+      "functions": { "show_message": { "description": "Show a short message to the player.", "args": { "text": { "type": "string", "max": 200 } } } }
+    }
+  },
+  "things": [ { "id": "screen", "type": "Screen" } ],
+  "events": { "player_joined": { "description": "The player started playing.", "importance": 0.5 } },
+  "roles": [
+    {
+      "id": "host",
+      "mission": "You welcome the player with one short, friendly line on the screen.",
+      "sees": ["event:player_joined"],
+      "can": ["invoke:screen.show_message"],
+      "wake": [ { "on": "event:player_joined" } ]
+    }
+  ]
+}

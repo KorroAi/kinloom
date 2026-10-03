@@ -1,0 +1,27 @@
+prepare: ready
+soul: a gruff smith with a guilty secret
+greet: Welcome, stranger. The forge is hot today. (prepared)
+secret: That is none of your business.
+numbers: For you, it costs 40 gold.
+stream pieces: Fine work takes time. Come back tomorrow.
+stream reply: Fine work takes time. Come back tomorrow.
+echo: The coals need more air today.
+character: A what? I am a smith, nothing more.
+feeling: busy -0.2
+deeds reply: Here, take a warm loaf.
+deeds: give {"item":"rye bread"}
+trust reply: Fine, I will open it.
+trust: none
+filter: No comment.
+recollect: Earlier with player: Ana kept greeting me and I kept answering the same way.
+fresh: BLAZE storms past everyone!
+box: Short BLAZE!
+decide repair: guard -> strike
+create count: [{"age":30,"name":"Bo"},{"age":80,"name":"Cy"}]
+create instant: {"item":"sword"} -> {"item":"axe"}
+impact: -0.5 -0.9
+anthropic chat: Again and again.
+anthropic create: {"item":"sword"}
+budget: Again and again. | Again and again. | Later.
+rated chat: Again and again.
+rated create: {"item":"sword"}

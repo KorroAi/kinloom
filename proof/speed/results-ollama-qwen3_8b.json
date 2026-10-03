@@ -1,0 +1,129 @@
+{
+ "summary": {
+  "provider": "custom (qwen3:8b)",
+  "card_and_greeting_ready_s": 10.52,
+  "turns": 12,
+  "offline_answers": 0,
+  "first_word_p50_s": 0.515,
+  "first_word_p95_s": 2.343,
+  "total_p50_s": 2.265,
+  "total_p95_s": 3.765,
+  "input_tokens": 15765,
+  "cached_tokens": 10465,
+  "output_tokens": 1438,
+  "calls": 15,
+  "failures": 0,
+  "hedged": 0,
+  "cost_usd": null
+ },
+ "rows": [
+  {
+   "message": "",
+   "reply": "Who the hell are you? What do you want?",
+   "first_word_s": 0.0,
+   "total_s": 0.0,
+   "input_tokens": 0,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Nice toy hammer.",
+   "reply": "Hmph. That's not yours to comment on. You don't know what it's made of, do you?",
+   "first_word_s": 2.343,
+   "total_s": 3.765,
+   "input_tokens": 1800,
+   "cached_tokens": 811,
+   "offline": false
+  },
+  {
+   "message": "Sorry, I was joking. Everyone says you're the best smith in town.",
+   "reply": "Hmph. The best? You think you know anything about smiths? You don’t even know what’s in that hammer.",
+   "first_word_s": 0.391,
+   "total_s": 2.063,
+   "input_tokens": 1016,
+   "cached_tokens": 821,
+   "offline": false
+  },
+  {
+   "message": "What are you working on today?",
+   "reply": "I'm not telling you.",
+   "first_word_s": 0.484,
+   "total_s": 1.937,
+   "input_tokens": 1130,
+   "cached_tokens": 854,
+   "offline": false
+  },
+  {
+   "message": "That sword on the wall... it looks like the king's. Is it?",
+   "reply": "Hmph. You think you can just ask about the king's sword like it's some common tool? That's not yours to look at. You don't know what it's made of either.",
+   "first_word_s": 0.438,
+   "total_s": 2.375,
+   "input_tokens": 1148,
+   "cached_tokens": 901,
+   "offline": false
+  },
+  {
+   "message": "Do you have family here?",
+   "reply": "Family? I've got a daughter. That's all I need. You don't need to know the rest.",
+   "first_word_s": 0.594,
+   "total_s": 2.047,
+   "input_tokens": 1256,
+   "cached_tokens": 919,
+   "offline": false
+  },
+  {
+   "message": "What do you do when the forge is cold?",
+   "reply": "When the forge is cold? I light a fire and whisper to the flames. They know what I'm thinking. You don’t need to know that either.",
+   "first_word_s": 0.453,
+   "total_s": 2.25,
+   "input_tokens": 1258,
+   "cached_tokens": 980,
+   "offline": false
+  },
+  {
+   "message": "Can you fix my shovel? It's bent.",
+   "reply": "Hmph. Fix your shovel? You think I have time for that? I've got a forge to keep warm and a daughter to worry about. You don't need my help.",
+   "first_word_s": 0.516,
+   "total_s": 2.735,
+   "input_tokens": 1323,
+   "cached_tokens": 1014,
+   "offline": false
+  },
+  {
+   "message": "How much would a new blade cost?",
+   "reply": "Hmph. A new blade? You think you can just ask about blades like they're common? You don’t know what goes into a blade, do you?",
+   "first_word_s": 0.515,
+   "total_s": 2.359,
+   "input_tokens": 1349,
+   "cached_tokens": 1061,
+   "offline": false
+  },
+  {
+   "message": "Who taught you the trade?",
+   "reply": "My father did. He was the best. I learned from him.",
+   "first_word_s": 0.531,
+   "total_s": 2.172,
+   "input_tokens": 1417,
+   "cached_tokens": 1113,
+   "offline": false
+  },
+  {
+   "message": "Do you remember my name?",
+   "reply": "...Ana? I don't remember names. I remember faces. And you... you're not someone I need to remember.",
+   "first_word_s": 0.515,
+   "total_s": 2.265,
+   "input_tokens": 1391,
+   "cached_tokens": 1159,
+   "offline": false
+  },
+  {
+   "message": "Thanks. See you tomorrow.",
+   "reply": "You're welcome. But don't think I'll be here tomorrow. The forge doesn't wait for anyone.",
+   "first_word_s": 1.891,
+   "total_s": 3.438,
+   "input_tokens": 1552,
+   "cached_tokens": 818,
+   "offline": false
+  }
+ ]
+}

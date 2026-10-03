@@ -1,0 +1,7 @@
+---
+description: Kinloom AI integration (declarations in kinloom/*.json, engine wiring, tests)
+globs: kinloom/**, kinloom.json, addons/kinloom/**
+alwaysApply: false
+---
+
+AI features in this game go through Kinloom. Before editing them, read the Kinloom section of AGENTS.md and kinloom/docs/reference.md; pick a recipe in kinloom/docs/recipes/. Declare narrow permissions, always keep a fallback, never write API keys or invented prices. Verify with `kinloom validate`, `kinloom test` and the MCP tools from `kinloom mcp` (simulate_role, attack_guardrails with 0 escapes, attach).

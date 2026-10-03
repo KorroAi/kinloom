@@ -1,0 +1,15 @@
+{
+ "arm": "keep-v2-talk1",
+ "key": true,
+ "error": null,
+ "frames": 2106,
+ "seconds": 30.0,
+ "longest_frame_gap_s": 0.044,
+ "frames_over_100ms": 0,
+ "shots": {
+  "box_open": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk1\\live2\\box_open.png",
+  "first_reply": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk1\\live2\\first_reply.png",
+  "second_reply": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk1\\live2\\second_reply.png",
+  "after_esc": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk1\\live2\\after_esc.png"
+ }
+}

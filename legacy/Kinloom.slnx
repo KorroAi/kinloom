@@ -1,0 +1,19 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Kinloom.Brain/Kinloom.Brain.csproj" />
+    <Project Path="src/Kinloom.Cli/Kinloom.Cli.csproj" />
+    <Project Path="src/Kinloom.Core/Kinloom.Core.csproj" />
+    <Project Path="src/Kinloom.Game/Kinloom.Game.csproj" />
+    <Project Path="src/Kinloom.Llm/Kinloom.Llm.csproj" />
+    <Project Path="src/Kinloom.Runtime/Kinloom.Runtime.csproj" />
+    <Project Path="src/Kinloom.Scenarios/Kinloom.Scenarios.csproj" />
+    <Project Path="src/Kinloom.Sim/Kinloom.Sim.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Kinloom.Brain.Tests/Kinloom.Brain.Tests.csproj" />
+    <Project Path="tests/Kinloom.Cli.Tests/Kinloom.Cli.Tests.csproj" />
+    <Project Path="tests/Kinloom.Core.Tests/Kinloom.Core.Tests.csproj" />
+    <Project Path="tests/Kinloom.Llm.Tests/Kinloom.Llm.Tests.csproj" />
+    <Project Path="tests/Kinloom.Runtime.Tests/Kinloom.Runtime.Tests.csproj" />
+  </Folder>
+</Solution>

@@ -1,0 +1,22 @@
+{
+  "types": {
+    "Crate": {
+      "description": "A crate that can be pushed.",
+      "properties": { "weight": "number", "pushed_with": "number" },
+      "params": { "color_name": { "type": "enum", "options": ["red", "blue", "green"], "default": "red" } },
+      "functions": { "push": { "args": { "force": { "type": "number", "min": 0, "max": 10 } } } }
+    },
+    "Box": {
+      "description": "A box Kinloom may place.",
+      "creatable": { "max": 2 },
+      "engine": { "godot": { "scene": "res://box.tscn", "parent": "/root/Test" } }
+    }
+  },
+  "things": [ { "id": "crate", "type": "Crate" } ],
+  "events": { "start": "The test started." },
+  "generators": [ { "id": "label", "description": "A label for a crate.", "schema": { "type": "object", "fields": { "text": "string" }, "required": ["text"] } } ],
+  "roles": [
+    { "id": "mover", "mission": "You move crates.", "sees": ["thing:crate", "event:start"],
+      "can": ["set:crate.color_name", "invoke:crate.push", "create:Box", "say"], "wake": [ { "on": "event:start" } ] }
+  ]
+}

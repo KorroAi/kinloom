@@ -1,0 +1,132 @@
+{
+  "label": "racer-k2",
+  "scenario": "slow",
+  "source": "<workspace>\\games\\trials\\racer-k2",
+  "when": "20260927-181601",
+  "seconds": 90.0,
+  "commit": "5375671",
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 116.5,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.062,
+        "drifting_share": 0.0,
+        "lateral_mean": 1.87,
+        "lateral_sd": 2.34,
+        "samples": 353,
+        "speed_mean": 34.03,
+        "speed_sd": 20.81
+      },
+      "MINT": {
+        "boosting_share": 0.048,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.51,
+        "lateral_sd": 2.31,
+        "samples": 353,
+        "speed_mean": 33.68,
+        "speed_sd": 21.0
+      },
+      "NOVA": {
+        "boosting_share": 0.042,
+        "drifting_share": 0.0,
+        "lateral_mean": -2.61,
+        "lateral_sd": 2.05,
+        "samples": 353,
+        "speed_mean": 34.29,
+        "speed_sd": 20.68
+      },
+      "YOU": {
+        "boosting_share": 0.045,
+        "drifting_share": 0.0,
+        "lateral_mean": -1.21,
+        "lateral_sd": 2.11,
+        "samples": 353,
+        "speed_mean": 34.24,
+        "speed_sd": 21.2
+      }
+    },
+    "frame_ms": {
+      "max": 51.38,
+      "p50": 8.28,
+      "p99": 21.66
+    },
+    "frames": 10484,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 1
+    },
+    "measured_frames": 10469,
+    "peak": {
+      "enemies": 0,
+      "lap": 3,
+      "nodes": 1956,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      },
+      {
+        "at": 70.0,
+        "question": "who is attacking me right now?"
+      }
+    ],
+    "samples": 353,
+    "scene_starts": 1,
+    "seconds": 90.0,
+    "texts": {
+      "\"Race 1. Finish ahead of NOVA. Show me something.\"": 12.2,
+      "1ST / 4": 33.8,
+      "2ND / 4": 28.8,
+      "3RD / 4": 21.2,
+      "4TH / 4": 18.2,
+      "ATTACK > BLAZE": 78.9,
+      "ATTACK > MINT": 80.4,
+      "ATTACK > YOU": 69.3,
+      "BEST LAP  --:--.---": 18.2,
+      "BLAZE  Keep going.": 26.2,
+      "BLAZE  That's MY spot, MINT!": 74.3,
+      "BLOOD ORANGE GRAND PRIX": 12.2,
+      "CHALLENGE  Settle the Score: Finish ahead of NOVA.": 18.2,
+      "CHALLENGE:  SETTLE THE SCORE": 12.2,
+      "Finish ahead of NOVA.": 12.2,
+      "LAP 1 / 3": 18.2,
+      "LAP 2 / 3": 56.7,
+      "LAP 3 / 3": 90.0,
+      "MARCO  Keep going.": 31.3,
+      "MINT  Keep going.": 26.2,
+      "NOVA  Keep going.": 26.2,
+      "Preparing the race.": 0.6,
+      "RIVAL PACE   NOVA 97%    BLAZE 95%    MINT 93%": 12.2,
+      "Studying your driving and the rivalries...": 0.6,
+      "T  RADIO YOUR ENGINEER": 18.2,
+      "YOU  how far is the leader?": 25.2,
+      "YOU  who is attacking me right now?": 70.8,
+      "who is attacking me right now?": 70.3
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": {
+    "requests": 45,
+    "kinds": {
+      "slow": 45
+    },
+    "with_tools": 43,
+    "streamed": 0
+  },
+  "verdict": "PASS"
+}

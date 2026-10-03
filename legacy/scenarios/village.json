@@ -1,0 +1,49 @@
+{
+  "seed": 42,
+  "days": 7,
+  "places": [
+    { "id": "square", "name": "Market Square", "x": 50, "y": 30, "radius": 5, "tags": ["market"] },
+    { "id": "bakery", "name": "Bakery", "x": 38, "y": 22, "radius": 3, "tags": ["shop"] },
+    { "id": "forge", "name": "Forge", "x": 64, "y": 24, "radius": 3, "tags": ["shop"] },
+    { "id": "field", "name": "Field", "x": 85, "y": 50, "radius": 6, "tags": ["work"] },
+    { "id": "tavern", "name": "Tavern", "x": 30, "y": 45, "radius": 4, "tags": ["social"] },
+    { "id": "house_baker", "name": "Baker's House", "x": 15, "y": 10, "radius": 2, "tags": ["home"] },
+    { "id": "house_smith", "name": "Smith's House", "x": 80, "y": 10, "radius": 2, "tags": ["home"] },
+    { "id": "house_guard", "name": "Barracks", "x": 50, "y": 5, "radius": 2, "tags": ["home"] },
+    { "id": "house_farmer", "name": "Farmhouse", "x": 95, "y": 35, "radius": 2, "tags": ["home"] },
+    { "id": "house_inn", "name": "Innkeeper's Room", "x": 20, "y": 52, "radius": 2, "tags": ["home"] }
+  ],
+  "agents": [
+    { "id": "baker", "name": "Berta the Baker", "x": 15, "y": 10, "tags": ["trader"], "bravery": 0.3, "sociability": 0.7, "forgiveness": 0.5, "home": "house_baker",
+      "schedule": [ { "hour": 7, "place": "bakery" }, { "hour": 18, "place": "tavern" }, { "hour": 22, "place": "house_baker" } ] },
+    { "id": "smith", "name": "Hugo the Smith", "x": 80, "y": 10, "tags": ["trader"], "bravery": 0.7, "sociability": 0.4, "forgiveness": 0.3, "home": "house_smith",
+      "schedule": [ { "hour": 7, "place": "forge" }, { "hour": 18, "place": "tavern" }, { "hour": 22, "place": "house_smith" } ] },
+    { "id": "guard", "name": "Captain Aldric", "x": 50, "y": 5, "tags": ["authority"], "bravery": 0.8, "sociability": 0.3, "forgiveness": 0.4, "home": "house_guard",
+      "schedule": [ { "hour": 6, "place": "square" }, { "hour": 19, "place": "tavern" }, { "hour": 23, "place": "house_guard" } ] },
+    { "id": "farmer", "name": "Mila the Farmer", "x": 95, "y": 35, "tags": [], "bravery": 0.3, "sociability": 0.5, "forgiveness": 0.7, "home": "house_farmer",
+      "schedule": [ { "hour": 6, "place": "field" }, { "hour": 11, "place": "square" }, { "hour": 14, "place": "field" }, { "hour": 18, "place": "tavern" }, { "hour": 22, "place": "house_farmer" } ] },
+    { "id": "innkeeper", "name": "Old Tom", "x": 20, "y": 52, "tags": ["trader"], "bravery": 0.5, "sociability": 0.9, "forgiveness": 0.6, "home": "house_inn",
+      "schedule": [ { "hour": 10, "place": "square" }, { "hour": 13, "place": "tavern" }, { "hour": 23, "place": "house_inn" } ] }
+  ],
+  "player": { "id": "player", "name": "The Stranger", "x": 5, "y": 30, "bravery": 0.5, "sociability": 0, "forgiveness": 0.5 },
+  "items": [
+    { "id": "bread", "name": "Loaf of Bread", "place": "bakery", "value": 2, "owner": "baker", "tags": ["food"] }
+  ],
+  "script": [
+    { "day": 1, "hour": 9, "action": "goto", "place": "bakery" },
+    { "day": 1, "hour": 10, "action": "deed", "deed": "steal", "target": "baker", "item": "bread" },
+    { "day": 1, "hour": 11, "action": "goto", "place": "square" },
+    { "day": 2, "hour": 10, "action": "goto", "place": "forge" },
+    { "day": 2, "hour": 11, "action": "buy", "target": "smith", "price": 10 },
+    { "day": 3, "hour": 9, "action": "goto", "place": "field" },
+    { "day": 3, "hour": 10, "action": "deed", "deed": "help", "target": "farmer" },
+    { "day": 4, "hour": 11, "action": "goto", "place": "square" },
+    { "day": 4, "hour": 12, "minute": 30, "action": "deed", "deed": "draw_weapon" },
+    { "day": 5, "hour": 10, "action": "goto", "place": "forge" },
+    { "day": 5, "hour": 11, "action": "buy", "target": "smith", "price": 10 },
+    { "day": 6, "hour": 10, "action": "goto", "place": "bakery" },
+    { "day": 6, "hour": 11, "action": "deed", "deed": "pay", "target": "baker" },
+    { "day": 6, "hour": 11, "minute": 30, "action": "buy", "target": "baker", "price": 2 },
+    { "day": 7, "hour": 18, "action": "goto", "place": "tavern" }
+  ]
+}

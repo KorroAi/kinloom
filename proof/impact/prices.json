@@ -1,0 +1,6 @@
+{
+  "model": "deepseek-flash",
+  "usd_per_million_tokens": {"input": 0.3, "cached_input": 0.006, "output": 1.2},
+  "source": "api-docs.deepseek.com/quick_start/pricing (peak prices, as recorded in proof/README.md)",
+  "read_on": "2026-09-26"
+}

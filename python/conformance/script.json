@@ -1,0 +1,73 @@
+{
+  "lines": {
+    "lines": [
+      "{who} passes {whom}!"
+    ]
+  },
+  "chat": [
+    "You're P3.",
+    "Hmph.\n~~~\n{\"mood\": \"annoyed\", \"intensity\": 0.8, \"feel\": -0.2, \"do\": [{\"tool\": \"give\", \"args\": {\"item\": \"bread\"}}]}",
+    "I see it."
+  ],
+  "decide": {
+    "strategy": "block",
+    "aggression": 0.9
+  },
+  "act": {
+    "actions": [
+      {
+        "tool": "boost",
+        "args": {
+          "seconds": 5
+        }
+      },
+      {
+        "tool": "fly",
+        "args": {}
+      },
+      {
+        "tool": "open_door",
+        "args": {
+          "door": "east"
+        }
+      }
+    ]
+  },
+  "create": {
+    "challenge": "Ghost mode",
+    "sky": "#000000"
+  },
+  "minds": {
+    "variants": [
+      {
+        "hide": {
+          "score": 2
+        }
+      },
+      {
+        "hide": {
+          "score": 2
+        }
+      }
+    ]
+  },
+  "suggest": {
+    "replies": [
+      "Show me the king's sword.",
+      "How much for a blade?",
+      "Goodbye, Mira."
+    ]
+  },
+  "converse": {
+    "lines": [
+      {
+        "who": "MIRA",
+        "text": "Bram, your bread smells of smoke again."
+      },
+      {
+        "who": "BAKER",
+        "text": "My oven, my rules."
+      }
+    ]
+  }
+}

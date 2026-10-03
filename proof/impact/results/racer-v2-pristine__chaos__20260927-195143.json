@@ -1,0 +1,117 @@
+{
+  "label": "racer-v2-pristine",
+  "scenario": "chaos",
+  "source": "<workspace>\\games\\trials\\racer-v2-aider1",
+  "when": "20260927-195143",
+  "seconds": 30.0,
+  "commit": "b088844",
+  "kinloom": {
+    "mode": "online",
+    "stats": {
+      "calls": 0,
+      "failures": 0,
+      "input_tokens": 0,
+      "cached_tokens": 0,
+      "output_tokens": 0,
+      "latency": 0.0,
+      "offline_answers": 0,
+      "by_kind": {},
+      "cost": null,
+      "avg_latency": 0.0
+    },
+    "characters": []
+  },
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 116.0,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.068,
+        "drifting_share": 0.0,
+        "lateral_mean": 2.07,
+        "lateral_sd": 1.77,
+        "samples": 118,
+        "speed_mean": 40.17,
+        "speed_sd": 16.84
+      },
+      "MINT": {
+        "boosting_share": 0.068,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.06,
+        "lateral_sd": 2.11,
+        "samples": 118,
+        "speed_mean": 40.38,
+        "speed_sd": 17.16
+      },
+      "NOVA": {
+        "boosting_share": 0.034,
+        "drifting_share": 0.0,
+        "lateral_mean": -2.78,
+        "lateral_sd": 1.63,
+        "samples": 118,
+        "speed_mean": 39.73,
+        "speed_sd": 15.6
+      },
+      "YOU": {
+        "boosting_share": 0.068,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.81,
+        "lateral_sd": 1.94,
+        "samples": 118,
+        "speed_mean": 41.55,
+        "speed_sd": 17.39
+      }
+    },
+    "frame_ms": {
+      "max": 25.93,
+      "p50": 8.44,
+      "p99": 18.23
+    },
+    "frames": 3481,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 3466,
+    "peak": {
+      "enemies": 0,
+      "lap": 1,
+      "nodes": 1951,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      }
+    ],
+    "samples": 118,
+    "scene_starts": 1,
+    "seconds": 30.0,
+    "texts": {
+      "1ST / 4": 15.6,
+      "2ND / 4": 10.5,
+      "3RD / 4": 3.5,
+      "4TH / 4": 0.5,
+      "BEST LAP  --:--.---": 0.5,
+      "LAP 1 / 3": 0.5
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": {
+    "requests": 0
+  },
+  "verdict": "INCONCLUSIVE: NOT EXERCISED: the game never called the test endpoint"
+}

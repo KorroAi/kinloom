@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2714%27 fill=%27%23c2410c%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%275%27 fill=%27%23f6f4ef%27/%3E%3C/svg%3E">
+<title>Kinloom Replay</title>
+<style>
+:root{--bg:#f6f4ef;--panel:#fff;--ink:#1d1d1f;--muted:#6b6b70;--line:#dcd8cf;--player:#c2410c;--npc:#1d4ed8;--flee:#a16207;--act:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#16171a;--panel:#1f2125;--ink:#ececec;--muted:#9a9aa2;--line:#33363c;--player:#fb923c;--npc:#60a5fa;--flee:#facc15;--act:#f87171}}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.4 system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+header{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 16px;border-bottom:1px solid var(--line)}
+header h1{font-size:16px;margin:0 12px 0 0}
+#clock{font-variant-numeric:tabular-nums;min-width:90px}
+#slider{flex:1;min-width:160px}
+main{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:12px;padding:12px 16px}
+@media (max-width:800px){main{grid-template-columns:1fr}}
+canvas{width:100%;height:auto;background:var(--panel);border:1px solid var(--line);border-radius:8px;cursor:pointer}
+aside{display:flex;flex-direction:column;gap:12px;min-width:0}
+section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;overflow:auto;max-height:340px}
+h2{font-size:12px;margin:0 0 6px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.e{padding:2px 0;border-bottom:1px dashed var(--line)}
+.e small{color:var(--muted)}
+.k-deed{color:var(--player)}.k-consequence{color:var(--act);font-weight:600}.k-rumor,.k-report{color:var(--npc)}.k-error{color:var(--act)}
+#empty{padding:40px;text-align:center;color:var(--muted)}
+</style>
+</head>
+<body>
+<header>
+  <h1>Kinloom Replay</h1>
+  <button id="play">Play</button>
+  <select id="speed" aria-label="Speed"><option value="1">1×</option><option value="4" selected>4×</option><option value="16">16×</option><option value="48">48×</option></select>
+  <input id="slider" type="range" min="0" value="0" aria-label="Time">
+  <span id="clock"></span>
+</header>
+<main>
+  <canvas id="map" width="900" height="560"></canvas>
+  <aside>
+    <section><h2>Thought Inspector</h2><div id="inspector">Click a character.</div></section>
+    <section><h2>Journal</h2><div id="journal"></div></section>
+  </aside>
+</main>
+<script>
+const DATA = /*__REPLAY_DATA__*/null;
+(function () {
+  const $ = id => document.getElementById(id);
+  if (!DATA || !Array.isArray(DATA.frames) || DATA.frames.length === 0) {
+    document.querySelector('main').innerHTML = '<div id="empty">No replay data. Run Kinloom.Sim to generate replay.html.</div>';
+    return;
+  }
+  const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  const canvas = $('map'), ctx = canvas.getContext('2d');
+  const agentsById = Object.fromEntries(DATA.agents.map(a => [a.id, a]));
+  const journalById = new Map(DATA.journal.map(e => [e.id, e]));
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const grow = (x, y, r = 0) => { minX = Math.min(minX, x - r); minY = Math.min(minY, y - r); maxX = Math.max(maxX, x + r); maxY = Math.max(maxY, y + r); };
+  DATA.places.forEach(p => grow(p.x, p.y, p.radius));
+  DATA.frames[0].a.forEach(a => grow(a[1], a[2]));
+  minX -= 6; minY -= 6; maxX += 6; maxY += 6;
+  const scale = Math.min(canvas.width / (maxX - minX || 1), canvas.height / (maxY - minY || 1));
+  const sx = x => (x - minX) * scale, sy = y => (y - minY) * scale;
+
+  let frame = 0, playing = false, selected = null, acc = 0, last = 0;
+  const slider = $('slider');
+  slider.max = DATA.frames.length - 1;
+  const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const row = e => `<div class="e k-${esc(e.kind)}"><small>${esc(e.clock)}</small> ${esc(e.text)}</div>`;
+
+  function why(id) {
+    const chain = [], seen = new Set();
+    let cur = journalById.get(id);
+    while (cur && !seen.has(cur.id)) { seen.add(cur.id); chain.push(cur); cur = cur.cause == null ? null : journalById.get(cur.cause); }
+    return chain;
+  }
+
+  function renderJournal(t) {
+    const shown = DATA.journal.filter(e => e.t <= t && e.kind !== 'opinion').slice(-60).reverse();
+    $('journal').innerHTML = shown.map(row).join('') || '<small>Nothing yet.</small>';
+  }
+
+  function renderInspector(f) {
+    if (!selected) return;
+    const meta = agentsById[selected], s = f.a.find(a => a[0] === selected);
+    if (!meta || !s) return;
+    const own = DATA.journal.filter(e => e.agent === selected && e.t <= f.t);
+    const lastAct = [...own].reverse().find(e => ['reaction', 'consequence', 'report'].includes(e.kind));
+    let html = `<b>${esc(meta.name)}</b><br><small>${esc((meta.tags || []).join(', '))}</small><br>Doing: ${esc(s[3])} · fear ${s[4].toFixed(2)} · anger ${s[5].toFixed(2)}`;
+    if (!meta.isPlayer) html += ` · opinion of player ${s[6] >= 0 ? '+' : ''}${s[6].toFixed(2)}`;
+    if (lastAct) html += '<h2 style="margin-top:8px">Why?</h2>' + why(lastAct.id).map((e, i) => `<div class="e">${i ? '← ' : ''}<small>${esc(e.clock)}</small> ${esc(e.text)}</div>`).join('');
+    html += '<h2 style="margin-top:8px">Recent</h2>' + own.slice(-8).reverse().map(row).join('');
+    $('inspector').innerHTML = html;
+  }
+
+  function draw() {
+    const f = DATA.frames[frame];
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.font = '12px system-ui';
+    ctx.textAlign = 'center';
+    DATA.places.forEach(p => {
+      ctx.strokeStyle = css('--line'); ctx.fillStyle = css('--bg');
+      ctx.beginPath(); ctx.arc(sx(p.x), sy(p.y), p.radius * scale, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = css('--muted'); ctx.fillText(p.name, sx(p.x), sy(p.y) - p.radius * scale - 4);
+    });
+    const shortName = name => name.replace(/^(the|a|an)\s+/i, '').split(' ')[0];
+    const colorOf = (meta, intent) => meta.isPlayer ? css('--player') : intent.startsWith('Flee') ? css('--flee') : intent === 'Routine' ? css('--npc') : css('--act');
+    const agents = f.a.map(([id, x, y, intent, fear, anger, op, bark]) => {
+      const meta = agentsById[id] || { name: id };
+      return { id, meta, x: sx(x), y: sy(y), bark, color: colorOf(meta, intent) };
+    });
+    // 1. dots (selected drawn last, on top)
+    [...agents].sort((p, q) => (p.id === selected) - (q.id === selected)).forEach(a => {
+      ctx.fillStyle = a.color;
+      ctx.beginPath(); ctx.arc(a.x, a.y, a.id === selected ? 9 : 6, 0, Math.PI * 2); ctx.fill();
+    });
+    // 2. names: selected, then player, get their own label; others crowded at the same spot share one label with a "+N" count
+    const labels = [];
+    const priority = a => (a.id === selected ? 2 : 0) + (a.meta.isPlayer ? 1 : 0);
+    [...agents].sort((p, q) => priority(q) - priority(p)).forEach(a => {
+      const clash = y => labels.find(l => Math.abs(l.x - a.x) < 44 && Math.abs(l.y - y) < 13);
+      if (priority(a) > 0) { // never hidden: move down until free
+        let y = a.y;
+        while (clash(y)) y += 14;
+        labels.push({ x: a.x, y, text: shortName(a.meta.name), extra: 0 });
+        return;
+      }
+      const near = clash(a.y);
+      if (near) near.extra++;
+      else labels.push({ x: a.x, y: a.y, text: shortName(a.meta.name), extra: 0 });
+    });
+    ctx.fillStyle = css('--ink');
+    labels.forEach(l => {
+      l.text = l.extra ? `${l.text} +${l.extra}` : l.text;
+      l.w = ctx.measureText(l.text).width + 4;
+      ctx.fillText(l.text, l.x, l.y + 18);
+    });
+    // 3. barks, stacked upwards when they would overlap another bark or a name
+    const bubbles = labels.map(l => ({ x: l.x, w: l.w, top: l.y + 5 }));
+    agents.filter(a => a.bark).forEach(a => {
+      const w = ctx.measureText(a.bark).width + 12;
+      let top = a.y - 34;
+      while (bubbles.some(b => Math.abs(b.x - a.x) < (b.w + w) / 2 && Math.abs(b.top - top) < 20)) top -= 20;
+      bubbles.push({ x: a.x, w, top });
+      ctx.strokeStyle = a.color;
+      if (top < a.y - 34) { ctx.beginPath(); ctx.moveTo(a.x, top + 18); ctx.lineTo(a.x, a.y - 7); ctx.stroke(); } // leader line to its speaker
+      ctx.fillStyle = css('--panel');
+      ctx.fillRect(a.x - w / 2, top, w, 18); ctx.strokeRect(a.x - w / 2, top, w, 18);
+      ctx.fillStyle = css('--ink'); ctx.fillText(a.bark, a.x, top + 13);
+    });
+    $('clock').textContent = f.clock;
+    slider.value = frame;
+    renderJournal(f.t);
+    renderInspector(f);
+  }
+
+  // Deep links: replay.html#t=<tick>&select=<agent id> opens that moment; the hash follows the viewer so a moment can be shared.
+  function readHash() {
+    const params = new URLSearchParams(location.hash.slice(1));
+    const t = parseInt(params.get('t'), 10);
+    if (!isNaN(t)) {
+      const i = DATA.frames.findIndex(f => f.t >= t);
+      frame = i === -1 ? DATA.frames.length - 1 : i;
+    }
+    const id = params.get('select');
+    if (id && agentsById[id]) selected = id;
+  }
+  function writeHash() {
+    const params = new URLSearchParams({ t: DATA.frames[frame].t });
+    if (selected) params.set('select', selected);
+    try { history.replaceState(null, '', '#' + params.toString()); } catch (e) { /* some file:// contexts refuse; the viewer still works */ }
+  }
+
+  canvas.addEventListener('click', ev => {
+    const r = canvas.getBoundingClientRect();
+    const mx = (ev.clientX - r.left) * canvas.width / r.width, my = (ev.clientY - r.top) * canvas.height / r.height;
+    let best = null, bestD = 15;
+    DATA.frames[frame].a.forEach(a => { const d = Math.hypot(sx(a[1]) - mx, sy(a[2]) - my); if (d < bestD) { bestD = d; best = a[0]; } });
+    selected = best;
+    if (!best) $('inspector').textContent = 'Click a character.';
+    draw();
+    writeHash();
+  });
+  slider.addEventListener('input', () => { frame = +slider.value; draw(); writeHash(); });
+  $('play').addEventListener('click', () => {
+    playing = !playing;
+    $('play').textContent = playing ? 'Pause' : 'Play';
+    if (!playing) writeHash();
+    last = performance.now();
+    if (playing) requestAnimationFrame(tick);
+  });
+  function tick(now) {
+    if (!playing) return;
+    acc += (now - last) / 1000 * (+$('speed').value) * 4;
+    last = now;
+    if (acc >= 1) {
+      frame = Math.min(DATA.frames.length - 1, frame + Math.floor(acc));
+      acc %= 1;
+      draw();
+      if (frame === DATA.frames.length - 1) { playing = false; $('play').textContent = 'Play'; writeHash(); return; }
+    }
+    requestAnimationFrame(tick);
+  }
+  readHash();
+  draw();
+})();
+</script>
+</body>
+</html>

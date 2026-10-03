@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%2714%27 fill=%27%23c2410c%27/%3E%3Ccircle cx=%2716%27 cy=%2716%27 r=%275%27 fill=%27%23f6f4ef%27/%3E%3C/svg%3E">
+<title>Kinloom</title>
+<meta name="description" content="Kinloom makes NPCs notice what the player does, react believably, remember and spread the word — without scripting every behavior and without a chatbot.">
+<style>
+:root{--bg:#f6f4ef;--ink:#1d1d1f;--muted:#5f5f66;--accent:#c2410c;--card:#fff;--line:#dcd8cf}
+@media (prefers-color-scheme:dark){:root{--bg:#16171a;--ink:#ececec;--muted:#a0a0a8;--accent:#fb923c;--card:#1f2125;--line:#33363c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.55 system-ui,sans-serif}
+.wrap{max-width:880px;margin:0 auto;padding:48px 16px}
+h1{font-size:clamp(36px,7vw,60px);line-height:1.05;margin:0 0 16px}
+.lead{font-size:20px;color:var(--muted);max-width:640px}
+.actions{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:24px}
+.cta{display:inline-block;padding:14px 22px;border-radius:10px;background:var(--accent);color:#fff;font-weight:600;text-decoration:none}
+.ghost{display:inline-block;padding:13px 21px;border-radius:10px;border:1px solid var(--line);color:var(--ink);font-weight:600;text-decoration:none}
+.soon{margin:0;color:var(--muted);font-weight:600}
+.demo{margin:40px 0 0;border:1px solid var(--line);border-radius:12px;max-width:100%}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px;margin-top:32px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px}
+.card h2{font-size:17px;margin:0 0 6px}
+.card p{margin:0;color:var(--muted);font-size:15px}
+.tag{display:inline-block;font-size:12px;font-weight:600;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
+footer{margin-top:56px;color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Your world notices.</h1>
+  <p class="lead">Kinloom makes NPCs notice what the player does, react believably, remember, and spread the word — in any genre, without scripting every behavior and without a chatbot.</p>
+  <div class="actions">
+    <div id="cta"></div>
+    <a class="ghost" href="demo.html">Watch the village demo</a>
+  </div>
+  <div id="gif"></div>
+  <div class="grid">
+    <div class="card"><h2>Notice &amp; react</h2><p>Draw a sword in the market: people run home, a guard walks over.</p></div>
+    <div class="card"><h2>Remember</h2><p>Grudges, reputation and rumors persist and travel from mouth to mouth, losing certainty at each retelling.</p></div>
+    <div class="card"><h2>Click any NPC. Ask why.</h2><p>Every reaction comes with its cause chain. No black box.</p></div>
+    <div class="card"><h2>No LLM required</h2><p>No per-player inference bill, no hallucinating peasants. AI helpers stay optional.</p></div>
+    <div class="card"><h2>Fits your existing project <span class="tag">planned</span></h2><p>Being designed to plug into the AI you already have instead of replacing it.</p></div>
+  </div>
+  <footer>Kinloom is in early development, for Unity first. The demo is a real, unscripted simulation run. Unity is a trademark of Unity Technologies.</footer>
+</div>
+<script src="config.js"></script>
+<script>
+(function () {
+  var url = window.KINLOOM_WAITLIST_URL || "";
+  var box = document.getElementById("cta");
+  if (/^https:\/\//.test(url)) {
+    var a = document.createElement("a");
+    a.className = "cta"; a.href = url; a.rel = "noopener"; a.textContent = "Join the waitlist";
+    box.appendChild(a);
+  } else {
+    box.innerHTML = '<p class="soon">Waitlist opens soon.</p>';
+  }
+  var gif = window.KINLOOM_DEMO_GIF || "";
+  if (gif) {
+    var img = document.createElement("img");
+    img.className = "demo"; img.src = gif; img.alt = "Replay of the Kinloom village demo with the Thought Inspector open";
+    document.getElementById("gif").appendChild(img);
+  }
+})();
+</script>
+</body>
+</html>

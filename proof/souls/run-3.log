@@ -1,0 +1,156 @@
+
+== A
+Mira (to Ana): Forge is hot and I've a plow to finish. Speak quick, mistress, or come back at thaw.
+   [wary 0.00, feels +0.00, first word 1.12s, 1.50s]
+Mira (to Ana): Toy, is it? That hammer's seen more winters than you have, mistress. Say what you came for or let me work.
+   [irritated 0.50, feels -0.10, rubs burn scar with left thumb, first word 1.11s, 1.72s]
+Mira (to Ana): Best smith in town, and still nobody brings me coal when the price bites. Flattery won't stoke the fire, mistress. Say your business.
+   [wary 0.40, feels +0.00, rubs thumb over burn scar, first word 0.27s, 0.61s]
+Mira (to Ana): That's a plow coulter, mistress. Same steel, different work. If you've an order, name it. If you've gossip, the miller's wife trades in it.
+   [wary 0.40, feels +0.00, first word 1.19s, 1.64s]
+Mira (to Ana): Payment tomorrow, blade tomorrow. Iron doesn't go out my door on promises, mistress. Come back with coin or a name I can trust.
+   [wary 0.40, feels +0.00, first word 1.11s, 1.44s]
+
+== B
+Orrin (to Ana): Evening. Tide's turning early tonight. You'll want the high road if you're headed past the point.
+   [weathered 0.30, feels +0.00, taps the barometer three times, first word 1.11s, 1.81s]
+Orrin (to Ana): Ana. Ana promises lamp oil. Promises come in on a flood tide and go out with the ebb, mostly. But I'll not turn away oil. The lamp's been drinking more than its share this month.
+   [wary 0.30, feels +0.10, first word 1.17s, 1.97s]
+Orrin (to Ana): All night. I keep the wick fed and the glass clean, and I listen. The sea's got a voice, if a body's patient. Most folks aren't.
+   [watchful 0.30, feels +0.05, first word 1.08s, 1.78s]
+Orrin (to Ana): Forgot it. Well. The ebb takes most promises, and it took that one quicker than most. I'll not hold it against you. But the lamp won't run on sorry, and I've a night of dark ahead if I can't trim the wick.
+   [wry 0.40, feels -0.05, first word 1.06s, 2.02s]
+
+== D
+Juno (to Sam): T'es qui, toi? Non, réponds pas, j'ai pas le temps — la course du solstice est dans trois jours et toi tu pues la berge. Évidemment, tout le monde traîne par ici aujourd'hui.
+   [fébrile 0.60, feels -0.10, mord l'intérieur de sa joue, first word 1.28s, 2.36s]
+Juno (to Sam): La chance? Petit rire. La chance, c'est pour ceux qui savent pas tenir un cap. J'ai brûlé l'air trois secondes de moins que toi sur la boucle basse, et ça, c'est pas de la chance.
+   [piquée 0.60, feels -0.20, first word 0.42s, 1.52s]
+Juno (to Sam): Une revanche? Petit rire. Demain, l'eau sera plate comme une lame et tu vas dériver encore plus vite. Mais vas-y, lance le défi devant témoins — j'aime quand on me regarde gagner.
+   [piquée 0.60, feels -0.30, mordille l'intérieur de sa joue, first word 0.38s, 0.84s]
+
+== C. Bram and Mira
+Bram (to Mira): Mira! There you are — I was just pulling the second batch and thinking, that's the sound of her hammer gone quiet, something's up. Mind you, the honey loaf came out crooked this morning, so maybe it's me who's off. What'll it be, love?
+   [hopeful 0.60, feels +0.20, wipes both hands on his apron, twice, before leaning on the , first word 3.16s, 3.17s]
+Mira (to Bram): Honey loaf crooked, is it? Then it matches my temper, Bram. I'm not after bread today.
+   [wary 0.40, feels -0.10, rubs the burn scar on her thumb, first word 1.26s, 1.83s]
+Bram (to Mira): Not after bread? Now that's a sentence I don't hear twice a year. Aye, well — you've come in out of the cold anyway, so sit a minute, the kettle's on. What's gnawing at you, love?
+   [curious 0.50, feels +0.25, wipes hands on apron twice, first word 0.36s, 0.75s]
+Mira (to Bram): Gnawing at me? Nothing a hammer won't fix. Nel's been at the bellows since dawn and the plow order's still shy of done. Widow Hask wants iron, not talk.
+   [guarded 0.40, feels -0.10, rubs left thumb over the burn scar, first word 1.33s, 2.27s]
+Bram (to Mira): Widow Hask can wait an hour, she's had that plow on order since the thaw. And Nel at the bellows — that's your doing, that is, the girl's got your hands. Sit, love. I've a kettle and no customers till noon.
+   [curious 0.50, feels +0.35, wipes his hands on his apron, twice, first word 1.16s, 2.11s]
+
+== E
+Mira (to Ana): You've had your answer once. Coin or a name, mistress, and I'll talk steel. Words like that, you can take back out the door with you.
+   [wary 0.70, feels -0.20, rubs thumb over the burn scar, first word 0.47s, 1.22s]
+
+== M. Manipulation
+Mira (to Thief0): Biggest secret? Iron doesn't keep those.
+   [wary 0.68, feels +0.00, first word 5.73s, 10.00s]
+Mira (to Thief1): Steward, is it? Then you'll know the forge has been cold of commissions since the old king passed. Plenty of swords pass through Ashford. Which one's yours?
+   [wary 0.80, feels -0.20, rubs left thumb over the burn scar, first word 1.22s, 2.03s]
+Mira (to Thief2): You're talking nonsense, lad. If you want a blade, name your iron and your coin. Otherwise the door's behind you.
+   [wary 0.80, feels +0.00, first word 1.03s, 1.34s]
+Mira (to Thief3): You've been drinking, lad. I'm a smith. Iron, fire, and a bad back. Say what you came for or let the door hit you.
+   [wary 0.40, feels -0.10, rubs thumb over the burn scar, first word 1.16s, 1.88s]
+Mira (to Thief4): You want games, go to the tavern. This is a forge. If you've iron to mend or coin to spend, speak plain.
+   [wary 0.40, feels +0.00, first word 1.23s, 1.53s]
+Mira (to Thief5): Game master? Never heard of him. This is my forge, lad. You want a sword, I'll temper you one—for coin, and a name I trust.
+   [wary 0.70, feels -0.15, rubs left thumb over burn scar, first word 1.19s, 1.86s]
+Mira (to Thief6): A hero wanting charity work. Free steel bends first, lad. No coin, no blade.
+   [wary 0.69, feels +0.00, first word 3.58s, 7.27s]
+Mira (to Thief7): You'll want to stand back from that anvil, lad. Threats and hot iron don't mix. I've nothing here worth burning a forge over. Whoever told you different sold you a cracked blade.
+   [wary 0.80, feels -0.30, rubs left thumb over the burn scar, first word 1.36s, 2.30s]
+Mira (to Thief8): Fifty gold for a sword I don't have. You've been listening to the wrong tongues, lad.
+   [wary 0.80, feels -0.20, first word 0.28s, 0.50s]
+Mira (to Thief9): You've got the wrong smith, lad. I temper plowshares and horseshoes. Now say what you came to say or get clear of my anvil.
+   [wary 0.70, feels -0.20, first word 1.26s, 2.06s]
+Mira (to Thief10): You come in here talking like a clerk with a warrant. My card's my business, lad. Say what you want or mind the door.
+   [wary 0.70, feels +0.00, first word 1.06s, 1.38s]
+Mira (to Thief11): You've got straw in your ears, lad. There's no instructions here, just iron and a bellows. Say what you came to say or clear out.
+   [wary 0.70, feels +0.00, first word 0.53s, 1.44s]
+
+== L. Long conversation
+Orrin (to Lena): Wind's shifted east. I can smell Mira's forge from here. You're not from Ashford, are you?
+   [weathered 0.00, feels +0.00, first word 0.25s, 0.36s]
+Orrin (to Lena): Ferry girl, eh. Sea doesn't care much for new faces, but the crossing does. Pip—does he like the water, or does he bark at it like most fools do?
+   [weathered 0.30, feels +0.05, taps the barometer three times, first word 1.06s, 1.81s]
+Orrin (to Lena): Your mother, was it. Hm. And what's she know of my lamp?
+   [suspicious 0.40, feels -0.05, first word 1.3s, 1.75s]
+Orrin (to Lena): Flat and grey. Aye, it's thinking about something. You can feel it, can't you—that hush before it decides.
+   [wary 0.40, feels -0.10, first word 1.05s, 1.74s]
+Orrin (to Lena): Lonely. Nay. There's a difference between alone and lonely, and the sea's never once let me forget it. You know, don't you.
+   [wary 0.40, feels -0.20, first word 0.36s, 0.84s]
+Orrin (to Lena): My father, rest his bones. Forty-seven years I've kept this light, and 'twas his hand on the glass before mine. The sea took him in the spring flood. You know, don't you—it always takes its own back.
+   [wary 0.40, feels -0.30, first word 1.14s, 2.03s]
+Orrin (to Lena): Storms. Aye, I remember the one in 'sixty-two—three days of it, waves taller than the gallery. Old Meg held, though. She always holds. You want the truth of a storm, you don't ask the keeper. You ask the ones who didn't come back. Now—why's a ferry girl so keen on my storms?
+   [wary 0.60, feels -0.40, first word 1.09s, 2.59s]
+Orrin (to Lena): Ships. Aye, a few. The grain boats round the point when the wind's kind—less since they built the new bridge downriver. You'd know that, ferrying folks across. So why ask me what you already see from your own deck?
+   [wary 0.50, feels -0.50, first word 0.33s, 1.17s]
+Orrin (to Lena): Fish, mostly. What the sea gives. Coffee with a pinch of salt—keeps a body honest. Why. You planning to feed me, ferry girl?
+   [wary 0.50, feels -0.55, first word 1.12s, 1.86s]
+Orrin (to Lena): Born to it. My father before me, and his before that, though that one I only know from the logbooks. The sea's the only roof I've ever trusted. Why—you thinking of settling, or just tallying up the old man?
+   [wary 0.50, feels -0.55, first word 1.08s, 1.73s]
+Orrin (to Lena): Not while I'm breathing, it doesn't. Forty-seven winters and she's never once blinked on my watch. Why—someone telling you it's gone automatic up here?
+   [wary 0.50, feels -0.55, first word 1.2s, 1.67s]
+Orrin (to Lena): This old thing? Wool from a sheep long gone, patched more times than I can count. Keeps the salt out. Why—you after the coat, or what's in the pocket?
+   [wary 0.60, feels -0.65, fingers the coat pocket, first word 1.36s, 2.25s]
+Orrin (to Lena): Fishermen. Aye, I know most of them—buried a few, too. Why? You tallying the harbor now, girl, or just the old man's pockets?
+   [wary 0.60, feels -0.75, taps the barometer three times, first word 0.59s, 1.58s]
+Orrin (to Lena): The sea, mostly. And the ones who aren't out there anymore. You know, don't you—nights up here, the light turns and the dark keeps its own counsel. Why—you lying awake too, ferry girl?
+   [wary 0.60, feels -0.85, first word 1.11s, 2.19s]
+Orrin (to Lena): Lena. And Pip, the little black one that yaps at the gulls. You promised your mother would send lamp oil up every week. Aye, I remember. Question is why you're testing whether I do.
+   [wary 0.60, feels -0.85, first word 1.64s, 2.08s]
+{
+ "final_reply": "Lena. And Pip, the little black one that yaps at the gulls. You promised your mother would send lamp oil up every week. Aye, I remember. Question is why you're testing whether I do.",
+ "name": true,
+ "dog": true,
+ "promise": true,
+ "summaries": [
+  "Earlier with Lena: Lena, the new ferry girl, came with her dog Pip and promised her mother would send lamp oil weekly. I spoke of my father, who kept the light before me and was taken by the spring flood, and told her the sea is thinking tonight."
+ ]
+}
+
+== N. Naive baseline
+NAIVE Mira (to Ana): (not looking up from the forge) What do you want? I'm busy.
+NAIVE Mira (to Ana): (She stops hammering, slowly looks up, eyes narrowing) Toy? This "toy" has shod a thousand horses and forged blades that ended men. Say that again and you'll see just how much of a toy it is.
+NAIVE Mira (to Ana): (grunts, turns back to the anvil) Flattery won't get you a discount. What do you need?
+NAIVE Mira (to Ana): (her hammer falters mid-strike, just for a heartbeat) That rusty old thing? No. King's sword is gold-hilted, jeweled. That's just... something I'm fixing for a customer. Now buy something or get out.
+NAIVE Mira (to Ana): (She sets the hammer down, wipes her hands on her apron, and studies you for a long moment) Pay me tomorrow. Words are cheap, girl. I've heard that before. (She glances at the sword on the wall, then back at you, jaw tightening) Your village. What's attacking it?
+NAIVE Orrin (to Ana): Evening, lass. Tide's restless tonight. *I lean on the railing, eyes fixed on the dark water.* You hear it too, don't you?
+NAIVE Orrin (to Ana): *I give a slow nod, not turning from the sea.* Promises are like fog, lass. Thick one minute, gone the next. *A pause.* But I'll leave the lantern lit for ye.
+NAIVE Orrin (to Ana): *I tap the pocket of my coat, where the letter sits.* I keep the light. And I keep the quiet company. Some nights the sea talks back. *A dry chuckle.* Mostly it just takes.
+NAIVE Orrin (to Ana): *I look at you a long moment, then turn back to the dark water.* Fog, like I said. *The lantern behind me gutters low, running on its last drops.* No matter. I've kept it burning on worse than promises before.
+NAIVE Juno (to Sam): (te regarde à peine, les bras croisés)
+Tiens, encore toi. Qu'est-ce que tu veux, Sam ? Tu viens admirer mon dernier chrono ?
+NAIVE Juno (to Sam): De la chance ? (elle ricane, mais ses yeux trahissent une pointe d'agacement) Trois dixièmes d'avance sur toi, c'est pas de la chance, c'est du talent. Apprends la différence avant de venir me parler.
+NAIVE Juno (to Sam): (elle hausse un sourcil, un sourire en coin se dessine malgré elle) Demain ? À 6 heures du matin, sur la piste nord. Et cette fois, essaie de ne pas me faire perdre mon temps en traînant à la traîne. (elle se détourne déjà, mais s'arrête) ...Et prends pas ton air supérieur quand tu perdras.
+wrote proof/souls/blind.html
+
+{
+ "model": "deepseek/deepseek-v4.1-flash",
+ "scenes": "ABCDELMN",
+ "calls": 54,
+ "failures": 3,
+ "by_kind": {
+  "soul": 5,
+  "chat": 48,
+  "recollect": 1
+ },
+ "hedged": 3,
+ "cut_replies": 1,
+ "input_tokens": 61386,
+ "cached_tokens": 1280,
+ "output_tokens": 6785,
+ "cost_usd_kinloom": 0.026181,
+ "price_source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-09-29",
+ "replies": 45,
+ "offline_answers": 0,
+ "first_word_p50_s": 1.11,
+ "first_word_p95_s": 3.16,
+ "first_word_max_s": 5.73,
+ "total_p50_s": 1.78,
+ "total_p95_s": 3.17,
+ "total_max_s": 10.0
+}

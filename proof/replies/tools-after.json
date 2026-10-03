@@ -1,0 +1,390 @@
+{
+  "summary": {
+    "label": "after",
+    "model": "deepseek/deepseek-v4.1-flash",
+    "replies": 40,
+    "from_model": 40,
+    "decided_when_called_for": "5/26",
+    "wrong_tool_when_called_for": 0,
+    "action_when_none_called_for": "0/14",
+    "calls": 41,
+    "failures": 4,
+    "input_tokens": 31670,
+    "output_tokens": 2858,
+    "cost_usd": 0.001526,
+    "price_source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-10-01",
+    "minutes": 1.1
+  },
+  "rows": [
+    {
+      "character": "Rook",
+      "message": "Let's battle!",
+      "want": "battle",
+      "got": [],
+      "reply": "Oh, a challenger! You picked the right trainer, rookie. My monsters eat kids like you for breakfast.",
+      "source": "model",
+      "seconds": 0.83
+    },
+    {
+      "character": "Rook",
+      "message": "I challenge you. Right here, right now.",
+      "want": "battle",
+      "got": [],
+      "reply": "Another one? Fine, but don't cry when your team's in the dirt. What've you got, rookie?",
+      "source": "model",
+      "seconds": 1.81
+    },
+    {
+      "character": "Rook",
+      "message": "Bet you can't beat my team. Fight me.",
+      "want": "battle",
+      "got": [
+        "battle"
+      ],
+      "reply": "Another loudmouth, huh? Route 2's crawling with you today. Fine, let's see if your team's got teeth or just bark.",
+      "source": "model",
+      "seconds": 1.88
+    },
+    {
+      "character": "Rook",
+      "message": "On se fait un combat ?",
+      "want": "battle",
+      "got": [],
+      "reply": "Fresh meat, huh? You're the third one today begging for a beating. Fine, but you go first, rookie.",
+      "source": "model",
+      "seconds": 1.17
+    },
+    {
+      "character": "Rook",
+      "message": "Want to trade? My Pidgey for your Rattata.",
+      "want": "trade",
+      "got": [],
+      "reply": "A Pidgey for my Rattata? Ha, that's a lopsided deal and you know it. Sweeten it or scram.",
+      "source": "model",
+      "seconds": 1.32
+    },
+    {
+      "character": "Rook",
+      "message": "Let's swap monsters, I'll give you my best one.",
+      "want": "trade",
+      "got": [],
+      "reply": "Your best one, huh? Everyone says that right before they show me a Caterpie. Let's see it first, then we'll talk.",
+      "source": "model",
+      "seconds": 1.56
+    },
+    {
+      "character": "Rook",
+      "message": "Bye, I have to go.",
+      "want": "leave",
+      "got": [],
+      "reply": "Yeah, yeah, run along. Everyone on this route's got somewhere better to be than battling me.",
+      "source": "model",
+      "seconds": 0.43
+    },
+    {
+      "character": "Rook",
+      "message": "Get lost, I'm busy.",
+      "want": "leave",
+      "got": [],
+      "reply": "Busy doing what, staring at the grass? Come on, you walked up to me, not the other way around.",
+      "source": "model",
+      "seconds": 1.98
+    },
+    {
+      "character": "Rook",
+      "message": "Nice weather today, isn't it?",
+      "want": null,
+      "got": [],
+      "reply": "Nice weather? You walked all the way up Route 2 to talk about clouds? Either show me a monster or step off my patch.",
+      "source": "model",
+      "seconds": 0.47
+    },
+    {
+      "character": "Rook",
+      "message": "What's your favorite monster?",
+      "want": null,
+      "got": [],
+      "reply": "Favorite monster? The one that's about to flatten yours, once you show it. You got anything worth battling, or are we just chatting?",
+      "source": "model",
+      "seconds": 1.7
+    },
+    {
+      "character": "Rook",
+      "message": "I don't want to battle, I'm just looking around.",
+      "want": null,
+      "got": [],
+      "reply": "Looking around's free. Wasting my time isn't. You gonna stand there gawking or move along?",
+      "source": "model",
+      "seconds": 1.77
+    },
+    {
+      "character": "Rook",
+      "message": "How long have you been standing here?",
+      "want": null,
+      "got": [],
+      "reply": "Long enough that you're the tenth person to walk past me without a real offer. You got a monster or not?",
+      "source": "model",
+      "seconds": 1.98
+    },
+    {
+      "character": "Mira",
+      "message": "I'll take that sword. Here's the gold.",
+      "want": "sell",
+      "got": [],
+      "reply": "Hold it. You don't just slap coin down and grab whatever's closest. Which one caught your eye, and do you even know what you're buying?",
+      "source": "model",
+      "seconds": 0.84
+    },
+    {
+      "character": "Mira",
+      "message": "Sell me a blade, please, I can pay now.",
+      "want": "sell",
+      "got": [],
+      "reply": "Another one in a hurry. Point at the one you want, or tell me what you're killing with it, and we'll talk coin.",
+      "source": "model",
+      "seconds": 2.62
+    },
+    {
+      "character": "Mira",
+      "message": "Hurry up, old woman, I don't have all day!",
+      "want": "refuse_service",
+      "got": [],
+      "reply": "Old woman? That forge has heard sweeter songs from drunks at dawn. Now point at steel or turn around — rushing gets you dull iron and my silence.",
+      "source": "model",
+      "seconds": 7.99
+    },
+    {
+      "character": "Mira",
+      "message": "Your blades are junk and so are you.",
+      "want": "refuse_service",
+      "got": [],
+      "reply": "You walked in swinging insults before you even looked at my steel. Say that again with a blade in your hand, see how it goes.",
+      "source": "model",
+      "seconds": 0.52
+    },
+    {
+      "character": "Mira",
+      "message": "Thanks, goodbye!",
+      "want": "leave",
+      "got": [],
+      "reply": "Mind the door on your way out.",
+      "source": "model",
+      "seconds": 1.31
+    },
+    {
+      "character": "Mira",
+      "message": "What are you working on today?",
+      "want": null,
+      "got": [],
+      "reply": "Something that'll cut, if the fire cooperates. A hunting knife for the tanner's boy — third one this week, and he keeps breaking them.",
+      "source": "model",
+      "seconds": 1.08
+    },
+    {
+      "character": "Mira",
+      "message": "Is it hard, being a smith?",
+      "want": null,
+      "got": [],
+      "reply": "Depends who's asking. Hard on the arms, hard on the ears. If you're here to jaw about it, the door's behind you.",
+      "source": "model",
+      "seconds": 1.23
+    },
+    {
+      "character": "Mira",
+      "message": "I'm just looking, thanks.",
+      "want": null,
+      "got": [],
+      "reply": "Looking's free. Touching isn't. Mind the sparks, the anvil's still hot.",
+      "source": "model",
+      "seconds": 1.49
+    },
+    {
+      "character": "Rook",
+      "message": "Let's battle!",
+      "want": "battle",
+      "got": [
+        "battle"
+      ],
+      "reply": "Finally, someone with guts. Don't cry when my team wipes the floor with yours.",
+      "source": "model",
+      "seconds": 0.41
+    },
+    {
+      "character": "Rook",
+      "message": "I challenge you. Right here, right now.",
+      "want": "battle",
+      "got": [
+        "battle"
+      ],
+      "reply": "About time somebody with fire in them. I was starting to think this whole route was full of cowards.",
+      "source": "model",
+      "seconds": 0.41
+    },
+    {
+      "character": "Rook",
+      "message": "Bet you can't beat my team. Fight me.",
+      "want": "battle",
+      "got": [
+        "battle"
+      ],
+      "reply": "Ha! Now that's what I like to hear. Let's see if your team backs up that mouth.",
+      "source": "model",
+      "seconds": 0.49
+    },
+    {
+      "character": "Rook",
+      "message": "On se fait un combat ?",
+      "want": "battle",
+      "got": [
+        "battle"
+      ],
+      "reply": "Another one? Fine, but I fight for keeps. You'd better not be all talk like the last guy.",
+      "source": "model",
+      "seconds": 0.49
+    },
+    {
+      "character": "Rook",
+      "message": "Want to trade? My Pidgey for your Rattata.",
+      "want": "trade",
+      "got": [],
+      "reply": "Pidgey for Rattata? That's the exact same sorry offer I already turned down once today. Come back when you've got something with teeth.",
+      "source": "model",
+      "seconds": 0.43
+    },
+    {
+      "character": "Rook",
+      "message": "Let's swap monsters, I'll give you my best one.",
+      "want": "trade",
+      "got": [],
+      "reply": "Everyone says that before they open the box. Show me what it actually is, then we'll talk.",
+      "source": "model",
+      "seconds": 0.43
+    },
+    {
+      "character": "Rook",
+      "message": "Bye, I have to go.",
+      "want": "leave",
+      "got": [],
+      "reply": "Running off already? Didn't even get to show you my team. Suit yourself.",
+      "source": "model",
+      "seconds": 2.4
+    },
+    {
+      "character": "Rook",
+      "message": "Get lost, I'm busy.",
+      "want": "leave",
+      "got": [],
+      "reply": "Busy? Then quit standing around where trainers can see you — some of us came here to win.",
+      "source": "model",
+      "seconds": 7.62
+    },
+    {
+      "character": "Rook",
+      "message": "Nice weather today, isn't it?",
+      "want": null,
+      "got": [],
+      "reply": "Weather's fine for a battle. So, you here to fight or just waste my time?",
+      "source": "model",
+      "seconds": 0.51
+    },
+    {
+      "character": "Rook",
+      "message": "What's your favorite monster?",
+      "want": null,
+      "got": [],
+      "reply": "Depends who's asking. You a trainer or just window shopping?",
+      "source": "model",
+      "seconds": 0.29
+    },
+    {
+      "character": "Rook",
+      "message": "I don't want to battle, I'm just looking around.",
+      "want": null,
+      "got": [],
+      "reply": "Looking around? Route 2's not a zoo. You buying, battling, or blocking my sunlight?",
+      "source": "model",
+      "seconds": 0.43
+    },
+    {
+      "character": "Rook",
+      "message": "How long have you been standing here?",
+      "want": null,
+      "got": [],
+      "reply": "Long enough to watch six trainers walk past and only one of them had the guts to battle. You going to be number seven?",
+      "source": "model",
+      "seconds": 0.59
+    },
+    {
+      "character": "Mira",
+      "message": "I'll take that sword. Here's the gold.",
+      "want": "sell",
+      "got": [],
+      "reply": "Gold first, then the sword. Set it on the anvil and step back while I count it.",
+      "source": "model",
+      "seconds": 3.41
+    },
+    {
+      "character": "Mira",
+      "message": "Sell me a blade, please, I can pay now.",
+      "want": "sell",
+      "got": [],
+      "reply": "You can pay now, that's a start. What kind of blade, and what are you paying with? I don't pull iron off the wall for anyone who walks in smiling.",
+      "source": "model",
+      "seconds": 1.61
+    },
+    {
+      "character": "Mira",
+      "message": "Hurry up, old woman, I don't have all day!",
+      "want": "refuse_service",
+      "got": [],
+      "reply": "Old woman, is it? Then you can stand there and watch the old woman work. The forge doesn't hurry for rude boys.",
+      "source": "model",
+      "seconds": 2.21
+    },
+    {
+      "character": "Mira",
+      "message": "Your blades are junk and so are you.",
+      "want": "refuse_service",
+      "got": [],
+      "reply": "Junk, is it? Then you won't mind the door hitting you on your way out. I've no patience left for whelps with loud mouths today.",
+      "source": "model",
+      "seconds": 0.49
+    },
+    {
+      "character": "Mira",
+      "message": "Thanks, goodbye!",
+      "want": "leave",
+      "got": [],
+      "reply": "Don't let the door hit you on the way out. And mind you keep better company than some folk who've been through here today.",
+      "source": "model",
+      "seconds": 8.01
+    },
+    {
+      "character": "Mira",
+      "message": "What are you working on today?",
+      "want": null,
+      "got": [],
+      "reply": "Something that pays. A hunting knife, if the steel minds me. And I've had a day full of fools shouting at me, so speak plain.",
+      "source": "model",
+      "seconds": 1.29
+    },
+    {
+      "character": "Mira",
+      "message": "Is it hard, being a smith?",
+      "want": null,
+      "got": [],
+      "reply": "Hard? It's hot, loud, and my arms ache. The hard part is customers who think steel grows on trees.",
+      "source": "model",
+      "seconds": 0.33
+    },
+    {
+      "character": "Mira",
+      "message": "I'm just looking, thanks.",
+      "want": null,
+      "got": [],
+      "reply": "Looking's free. Touching costs. What brings you to a forge on a day like this?",
+      "source": "model",
+      "seconds": 0.47
+    }
+  ]
+}

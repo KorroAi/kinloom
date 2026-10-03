@@ -1,0 +1,27 @@
+{
+  "name": "kinloom-client",
+  "version": "1.0.0",
+  "description": "Kinloom SDK for JavaScript and TypeScript games (browsers, Node 18+, Deno, Bun): AI that decides, writes, acts and talks in your game, calling the model itself or a relay, and answering offline with your own lines and examples.",
+  "type": "module",
+  "main": "kinloom.js",
+  "types": "kinloom.d.ts",
+  "license": "MIT",
+  "private": true,
+  "exports": {
+    ".": {
+      "types": "./kinloom.d.ts",
+      "default": "./kinloom.js"
+    },
+    "./talk": "./kinloom-talk.js",
+    "./kinloom.ts": "./kinloom.ts"
+  },
+  "files": [
+    "kinloom.js",
+    "kinloom.d.ts",
+    "kinloom.ts",
+    "kinloom-talk.js"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json"
+  }
+}

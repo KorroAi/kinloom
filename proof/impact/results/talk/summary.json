@@ -1,0 +1,165 @@
+[
+ {
+  "arm": "keep-b-talk1",
+  "kit": "baseline",
+  "brief": "-",
+  "minutes": 3.0,
+  "keep.py": "1 file changed, 294 insertions(+), 1 deletion(-)",
+  "tokens": {
+   "sent": 22600,
+   "received": 24360,
+   "requests": 3
+  },
+  "agent_cost_usd": 0.036,
+  "longest_frame_gap_s": {
+   "live": 0.051,
+   "live2": 0.052
+  }
+ },
+ {
+  "arm": "keep-b-talk2",
+  "kit": "baseline",
+  "brief": "-",
+  "minutes": 3.7,
+  "keep.py": "1 file changed, 318 insertions(+), 1 deletion(-)",
+  "tokens": {
+   "sent": 11400,
+   "received": 18413,
+   "requests": 2
+  },
+  "agent_cost_usd": 0.0255,
+  "longest_frame_gap_s": {
+   "live": 0.102,
+   "live2": 0.046
+  }
+ },
+ {
+  "arm": "keep-b-talk3",
+  "kit": "baseline",
+  "brief": "-",
+  "minutes": 6.4,
+  "keep.py": "1 file changed, 337 insertions(+), 10 deletions(-)",
+  "tokens": {
+   "sent": 54400,
+   "received": 61434,
+   "requests": 7
+  },
+  "agent_cost_usd": 0.09,
+  "longest_frame_gap_s": {
+   "live": 0.045
+  }
+ },
+ {
+  "arm": "keep-v2-talk1",
+  "kit": "kinloom",
+  "brief": "old",
+  "minutes": 8.9,
+  "keep.py": "1 file changed, 54 insertions(+), 4 deletions(-)",
+  "tokens": {
+   "sent": 29100,
+   "received": 22078,
+   "requests": 3
+  },
+  "agent_cost_usd": 0.0352,
+  "longest_frame_gap_s": {
+   "live": 0.111,
+   "live2": 0.044,
+   "live-fixed": 0.049
+  }
+ },
+ {
+  "arm": "keep-v2-talk2",
+  "kit": "kinloom",
+  "brief": "old",
+  "minutes": 5.6,
+  "keep.py": "1 file changed, 32 insertions(+), 2 deletions(-)",
+  "tokens": {
+   "sent": 60800,
+   "received": 29936,
+   "requests": 6
+  },
+  "agent_cost_usd": 0.0542,
+  "longest_frame_gap_s": {
+   "live": 0.049,
+   "live2": 0.051
+  }
+ },
+ {
+  "arm": "keep-v2-talk3",
+  "kit": "kinloom",
+  "brief": "v2",
+  "minutes": 2.5,
+  "keep.py": "1 file changed, 39 insertions(+), 3 deletions(-)",
+  "tokens": {
+   "sent": 53000,
+   "received": 20726,
+   "requests": 6
+  },
+  "agent_cost_usd": 0.0408,
+  "longest_frame_gap_s": {
+   "live": 0.046
+  }
+ },
+ {
+  "arm": "keep-v2-talk4",
+  "kit": "kinloom",
+  "brief": "v2",
+  "minutes": 4.0,
+  "keep.py": "1 file changed, 68 insertions(+), 1 deletion(-)",
+  "tokens": {
+   "sent": 42500,
+   "received": 34102,
+   "requests": 4
+  },
+  "agent_cost_usd": 0.0537,
+  "longest_frame_gap_s": {
+   "live": 0.047
+  }
+ },
+ {
+  "arm": "keep-v2-talk5",
+  "kit": "kinloom",
+  "brief": "v2",
+  "minutes": 3.9,
+  "keep.py": "1 file changed, 69 insertions(+), 1 deletion(-)",
+  "tokens": {
+   "sent": 75100,
+   "received": 34712,
+   "requests": 7
+  },
+  "agent_cost_usd": 0.0642,
+  "longest_frame_gap_s": {}
+ },
+ {
+  "arm": "keep-v2-talk6",
+  "kit": "kinloom",
+  "brief": "final",
+  "minutes": 4.5,
+  "keep.py": "1 file changed, 50 insertions(+), 3 deletions(-)",
+  "tokens": {
+   "sent": 72200,
+   "received": 41835,
+   "requests": 7
+  },
+  "agent_cost_usd": 0.0719,
+  "longest_frame_gap_s": {
+   "live": 0.06
+  }
+ },
+ {
+  "arm": "keep-v2-talk7",
+  "kit": "kinloom",
+  "brief": "final",
+  "minutes": 2.8,
+  "keep.py": "1 file changed, 35 insertions(+), 1 deletion(-)",
+  "tokens": {
+   "sent": 56100,
+   "received": 28292,
+   "requests": 4
+  },
+  "agent_cost_usd": 0.0508,
+  "longest_frame_gap_s": {
+   "live": 0.044
+  }
+ }
+]

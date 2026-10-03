@@ -1,0 +1,21 @@
+# Kinloom
+
+> Kinloom puts language-model AI anywhere in a game, for any genre. The developer's coding agent declares things (anything in the game), roles (AIs with a mission and narrow permissions), instant behaviors and generators in JSON; Kinloom validates every model proposal and hands the game effects to apply. Pure C# runtime (netstandard2.1) embedded in .NET engines, or a local WebSocket JSON-RPC service for any language. Bring your own API key (OpenAI-compatible providers, Anthropic, local models).
+
+## Start
+- [Agent instructions](kit/AGENTS.md): what to read and the workflow
+- [Integration skill](kit/skills/kinloom-integrate/SKILL.md): step by step
+- [Reference](kit/docs/reference.md): every manifest field, permission, expression, effect, the Godot API, tests, CLI and MCP tools
+- [Protocol](docs/protocol.md): JSON-RPC over WebSocket for any engine or language
+
+## Recipes (by AI function, not by genre)
+- [Character](kit/docs/recipes/character.md): something that perceives, remembers, talks and acts
+- [Director](kit/docs/recipes/director.md): pacing, difficulty, spawns, atmosphere
+- [Generator](kit/docs/recipes/generator.md): validated content on demand
+- [Narrator](kit/docs/recipes/narrator.md): commentary and storytelling
+- [Analyst](kit/docs/recipes/analyst.md): understanding the player
+- [Interface](kit/docs/recipes/interface.md): typed or spoken commands to game actions
+
+## Tools
+- `kinloom init | doctor | validate | test | serve | inspect | mcp`
+- MCP tools: scan_project, validate, simulate_role, attack_guardrails, attach, estimate_cost, run_tests

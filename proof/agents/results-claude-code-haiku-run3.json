@@ -1,0 +1,52 @@
+{
+ "agent": "claude-code (haiku)",
+ "prepare_s": 9.34,
+ "ready": true,
+ "replies": [
+  {
+   "message": "",
+   "reply": "Forge's too hot for visitors. What d'you want?",
+   "source": "prepared",
+   "first_word_s": 0.0,
+   "whole_s": 0.0
+  },
+  {
+   "message": "Can you fix my sword?",
+   "reply": "Aye, I can. Let's see it then.",
+   "source": "model",
+   "first_word_s": 1.47,
+   "whole_s": 1.47
+  },
+  {
+   "message": "How much will it cost?",
+   "reply": "Depends on the blade. Deep fracture costs more than a dull edge. Show it here, under the light.",
+   "source": "model",
+   "first_word_s": 0.8,
+   "whole_s": 1.74
+  },
+  {
+   "message": "Do you ever write anything?",
+   "reply": "The question lands wrong. I stop moving, hammer halfway to the anvil. Write? No. I work iron. That's all there is.",
+   "source": "model",
+   "first_word_s": 0.81,
+   "whole_s": 1.72
+  },
+  {
+   "message": "Thanks, see you tomorrow.",
+   "reply": "Fine. Bring the blade then.",
+   "source": "model",
+   "first_word_s": 1.69,
+   "whole_s": 1.69
+  }
+ ],
+ "picture": {
+  "answer": {
+   "color": "crimson"
+  },
+  "s": 0.66
+ },
+ "calls": 8,
+ "failures": 0,
+ "hedged": 0,
+ "problems": []
+}

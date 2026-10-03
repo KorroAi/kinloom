@@ -1,0 +1,153 @@
+planets    recipe=True  PASS  calls=create 
+weather    recipe=False PASS  calls=decide 
+weather    recipe=False PASS  calls=decide 
+planets    recipe=True  PASS  calls=create 
+traffic    recipe=False PASS  calls=decide 
+traffic    recipe=False PASS  calls=decide 
+newspaper  recipe=False PASS  calls=create 
+newspaper  recipe=False PASS  calls=create 
+traffic    recipe=True  PASS  calls=decide 
+traffic    recipe=True  PASS  calls=decide 
+crowd      recipe=False PASS  calls=mind,think 
+newspaper  recipe=True  PASS  calls=character,create,say 
+newspaper  recipe=True  PASS  calls=create 
+crowd      recipe=False PASS  calls=mind,think 
+crowd      recipe=True  PASS  calls=mind,reward,think 
+hint       recipe=False PASS  calls=create 
+crowd      recipe=True  PASS  calls=mind,reward,think 
+hint       recipe=False PASS  calls=create 
+hint       recipe=True  PASS  calls=create 
+cards      recipe=False PASS  calls=create 
+cards      recipe=False PASS  calls=create 
+hint       recipe=True  PASS  calls=character,create,decide,say 
+commands   recipe=False PASS  calls=act,character 
+commands   recipe=False PASS  calls=act,character 
+cards      recipe=True  PASS  calls=create 
+cards      recipe=True  PASS  calls=create 
+market     recipe=False PASS  calls=decide 
+market     recipe=False PASS  calls=decide 
+commands   recipe=True  PASS  calls=act,character,event 
+commands   recipe=True  PASS  calls=act,character,event 
+market     recipe=True  PASS  calls=character,decide 
+goalkeeper recipe=False PASS  calls=character,decide,event 
+goalkeeper recipe=False PASS  calls=decide 
+market     recipe=True  PASS  calls=character,decide 
+trivia     recipe=False PASS  calls=create 
+trivia     recipe=False PASS  calls=create 
+goalkeeper recipe=True  PASS  calls=decide 
+goalkeeper recipe=True  PASS  calls=decide 
+trivia     recipe=True  PASS  calls=create 
+recap      recipe=False PASS  calls=create 
+trivia     recipe=True  fail  calls=create EOFError: EOF when reading a line
+translate  recipe=False PASS  calls=create 
+recap      recipe=False PASS  calls=create 
+recap      recipe=True  PASS  calls=create 
+recap      recipe=True  PASS  calls=create 
+translate  recipe=False PASS  calls=chat 
+scares     recipe=False PASS  calls=decide 
+scares     recipe=False fail  calls=decide NameError: name 'play_scare' is not defined
+translate  recipe=True  PASS  calls=character,chat,lore 
+translate  recipe=True  PASS  calls=character,chat 
+dungeon    recipe=False PASS  calls=create 
+scares     recipe=True  PASS  calls=character,decide 
+scares     recipe=True  PASS  calls=character,decide 
+names      recipe=False PASS  calls=create,event 
+dungeon    recipe=True  PASS  calls=create 
+dungeon    recipe=False PASS  calls=create 
+dungeon    recipe=True  PASS  calls=create 
+names      recipe=False PASS  calls=create 
+cardai     recipe=False PASS  calls=character,decide 
+names      recipe=True  PASS  calls=character,create 
+names      recipe=True  fail  calls=character,chat 
+cardai     recipe=False PASS  calls=character,decide 
+epitaph    recipe=False PASS  calls=character,create,say 
+epitaph    recipe=False PASS  calls=character,create 
+cardai     recipe=True  PASS  calls=character,decide 
+epitaph    recipe=True  PASS  calls=create 
+music      recipe=False PASS  calls=decide 
+epitaph    recipe=True  PASS  calls=create 
+music      recipe=False PASS  calls=decide 
+music      recipe=True  fail  calls=act,character,event TypeError: Kinloom.event() got an unexpected keyword argument 'enemies_near'
+shop       recipe=False PASS  calls=character,chat 
+music      recipe=True  fail  calls=act,character 
+shop       recipe=False fail  calls=character,chat TypeError: Kinloom.character() got an unexpected keyword argument 'facts'
+shop       recipe=True  PASS  calls=act,character,chat,decide 
+cardai     recipe=True  PASS  calls=character,decide 
+shop       recipe=True  fail  calls=character,chat,decide,lore,soul ModuleNotFoundError: No module named 'pygame'
+potion     recipe=False PASS  calls=create 
+potion     recipe=False PASS  calls=create 
+potion     recipe=True  PASS  calls=create 
+potion     recipe=True  PASS  calls=create 
+jobs       recipe=False PASS  calls=decide 
+jobs       recipe=False PASS  calls=decide 
+waves      recipe=False PASS  calls=decide 
+waves      recipe=False PASS  calls=character,create,decide,say 
+waves      recipe=True  PASS  calls=create 
+waves      recipe=True  PASS  calls=character,decide 
+bridge     recipe=False PASS  calls=character,say 
+bridge     recipe=False PASS  calls=character,say 
+bridge     recipe=True  PASS  calls=character,say 
+bridge     recipe=True  PASS  calls=character,say 
+streets    recipe=False fail  calls=create KeyError: 'name'
+streets    recipe=False fail  calls=create AttributeError: 'int' object has no attribute 'append'
+streets    recipe=True  PASS  calls=create 
+dog        recipe=False PASS  calls=act,character 
+streets    recipe=True  fail  calls=create TypeError: list indices must be integers or slices, not str
+dog        recipe=False PASS  calls=act,character 
+dog        recipe=True  PASS  calls=act,character 
+witness    recipe=False fail  calls=event,knows,opinion,reputation TypeError: Kinloom.knows() got an unexpected keyword argument 'by'
+dog        recipe=True  PASS  calls=act,character 
+witness    recipe=False fail  calls=character,chat,event,knows,opinion TypeError: Kinloom.opinion() takes 3 positional arguments but 4 were given
+witness    recipe=True  PASS  calls=event,knows,meet,opinion,say 
+choices    recipe=False PASS  calls=create 
+witness    recipe=True  PASS  calls=character,event,knows,meet,opinion,reputation,say 
+choices    recipe=False PASS  calls=create 
+choices    recipe=True  PASS  calls=act,character,chat,create,lore,soul 
+drawings   recipe=False PASS  calls=create 
+choices    recipe=True  PASS  calls=character,chat,create,lore,soul 
+drawings   recipe=False PASS  calls=create 
+drawings   recipe=True  PASS  calls=create 
+loot       recipe=False PASS  calls=create 
+drawings   recipe=True  PASS  calls=create 
+loot       recipe=True  PASS  calls=create 
+loot       recipe=True  PASS  calls=create 
+loot       recipe=False PASS  calls=create 
+planets    recipe=False fail  calls=create AttributeError: 'NoneType' object has no attribute 'create'
+weather    recipe=True  fail  calls= no answer after the deadline
+weather    recipe=True  fail  calls= no answer after the deadline
+planets    recipe=False fail  calls= no answer after the deadline
+jobs       recipe=True  fail  calls= no answer after the deadline
+jobs       recipe=True  fail  calls= no answer after the deadline
+{
+ "AGENTS.md only": {
+  "answers": 59,
+  "pass": 0.881,
+  "right_call": 1.0,
+  "clean": 1.0,
+  "runs_offline": 0.881,
+  "runs_hostile": 0.881,
+  "failed_requests": [
+   "planets",
+   "scares",
+   "shop",
+   "streets",
+   "witness"
+  ]
+ },
+ "with recipe": {
+  "answers": 56,
+  "pass": 0.893,
+  "right_call": 0.946,
+  "clean": 1.0,
+  "runs_offline": 0.929,
+  "runs_hostile": 0.929,
+  "failed_requests": [
+   "music",
+   "names",
+   "shop",
+   "streets",
+   "trivia"
+  ]
+ }
+}
+cost $0.0660, <workspace>\kinloom\proof\universal\results-after2.json

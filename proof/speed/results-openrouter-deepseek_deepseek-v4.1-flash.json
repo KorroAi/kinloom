@@ -1,0 +1,129 @@
+{
+ "summary": {
+  "provider": "openrouter (deepseek/deepseek-v4.1-flash)",
+  "card_and_greeting_ready_s": 5.3,
+  "turns": 12,
+  "offline_answers": 0,
+  "first_word_p50_s": 1.203,
+  "first_word_p95_s": 6.235,
+  "total_p50_s": 1.547,
+  "total_p95_s": 7.735,
+  "input_tokens": 17810,
+  "cached_tokens": 384,
+  "output_tokens": 1670,
+  "calls": 16,
+  "failures": 1,
+  "hedged": 1,
+  "cost_usd": 0.007234
+ },
+ "rows": [
+  {
+   "message": "",
+   "reply": "Forge is closed. Come back at dawn if you've got coin and a commission. Otherwise, keep walking.",
+   "first_word_s": 0.0,
+   "total_s": 0.0,
+   "input_tokens": 0,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Nice toy hammer.",
+   "reply": "That toy cost more than your boots, girl. Aldric's hammer. Mind your tongue in my forge.",
+   "first_word_s": 1.187,
+   "total_s": 1.547,
+   "input_tokens": 2019,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Sorry, I was joking. Everyone says you're the best smith in town.",
+   "reply": "Apology's cheap. Best smith in town doesn't mean best-paid, or best-rested. What do you want, girl? A blade, or just to gawk?",
+   "first_word_s": 0.718,
+   "total_s": 1.578,
+   "input_tokens": 1150,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "What are you working on today?",
+   "reply": "Something for people with better manners than you. A hinge pin, if you must know. Pays the coal bill.",
+   "first_word_s": 1.079,
+   "total_s": 1.547,
+   "input_tokens": 1287,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "That sword on the wall... it looks like the king's. Is it?",
+   "reply": "That blade's none of your business. Old commission, half-finished. Eyes off it.",
+   "first_word_s": 1.469,
+   "total_s": 3.422,
+   "input_tokens": 1369,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Do you have family here?",
+   "reply": "Why do you ask. You writing a book?",
+   "first_word_s": 1.531,
+   "total_s": 1.531,
+   "input_tokens": 1442,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "What do you do when the forge is cold?",
+   "reply": "Cold iron waits. So does grief. Both sit heavy 'til morning.",
+   "first_word_s": 6.235,
+   "total_s": 7.735,
+   "input_tokens": 1407,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Can you fix my shovel? It's bent.",
+   "reply": "Shovel. Not a sword, not a hinge pin. Fine. Leave it on the bench, come back tomorrow with three coppers.",
+   "first_word_s": 2.14,
+   "total_s": 4.156,
+   "input_tokens": 1427,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "How much would a new blade cost?",
+   "reply": "Depends on the blade. A working knife, two silver. A proper sword, ten, and you wait a month. And that's coin up front, girl — I don't do promises.",
+   "first_word_s": 1.188,
+   "total_s": 1.828,
+   "input_tokens": 1500,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Who taught you the trade?",
+   "reply": "Aldric did. And he's dead, so that's the end of that story.",
+   "first_word_s": 1.219,
+   "total_s": 1.516,
+   "input_tokens": 1581,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Do you remember my name?",
+   "reply": "Ana. You told me, or you didn't, but I know it. Shovel girl, asks too many questions.",
+   "first_word_s": 0.406,
+   "total_s": 0.672,
+   "input_tokens": 1589,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Thanks. See you tomorrow.",
+   "reply": "Tomorrow, then. Three coppers. Don't make me chase you for it.",
+   "first_word_s": 1.203,
+   "total_s": 1.531,
+   "input_tokens": 1776,
+   "cached_tokens": 128,
+   "offline": false
+  }
+ ]
+}

@@ -1,0 +1,55 @@
+say: BLAZE passes NOVA!
+chat: You're P3.
+decide first: {"aggression":0.5,"strategy":"attack"}
+decide later: {"aggression":0.9,"strategy":"block"}
+act later: boost {"seconds":2.5}
+create: {"challenge":"Ghost mode","sky":"#000000"}
+offline say: What a race, BLAZE!
+offline chat: Copy.
+offline decide: {"aggression":0.5,"strategy":"attack"}
+offline create: {"challenge":"Win clean","sky":"#ff7a45"}
+think retreat: {"action":"retreat","args":{},"variant":0}
+think shoot: {"action":"shoot","args":{"burst":3},"variant":0}
+think charge: {"action":"charge","args":{"speed":1.125},"variant":0}
+think sticky: retreat
+think fresh: {"action":"charge","args":{"speed":2.375},"variant":0}
+think learned: hide
+rewards: 3
+knows before: false
+meet: BAKER -> GUARD
+knows after: true
+opinion: -0.2
+reputation: -0.8
+soul chat: Hmph.
+lore: 2
+soul: annoyed dislikes a gruff smith
+speak: wav
+listen: I heard 6444 bytes of wav
+offline think: {"action":"retreat","args":{},"variant":0}
+offline think charge: {"action":"charge","args":{"speed":1.125},"variant":0}
+offline knows: false
+offline soul chat: Hm.
+offline speak: none
+offline listen: -
+when say: BEN, fight!
+say source: prepared
+chat source: model
+chat do: give {"item":"bread"}
+offline when say: BEN, fight!
+offline source: offline
+tools: open_door
+tools act: open_door {"door":"east"}
+chat image: I see it.
+create image: {"challenge":"Ghost mode","sky":"#000000"}
+prepare: ready online
+offline tools: open_door
+offline chat image: Blind.
+offline create image: {"challenge":"Win clean","sky":"#ff7a45"}
+offline prepare: ready offline
+offline fast: yes
+suggest: Show me the king's sword. | How much for a blade? | Goodbye, Mira.
+offline suggest: Ask about the sword | Buy something | Leave
+converse: MIRA: Bram, your bread smells of smoke again. | BAKER: My oven, my rules.
+offline converse: 0
+inspect: MIRA annoyed Hmph.
+load: MIRA dislikes Ana

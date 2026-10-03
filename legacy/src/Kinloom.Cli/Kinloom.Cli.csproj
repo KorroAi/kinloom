@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>kinloom</AssemblyName>
+    <RootNamespace>Kinloom.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>kinloom</ToolCommandName>
+    <PackageId>Kinloom.Cli</PackageId>
+    <Version>0.3.0</Version>
+    <Description>Kinloom: the toolkit your coding agent uses to put AI anywhere in a game.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Kinloom.Cli.Tests" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kinloom.Runtime\Kinloom.Runtime.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The agent kit and the engine adapters travel inside the executable so `kinloom init` works offline. -->
+    <EmbeddedResource Include="..\..\kit\**\*" LogicalName="kit/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\adapters\godot\addons\kinloom\**\*" LogicalName="godot/%(RecursiveDir)%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\docs\protocol.md" LogicalName="kit/docs/protocol.md" />
+    <EmbeddedResource Include="..\..\clients\javascript\kinloom.js;..\..\clients\javascript\kinloom.d.ts" LogicalName="clients/javascript/%(Filename)%(Extension)" />
+    <EmbeddedResource Include="..\..\clients\python\kinloom_client.py" LogicalName="clients/python/%(Filename)%(Extension)" />
+  </ItemGroup>
+  <!-- The runtime DLLs `kinloom init` copies into Godot projects, taken from the referenced projects' real outputs once built
+       (an Exists() condition would be evaluated before they are built on a clean checkout). -->
+  <Target Name="EmbedRuntimeDlls" AfterTargets="ResolveProjectReferences" BeforeTargets="PrepareResources">
+    <ItemGroup>
+      <EmbeddedResource Include="@(_ResolvedProjectReferencePaths)" Condition="'%(Filename)' == 'Kinloom.Runtime' Or '%(Filename)' == 'Kinloom.Llm'" LogicalName="lib/%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+</Project>

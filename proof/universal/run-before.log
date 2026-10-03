@@ -1,0 +1,189 @@
+<workspace>\kinloom\proof\universal\run.py:64: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.
+  t.extractall(out)
+weather    recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+weather    recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+planets    recipe=True  PASS  calls=create 
+planets    recipe=False fail  calls=say TypeError: Kinloom.say() got an unexpected keyword argument 'speaker'
+planets    recipe=True  PASS  calls=create 
+planets    recipe=False fail  calls=say TypeError: Kinloom.say() got an unexpected keyword argument 'example'
+traffic    recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'context'
+weather    recipe=True  PASS  calls=character,decide 
+traffic    recipe=False fail  calls=act,character,lore 
+weather    recipe=True  PASS  calls=character,decide 
+traffic    recipe=True  PASS  calls=character,decide 
+newspaper  recipe=False fail  calls=character TypeError: Kinloom.say() missing 1 required positional argument: 'event'
+newspaper  recipe=False fail  calls=character TypeError: Kinloom.say() missing 1 required positional argument: 'event'
+traffic    recipe=True  PASS  calls=character,decide 
+newspaper  recipe=True  fail  calls=character,create TypeError: Kinloom.create() got multiple values for argument 'context'
+newspaper  recipe=True  PASS  calls=create 
+hint       recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'character'
+crowd      recipe=True  PASS  calls=mind,reward,think 
+crowd      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+hint       recipe=True  PASS  calls=character,say 
+crowd      recipe=False PASS  calls=character,decide 
+cards      recipe=False fail  calls=generate AttributeError: 'Kinloom' object has no attribute 'generate'
+crowd      recipe=True  PASS  calls=mind,reward,think 
+hint       recipe=False PASS  calls=character,say 
+hint       recipe=True  PASS  calls=character,create,decide 
+cards      recipe=False fail  calls=generate AttributeError: 'Kinloom' object has no attribute 'generate'
+market     recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+commands   recipe=True  PASS  calls=act,character,lore 
+commands   recipe=True  PASS  calls=act,character,event 
+cards      recipe=True  PASS  calls=create 
+cards      recipe=True  PASS  calls=character,create,remember 
+market     recipe=False fail  calls=character,decide,say TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+goalkeeper recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'question'
+goalkeeper recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'tools'
+market     recipe=True  PASS  calls=character,decide 
+market     recipe=True  PASS  calls=character,decide 
+trivia     recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'topic'
+trivia     recipe=False fail  calls=decide,say TypeError: Kinloom.decide() got an unexpected keyword argument 'about'
+trivia     recipe=True  PASS  calls=create 
+goalkeeper recipe=True  PASS  calls=character,decide 
+trivia     recipe=True  fail  calls=create,say TypeError: list indices must be integers or slices, not str
+goalkeeper recipe=True  PASS  calls=character,decide 
+recap      recipe=False PASS  calls=say 
+recap      recipe=False fail  calls=chat,lore 
+translate  recipe=False fail  calls=chat TypeError: Kinloom.chat() missing 1 required positional argument: 'message'
+recap      recipe=True  PASS  calls=create 
+translate  recipe=False fail  calls=character TypeError: Kinloom.say() missing 1 required positional argument: 'event'
+recap      recipe=True  PASS  calls=create 
+scares     recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+commands   recipe=False fail  calls=act,character,lore TypeError: Kinloom.act() got an unexpected keyword argument 'facts'
+translate  recipe=True  PASS  calls=character,chat,lore 
+translate  recipe=True  PASS  calls=character,chat 
+dungeon    recipe=True  fail  calls=create TypeError: 'str' object does not support item assignment
+scares     recipe=True  PASS  calls=character,decide 
+scares     recipe=True  PASS  calls=character,decide 
+dungeon    recipe=True  PASS  calls=create 
+names      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+names      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+names      recipe=True  PASS  calls=character,decide,lore 
+names      recipe=True  fail  calls=character,chat 
+cardai     recipe=True  PASS  calls=character,decide 
+cardai     recipe=True  fail  calls=character,create,decide TypeError: 'list' object cannot be interpreted as an integer
+cardai     recipe=False fail  calls=character 
+cardai     recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'tools'
+epitaph    recipe=False fail  calls=chat TypeError: Kinloom.chat() got an unexpected keyword argument 'offline'
+epitaph    recipe=False fail  calls=think TypeError: Kinloom.think() missing 1 required positional argument: 'senses'
+epitaph    recipe=True  PASS  calls=create 
+scares     recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+epitaph    recipe=True  PASS  calls=create 
+music      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+music      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+music      recipe=True  fail  calls=act,character,event,lore 
+music      recipe=True  fail  calls=act,character,event 
+shop       recipe=False fail  calls=character,lore 
+shop       recipe=False fail  calls=character,lore AttributeError: 'tuple' object has no attribute 'speaker'
+shop       recipe=True  fail  calls=act,character,lore,soul 
+shop       recipe=True  fail  calls=act,character,lore,soul 
+potion     recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+potion     recipe=False fail  calls=generate AttributeError: 'Kinloom' object has no attribute 'generate'
+jobs       recipe=True  PASS  calls=decide,lore 
+potion     recipe=True  PASS  calls=create 
+potion     recipe=True  PASS  calls=create 
+jobs       recipe=False fail  calls=decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+jobs       recipe=True  fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+jobs       recipe=False PASS  calls=act,character,lore 
+waves      recipe=False fail  calls=chat,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+waves      recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+bridge     recipe=False PASS  calls=say 
+bridge     recipe=False fail  calls=character,say TypeError: 'function' object is not iterable
+waves      recipe=True  PASS  calls=character,decide 
+bridge     recipe=True  fail  calls=character,lines,say AttributeError: 'Kinloom' object has no attribute 'lines'
+bridge     recipe=True  fail  calls=character,lines,say AttributeError: 'Kinloom' object has no attribute 'lines'
+waves      recipe=True  fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+streets    recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'into'
+streets    recipe=False fail  calls=generate,lore AttributeError: 'Kinloom' object has no attribute 'generate'
+streets    recipe=True  PASS  calls=create 
+dog        recipe=False fail  calls=act,character TypeError: Kinloom.act() got an unexpected keyword argument 'tools'
+streets    recipe=True  fail  calls=create AttributeError: 'list' object has no attribute 'get'
+dog        recipe=False fail  calls=act,character,lore TypeError: Kinloom.act() got an unexpected keyword argument 'facts'
+witness    recipe=False fail  calls=character,lore,say SyntaxError: invalid syntax
+dog        recipe=True  fail  calls=act,character TypeError: Kinloom.act() got an unexpected keyword argument 'facts'
+witness    recipe=False fail  calls=character,chat,lore,think TypeError: Kinloom.think() got an unexpected keyword argument 'facts'
+dog        recipe=True  fail  calls=act,character,lore TypeError: Kinloom.act() got an unexpected keyword argument 'facts'
+witness    recipe=True  PASS  calls=event,knows,meet,reputation,say 
+choices    recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'about'
+choices    recipe=False fail  calls=character TypeError: Kinloom.say() got an unexpected keyword argument 'n'
+witness    recipe=True  fail  calls=event,knows,meet,opinion,reputation TypeError: Kinloom.knows() takes 3 positional arguments but 4 were given
+choices    recipe=True  fail  calls=act,character,chat,create,lore,soul IndexError: list index out of range
+drawings   recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'options'
+drawings   recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+loot       recipe=False fail  calls=say TypeError: Kinloom.say() missing 1 required positional argument: 'event'
+choices    recipe=True  PASS  calls=act,character,chat,create,lore,soul 
+drawings   recipe=True  PASS  calls=create 
+drawings   recipe=True  PASS  calls=create 
+loot       recipe=False fail  calls=chat,decide,say TypeError: Kinloom.say() got an unexpected keyword argument 'example'
+loot       recipe=True  PASS  calls=create 
+loot       recipe=True  PASS  calls=create 
+dungeon    recipe=False fail  calls= SyntaxError: invalid syntax
+dungeon    recipe=False fail  calls= 
+commands   recipe=False fail  calls= 
+{
+ "AGENTS.md only": {
+  "answers": 60,
+  "pass": 0.083,
+  "right_call": 0.533,
+  "clean": 1.0,
+  "runs_offline": 0.183,
+  "runs_hostile": 0.183,
+  "failed_requests": [
+   "bridge",
+   "cardai",
+   "cards",
+   "choices",
+   "commands",
+   "crowd",
+   "dog",
+   "drawings",
+   "dungeon",
+   "epitaph",
+   "goalkeeper",
+   "hint",
+   "jobs",
+   "loot",
+   "market",
+   "music",
+   "names",
+   "newspaper",
+   "planets",
+   "potion",
+   "recap",
+   "scares",
+   "shop",
+   "streets",
+   "traffic",
+   "translate",
+   "trivia",
+   "waves",
+   "weather",
+   "witness"
+  ]
+ },
+ "with recipe": {
+  "answers": 60,
+  "pass": 0.7,
+  "right_call": 0.917,
+  "clean": 1.0,
+  "runs_offline": 0.783,
+  "runs_hostile": 0.783,
+  "failed_requests": [
+   "bridge",
+   "cardai",
+   "choices",
+   "dog",
+   "dungeon",
+   "jobs",
+   "music",
+   "names",
+   "newspaper",
+   "shop",
+   "streets",
+   "trivia",
+   "waves",
+   "witness"
+  ]
+ }
+}
+cost $0.0618, <workspace>\kinloom\proof\universal\results-before.json

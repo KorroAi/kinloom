@@ -1,0 +1,121 @@
+<workspace>\kinloom\proof\universal\run.py:64: DeprecationWarning: Python 3.14 will, by default, filter extracted tar archives and reject files or modify their metadata. Use the filter argument to control this behavior.
+  t.extractall(out)
+planets    recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'facts'
+planets    recipe=True  PASS  calls=create 
+planets    recipe=True  PASS  calls=create 
+planets    recipe=False fail  calls=say TypeError: Kinloom.say() missing 1 required positional argument: 'event'
+weather    recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+weather    recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+weather    recipe=True  PASS  calls=decide 
+traffic    recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+traffic    recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+newspaper  recipe=True  PASS  calls=create 
+crowd      recipe=False PASS  calls=decide 
+newspaper  recipe=False fail  calls=say TypeError: Kinloom.say() got an unexpected keyword argument 'offline'
+newspaper  recipe=False fail  calls=character,say TypeError: Kinloom.say() got an unexpected keyword argument 'max_words'
+newspaper  recipe=True  PASS  calls=create 
+hint       recipe=False fail  calls=say ValueError: dictionary update sequence element #0 has length 1; 2 is required
+crowd      recipe=True  PASS  calls=mind,reward,think 
+crowd      recipe=True  PASS  calls=mind,reward,think 
+crowd      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+hint       recipe=True  PASS  calls=character,decide,say 
+hint       recipe=True  PASS  calls=character,say 
+hint       recipe=False PASS  calls=say 
+cards      recipe=False fail  calls=generate AttributeError: 'Kinloom' object has no attribute 'generate'
+cards      recipe=False fail  calls=ask,lore AttributeError: 'Kinloom' object has no attribute 'ask'
+weather    recipe=True  PASS  calls=character,decide 
+cards      recipe=True  PASS  calls=create 
+cards      recipe=True  PASS  calls=create 
+commands   recipe=True  PASS  calls=act,character,lore 
+market     recipe=False fail  calls=character TypeError: Kinloom.decide() got an unexpected keyword argument 'context'
+commands   recipe=True  PASS  calls=act,character,event,lore 
+market     recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+market     recipe=True  PASS  calls=character,decide 
+commands   recipe=False fail  calls=act,character TypeError: Kinloom.act() got an unexpected keyword argument 'tools'
+goalkeeper recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+goalkeeper recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+market     recipe=True  PASS  calls=character,decide 
+goalkeeper recipe=True  PASS  calls=character,decide 
+trivia     recipe=False fail  calls=act TypeError: Kinloom.act() got an unexpected keyword argument 'topic'
+trivia     recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+traffic    recipe=True  PASS  calls=character,decide 
+trivia     recipe=True  fail  calls=create TypeError: list indices must be integers or slices, not str
+recap      recipe=False fail  calls=chat,lore 
+goalkeeper recipe=True  PASS  calls=character,decide 
+translate  recipe=False PASS  calls=chat 
+trivia     recipe=True  PASS  calls=create 
+translate  recipe=False fail  calls=chat TypeError: Kinloom.chat() missing 1 required positional argument: 'message'
+recap      recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'facts'
+recap      recipe=True  PASS  calls=create 
+recap      recipe=True  PASS  calls=create 
+traffic    recipe=True  PASS  calls=character,decide 
+translate  recipe=True  PASS  calls=character,chat 
+translate  recipe=True  fail  calls=character,say TypeError: Kinloom.say() got an unexpected keyword argument 'speaker'
+scares     recipe=True  PASS  calls=character,decide 
+scares     recipe=True  PASS  calls=character,decide 
+dungeon    recipe=True  PASS  calls=create 
+dungeon    recipe=True  PASS  calls=create 
+names      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+names      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+names      recipe=True  fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'speaker'
+names      recipe=True  fail  calls=character,chat 
+cardai     recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+scares     recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+cardai     recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+cardai     recipe=True  PASS  calls=character,decide 
+cardai     recipe=True  PASS  calls=character,decide 
+epitaph    recipe=False fail  calls=chat TypeError: Kinloom.chat() missing 1 required positional argument: 'message'
+epitaph    recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'facts'
+epitaph    recipe=True  PASS  calls=create 
+music      recipe=False fail  calls=decide,think TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+epitaph    recipe=True  PASS  calls=create 
+music      recipe=True  fail  calls=act,character 
+music      recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+dungeon    recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'schema'
+music      recipe=True  fail  calls=act,character 
+shop       recipe=False fail  calls=character,lore,talk AttributeError: 'Kinloom' object has no attribute 'talk'
+scares     recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+potion     recipe=False fail  calls=think TypeError: Kinloom.think() got an unexpected keyword argument 'schema'
+potion     recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+shop       recipe=True  fail  calls=act,character,chat,lore,soul TypeError: 'function' object is not iterable
+shop       recipe=True  PASS  calls=act,character,chat,lore,soul 
+shop       recipe=False fail  calls=character,lore IndexError: list index out of range
+potion     recipe=True  PASS  calls=create 
+jobs       recipe=True  fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'facts'
+jobs       recipe=False fail  calls=character,decide,lore,say TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+potion     recipe=True  PASS  calls=create 
+waves      recipe=True  PASS  calls=character,create 
+jobs       recipe=False fail  calls=character,decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+jobs       recipe=True  PASS  calls=act,character,lore 
+waves      recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+waves      recipe=True  fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'shape'
+waves      recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'tools'
+dungeon    recipe=False fail  calls= SyntaxError: invalid syntax
+bridge     recipe=False fail  calls=character TypeError: Kinloom.say() got an unexpected keyword argument 'speaker'
+bridge     recipe=True  fail  calls=character,lines,say AttributeError: 'Kinloom' object has no attribute 'lines'
+streets    recipe=False fail  calls=act 
+bridge     recipe=False fail  calls=character,chat TypeError: 'function' object is not iterable
+bridge     recipe=True  fail  calls=character,event,lore,say TypeError: Kinloom.event() got an unexpected keyword argument 'lines'
+streets    recipe=False fail  calls=ask AttributeError: 'Kinloom' object has no attribute 'ask'
+dog        recipe=False fail  calls=act,character,decide TypeError: Kinloom.act() got an unexpected keyword argument 'mood'
+dog        recipe=False fail  calls=act,character,lore TypeError: Kinloom.act() got an unexpected keyword argument 'facts'
+dog        recipe=True  fail  calls=character,chat 
+dog        recipe=True  fail  calls=character,say 
+witness    recipe=False fail  calls=bond,chat,decide,feel,remember AttributeError: 'Kinloom' object has no attribute 'bond'
+streets    recipe=True  PASS  calls=create 
+streets    recipe=True  PASS  calls=create 
+witness    recipe=True  PASS  calls=character,event,lore,meet,say 
+witness    recipe=True  PASS  calls=character,event,meet,say 
+choices    recipe=False fail  calls=character,chat TypeError: 'function' object is not iterable
+drawings   recipe=False fail  calls=rank AttributeError: 'Kinloom' object has no attribute 'rank'
+witness    recipe=False fail  calls=character,chat,lore 
+choices    recipe=True  PASS  calls=character,chat,create,lore,soul 
+choices    recipe=False fail  calls=character,decide,lore TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+drawings   recipe=True  PASS  calls=create 
+choices    recipe=True  PASS  calls=act,character,chat,create,lore,soul 
+drawings   recipe=False fail  calls=decide TypeError: Kinloom.decide() got an unexpected keyword argument 'options'
+drawings   recipe=True  PASS  calls=create 
+loot       recipe=False fail  calls=say TypeError: Kinloom.say() got an unexpected keyword argument 'context'
+loot       recipe=False fail  calls=chat,update TypeError: Kinloom.chat() got an unexpected keyword argument 'on_done'
+loot       recipe=True  PASS  calls=create 
+loot       recipe=True  PASS  calls=create 

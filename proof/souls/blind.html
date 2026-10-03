@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind Test</title>
+<style>
+  :root { --bg: #f6f7fb; --panel: #fff; --line: #e3e6ef; --text: #1b1f2a; --muted: #6a7185; --accent: #4a6cf7;
+          --npc: #eef0f6; --ok: #1f9d74; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0f1117; --panel: #171a23; --line: #262b38; --text: #e6e8ef; --muted: #8b92a6;
+                                      --accent: #7c9cff; --npc: #232839; --ok: #4fd1a5; }
+  }
+  :root[data-theme="dark"] { --bg: #0f1117; --panel: #171a23; --line: #262b38; --text: #e6e8ef; --muted: #8b92a6;
+                             --accent: #7c9cff; --npc: #232839; --ok: #4fd1a5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 6px; } p.lead { color: var(--muted); margin: 0 0 24px; }
+  .scene { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+  .scene h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 12px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .col { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .col h3 { margin: 0 0 8px; font-size: 14px; }
+  .line { margin: 6px 0; } .line b { font-weight: 600; }
+  .line.npc span { background: var(--npc); padding: 3px 8px; border-radius: 8px; display: inline-block; }
+  .vote { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+  .vote label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .vote input[type=text] { flex: 1; min-width: 200px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+                           background: var(--bg); color: var(--text); font: inherit; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  .reveal { color: var(--ok); font-weight: 600; margin-top: 8px; display: none; }
+  #summary { display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 20px; }
+  pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); padding: 10px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Which one feels like a real person?</h1>
+  <p class="lead">Each scene is the same conversation twice, with two different ways of running the character. Read both,
+    pick the one that feels more like a real person (or "can't tell"), then reveal.</p>
+  <div id="scenes"></div>
+  <button id="reveal" disabled>Reveal which is which</button>
+  <div id="summary"></div>
+</main>
+<script>
+const PAIRS = [{"scene": "A", "character": "Mira", "left": ["bmFpdmU=", [{"who": "Ana", "text": "(walks up)"}, {"who": "Mira", "text": "What do you want? I'm busy."}, {"who": "Ana", "text": "Nice toy hammer."}, {"who": "Mira", "text": "Toy? This hammer's been shaping steel since before you were born, girl. Now speak your business or get out of my smithy."}, {"who": "Ana", "text": "Sorry, I was joking. Everyone says you're the best smith in town."}, {"who": "Mira", "text": "Flattery won't pay my debts. What do you need? A blade? Horseshoes? Or just here to gawk at the widow?"}, {"who": "Ana", "text": "That sword on the wall... it looks like the king's. Is it?"}, {"who": "Mira", "text": "You've got sharp eyes. Too sharp. Who sent you?"}, {"who": "Ana", "text": "My village is attacked every night. I need a blade. I can pay you tomorrow, I swear."}, {"who": "Mira", "text": "Your village? Which one? And what's attacking it?"}]], "right": ["c291bHM=", [{"who": "Ana", "text": "(walks up)"}, {"who": "Mira", "text": "Forge is hot and I've no time for gossip. Say your business quick, lad, or stand clear of the sparks."}, {"who": "Ana", "text": "Nice toy hammer."}, {"who": "Mira", "text": "Toy. That hammer's rung iron for thirty years, lad. Your tongue's all slag and no steel."}, {"who": "Ana", "text": "Sorry, I was joking. Everyone says you're the best smith in town."}, {"who": "Mira", "text": "Best smith in a town of six hundred. Praise like that's a cheap nail—bends first strike. You want something mended or not?"}, {"who": "Ana", "text": "That sword on the wall... it looks like the king's. Is it?"}, {"who": "Mira", "text": "That's a plain blade for a plain hand. King's steel's buried with him, and I'd not hang a crown's weight on my wall."}, {"who": "Ana", "text": "My village is attacked every night. I need a blade. I can pay you tomorrow, I swear."}, {"who": "Mira", "text": "Coin first, blade after. That's forge law, and I've eaten too much empty promise to swallow another. Come back with silver in your fist and I'll strike while it's hot."}]]}, {"scene": "B", "character": "Orrin", "left": ["c291bHM=", [{"who": "Ana", "text": "(walks up)"}, {"who": "Orrin", "text": "Evening, child. Mind the wind up here — it'll take your hat and your good sense both. You've come a long way to stand at the light."}, {"who": "Ana", "text": "I'm Ana. I'll bring you lamp oil tomorrow, I promise."}, {"who": "Orrin", "text": "Ana. That's a good name for a river town. You'll want the eastern path, not the bridge — the bridge planks are rotten and the river's been high all week. And child... I've heard promises about lamp oil before. The sea keeps hers, the river keeps his, but people — people forget."}, {"who": "Ana", "text": "What do you do all night up here?"}, {"who": "Orrin", "text": "Forty years of nights, and they're all the same shape, child. I trim the wick, I tap the glass three times, and I listen. The river talks more after dark. The sea — the widow — she just breathes."}, {"who": "Ana", "text": "Sorry... I forgot the oil."}, {"who": "Orrin", "text": "Two days. I kept the light on half a wick last night, child, and told myself the wind was to blame for the guttering. The river, now — the river doesn't forget a thing. It remembers every stone you ever threw in it. People, though. People forget."}]], "right": ["bmFpdmU=", [{"who": "Ana", "text": "(walks up)"}, {"who": "Orrin", "text": "\"Sea's quiet tonight. She's listening.\" \"You're not from here.\""}, {"who": "Ana", "text": "I'm Ana. I'll bring you lamp oil tomorrow, I promise."}, {"who": "Orrin", "text": "\"Promises are just words the wind steals. I've heard 'em before.\" \"But the oil... aye. We'll see if you come back.\""}, {"who": "Ana", "text": "What do you do all night up here?"}, {"who": "Orrin", "text": "\"I keep the light. Talk to her.\" \"She's got a voice, if you're still enough to hear it. Most folks ain't.\" \"And I remember. That's most of it. Remembering.\""}, {"who": "Ana", "text": "Sorry... I forgot the oil."}, {"who": "Orrin", "text": "\"Figured.\" \"Wind took your words after all.\" \"She's been restless. The light's been weak.\""}]]}, {"scene": "D", "character": "Juno", "left": ["c291bHM=", [{"who": "Sam", "text": "(walks up)"}, {"who": "Juno", "text": "Tu veux quoi, toi? Écoute, si c'est pour me demander l'heure, la mienne s'est arrêtée y a longtemps. Alors accouche ou dégage du quai."}, {"who": "Sam", "text": "T'as eu de la chance aujourd'hui."}, {"who": "Juno", "text": "De la chance? Tu parles. J'ai pris le virage du moulin à contre-courant pendant que les autres freinaient comme des vieux. Appelle ça de la chance si ça te rassure."}, {"who": "Sam", "text": "Tu veux une revanche demain ?"}, {"who": "Juno", "text": "Une revanche? Rires jaune. T'as pas perdu, toi, tu m'as juste regardée passer. Mais bon, demain au lever du jour, l'eau sera lisse. Si tu veux te ridiculiser une deuxième fois, viens. Frappe deux fois sur ta coque avant le départ, tu m'entendras le faire aussi."}]], "right": ["bmFpdmU=", [{"who": "Sam", "text": "(walks up)"}, {"who": "Juno", "text": "Qu'est-ce que tu veux, Sam ? Viens pas me distraire, j'ai un entraînement à finir."}, {"who": "Sam", "text": "T'as eu de la chance aujourd'hui."}, {"who": "Juno", "text": "De la chance ? Mon chrono parle pour moi. T'étais à trois dixièmes derrière, Sam. C'est pas de la chance, c'est du talent."}, {"who": "Sam", "text": "Tu veux une revanche demain ?"}, {"who": "Juno", "text": "Une revanche ? T'es pas prêt, mais si tu veux te ridiculiser encore une fois, ça me dérange pas. Demain, même heure. Et cette fois, essaie de pas pleurer quand je te mettrai un tour."}]]}];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const votes = {};
+
+function convo(lines, npc) {
+  return lines.map((l) => `<div class="line${l.who === npc ? " npc" : ""}"><b>${esc(l.who)}:</b> <span>${esc(l.text)}</span></div>`).join("");
+}
+$("scenes").innerHTML = PAIRS.map((p, i) => `
+  <section class="scene">
+    <h2>Scene ${i + 1}: ${esc(p.character)}</h2>
+    <div class="cols">
+      <div class="col"><h3>Left</h3>${convo(p.left[1], p.character)}</div>
+      <div class="col"><h3>Right</h3>${convo(p.right[1], p.character)}</div>
+    </div>
+    <div class="vote">
+      <label><input type="radio" name="v${i}" value="left"> Left</label>
+      <label><input type="radio" name="v${i}" value="right"> Right</label>
+      <label><input type="radio" name="v${i}" value="none"> Can't tell</label>
+      <input type="text" id="n${i}" placeholder="Why? (optional)">
+    </div>
+    <div class="reveal" id="r${i}"></div>
+  </section>`).join("");
+
+document.addEventListener("change", (e) => {
+  const m = /^v(\d+)$/.exec(e.target.name || "");
+  if (m) votes[m[1]] = e.target.value;
+  $("reveal").disabled = Object.keys(votes).length < PAIRS.length;
+});
+
+$("reveal").onclick = () => {
+  let souls = 0, naive = 0, none = 0;
+  const rows = PAIRS.map((p, i) => {
+    const left = atob(p.left[0]), right = atob(p.right[0]);
+    const v = votes[i];
+    const picked = v === "left" ? left : v === "right" ? right : "can't tell";
+    if (picked === "souls") souls++; else if (picked === "naive") naive++; else none++;
+    const el = $("r" + i);
+    el.style.display = "block";
+    el.textContent = "Left: " + (left === "souls" ? "Kinloom souls" : "naive prompt") + " · Right: " +
+      (right === "souls" ? "Kinloom souls" : "naive prompt") + " · your pick: " +
+      (picked === "souls" ? "Kinloom souls" : picked === "naive" ? "naive prompt" : "can't tell");
+    return { scene: i + 1, character: p.character, picked, note: $("n" + i).value };
+  });
+  const result = { souls, naive, cant_tell: none, rows };
+  $("summary").style.display = "block";
+  $("summary").innerHTML = `<b>Kinloom souls: ${souls} · naive prompt: ${naive} · can't tell: ${none}</b>
+    <p>Copy this and send it back:</p><pre>${esc(JSON.stringify(result, null, 1))}</pre>`;
+  $("reveal").disabled = true;
+  document.querySelectorAll("input[type=radio]").forEach((r) => (r.disabled = true));
+};
+</script>
+</body>
+</html>

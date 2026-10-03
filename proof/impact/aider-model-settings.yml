@@ -1,0 +1,20 @@
+# aider settings for the automated arms (the same for Kinloom and baseline arms).
+# DeepSeek's API defaults to a short answer when max_tokens is not sent, which cut a first run in the middle of its
+# edits, and 32000 was used up by reasoning on the racer; 65536 was accepted by the API on 2026-09-27.
+- name: openai/deepseek-flash
+  edit_format: diff
+  use_repo_map: true
+  extra_params:
+    max_tokens: 65536
+# The only OpenRouter model the user allowed (2026-09-29), for the talk trials (DeepSeek balance empty).
+- name: openai/deepseek/deepseek-v4.1-flash
+  edit_format: diff
+  use_repo_map: true
+  extra_params:
+    max_tokens: 32000
+# A local agent model (free), for the harness/model spread of the talk trials.
+- name: ollama_chat/qwen3:8b
+  edit_format: diff
+  use_repo_map: true
+  extra_params:
+    num_ctx: 16384

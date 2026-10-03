@@ -1,0 +1,14 @@
+{
+ "arm": "keep-v2-talk2",
+ "key": true,
+ "error": null,
+ "frames": 1937,
+ "seconds": 28.0,
+ "longest_frame_gap_s": 0.049,
+ "frames_over_100ms": 0,
+ "shots": {
+  "box_open": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk2\\live\\box_open.png",
+  "first_reply": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk2\\live\\first_reply.png",
+  "second_reply": "<workspace>\\kinloom\\proof\\impact\\results\\talk\\keep-v2-talk2\\live\\second_reply.png"
+ }
+}

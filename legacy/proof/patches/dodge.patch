@@ -1,0 +1,277 @@
+--- a/main.gd
++++ b/main.gd
+@@ -3,7 +3,26 @@
+ @export var mob_scene: PackedScene
+ var score
+ 
++# Kinloom: state the AI reads, and params it may steer (see kinloom/game.json).
++var best := 0
++var deaths := 0
++var running := false
++var creep_speed := 200.0
++var spawn_interval := 0.5:
++	set(value):
++		spawn_interval = value
++		$MobTimer.wait_time = value
++
++
++func _ready():
++	Kinloom.Bind("arena", self)
++	Kinloom.Bind("hud", $HUD)
++	Kinloom.Said.connect(func(_role, _thing, text, _to): $HUD.show_message(text))
++
+ func game_over():
++	running = false
++	deaths += 1
++	Kinloom.EmitEvent("game_over", {"score": score, "best": best})
+ 	$ScoreTimer.stop()
+ 	$MobTimer.stop()
+ 	$HUD.show_game_over()
+@@ -19,6 +38,8 @@
+ 	$HUD.update_score(score)
+ 	$HUD.show_message("Get Ready")
+ 	$Music.play()
++	running = true
++	Kinloom.EmitEvent("game_started", {"deaths_so_far": deaths, "best": best})
+ 
+ 
+ func _on_MobTimer_timeout():
+@@ -40,7 +61,7 @@
+ 	mob.rotation = direction
+ 
+ 	# Choose the velocity for the mob.
+-	var velocity = Vector2(randf_range(150.0, 250.0), 0.0)
++	var velocity = Vector2(randf_range(creep_speed * 0.75, creep_speed * 1.25), 0.0)
+ 	mob.linear_velocity = velocity.rotated(direction)
+ 
+ 	# Spawn the mob by adding it to the Main scene.
+@@ -50,6 +71,9 @@
+ func _on_ScoreTimer_timeout():
+ 	score += 1
+ 	$HUD.update_score(score)
++	if score == best + 1 and best > 0:
++		Kinloom.EmitEvent("record", {"score": score})
++	best = max(best, score)
+ 
+ 
+ func _on_StartTimer_timeout():
+--- /dev/null
++++ b/kinloom.json
+@@ -0,0 +1,23 @@
++{
++  "manifest": "kinloom",
++  "provider": {
++    "kind": "deepseek",
++    "keyEnv": "DEEPSEEK_API_KEY",
++    "fast": "deepseek-flash",
++    "deep": "deepseek-flash"
++  },
++  "prices": {
++    "input": 0.3,
++    "cachedInput": 0.006,
++    "output": 1.2,
++    "source": "api-docs.deepseek.com/quick_start/pricing, deepseek-flash peak prices as read on 2026-09-26 (from this repo's play-valley.cmd)"
++  },
++  "language": "English",
++  "budget": {
++    "maxCallsPerMinute": 30,
++    "maxCostPerHour": null
++  },
++  "media": {},
++  "servePort": 7717,
++  "debugPort": 7718
++}
+\ No newline at end of file
+--- /dev/null
++++ b/kinloom/game.json
+@@ -0,0 +1,59 @@
++{
++  "description": "Dodge the Creeps: an adaptive wave director and a sarcastic arena announcer.",
++  "types": {
++    "Arena": {
++      "description": "The arena where creeps spawn and the player dodges them.",
++      "properties": {
++        "score": { "type": "integer", "description": "seconds survived in the current run" },
++        "best": { "type": "integer", "description": "best score this session" },
++        "deaths": "integer",
++        "running": "boolean"
++      },
++      "params": {
++        "spawn_interval": { "type": "number", "min": 0.2, "max": 2, "default": 0.5, "unit": "s", "description": "time between two creeps" },
++        "creep_speed": { "type": "number", "min": 100, "max": 500, "default": 200, "unit": "px/s", "description": "average creep speed" }
++      }
++    },
++    "Hud": {
++      "description": "The on-screen message line.",
++      "functions": { "show_message": { "description": "Show a short message for two seconds.", "args": { "text": { "type": "string", "max": 60 } } } }
++    }
++  },
++  "things": [
++    { "id": "arena", "type": "Arena", "name": "the arena" },
++    { "id": "hud", "type": "Hud" }
++  ],
++  "events": {
++    "game_started": { "description": "A new run started.", "importance": 0.3 },
++    "game_over": { "description": "The player was hit and the run ended.", "importance": 0.7 },
++    "record": { "description": "The player beat their best score.", "importance": 0.8 }
++  },
++  "roles": [
++    {
++      "id": "director",
++      "mission": "You direct the creep waves. Keep each run tense but fair: after quick deaths, ease off; when the player survives long, push harder. Change spawn_interval and creep_speed gradually and explain your intent in a thought.",
++      "sees": ["thing:arena", "event:game_started", "event:game_over", "event:record"],
++      "can": ["set:arena.spawn_interval", "set:arena.creep_speed", "behavior:arena"],
++      "wake": [ { "on": "event:game_over" }, { "on": "event:game_started" }, { "every": 20 } ],
++      "budget": { "callsPerMinute": 4 },
++      "fallback": { "behavior": "ramp_up" }
++    },
++    {
++      "id": "announcer",
++      "mission": "You are the arena announcer: dry, sarcastic, fond of the player deep down. One line of at most 50 characters per moment. Mock quick deaths, salute records, remember earlier runs.",
++      "sees": ["thing:arena", "event:*"],
++      "can": ["say", "remember"],
++      "wake": [ { "on": "event:game_started" }, { "on": "event:game_over" }, { "on": "event:record" } ],
++      "minInterval": 3,
++      "budget": { "callsPerMinute": 6 },
++      "memory": { "scope": "role", "persist": true, "max": 40 },
++      "fallback": { "say": ["Try not to die this time.", "Ouch. Again?", "A new record. Unbelievable."] }
++    }
++  ],
++  "behaviors": [
++    {
++      "id": "ramp_up", "owner": "arena",
++      "rules": [ { "when": "self.running", "do": [ { "set": "self.spawn_interval", "to": "clamp(0.6 - self.score * 0.01, 0.25, 0.6)" } ] } ]
++    }
++  ]
++}
+--- /dev/null
++++ b/kinloom/tests/check-script.json
+@@ -0,0 +1,40 @@
++{
++  "role:director": [
++    "{\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"arena\",\"param\":\"spawn_interval\",\"value\":0.8}},{\"tool\":\"set_param\",\"args\":{\"thing\":\"arena\",\"param\":\"creep_speed\",\"value\":170}}]}"
++  ],
++  "role:announcer": [
++    "{\"actions\":[{\"tool\":\"say\",\"args\":{\"text\":\"Welcome back, creep food.\"}}]}"
++  ],
++  "*": [
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}"
++  ]
++}
+\ No newline at end of file
+--- /dev/null
++++ b/kinloom/tests/check.gd
+@@ -0,0 +1,39 @@
++extends Node
++# Headless proof: runs the real game scene, starts a run, ends it, and checks what Kinloom changed.
++# KINLOOM_CHECK_MODE: "scripted" (canned model answers), "nokey" (no model: fallbacks), "live" (the configured model).
++var frames := 0
++var lines := []
++var mode := OS.get_environment("KINLOOM_CHECK_MODE")
++var ended_at := 0
++
++func _ready():
++	Kinloom.Said.connect(func(role, _thing, text, _to): lines.append("%s: %s" % [role, text]))
++	$Main.new_game()
++
++func _process(_delta):
++	frames += 1
++	if frames == 150:
++		$Main.game_over()
++		ended_at = Time.get_ticks_msec()
++	if ended_at == 0: return
++	var waited := Time.get_ticks_msec() - ended_at
++	if mode == "live":
++		if (lines.size() >= 2 and waited > 4000) or waited > 30000: finish()
++	elif frames >= 390 and waited > 1500:
++		finish()
++
++func finish():
++	var main = $Main
++	print("KINLOOM_CHECK mode=", mode, " spawn_interval=", main.spawn_interval, " timer=", main.get_node("MobTimer").wait_time, " creep_speed=", main.creep_speed)
++	print("KINLOOM_CHECK lines=", lines)
++	print("KINLOOM_CHECK arena=", Kinloom.DescribeThing("arena"))
++	print("KINLOOM_CHECK stats=", Kinloom.StatsJson())
++	var ok := true
++	if mode == "scripted":
++		ok = is_equal_approx(main.get_node("MobTimer").wait_time, 0.8) and is_equal_approx(main.creep_speed, 170.0) and lines.has("announcer: Welcome back, creep food.")
++	elif mode == "nokey":
++		ok = lines.size() > 0 and main.get_node("MobTimer").wait_time > 0.5
++	else:
++		ok = lines.size() > 0
++	print("KINLOOM_CHECK ", "PASS" if ok else "FAIL")
++	get_tree().quit(0 if ok else 1)
+--- /dev/null
++++ b/kinloom/tests/check.gd.uid
+@@ -0,0 +1 @@
++uid://cubkisj4818wk
+--- /dev/null
++++ b/kinloom/tests/check.tscn
+@@ -0,0 +1,9 @@
++[gd_scene load_steps=3 format=3]
++
++[ext_resource type="PackedScene" path="res://main.tscn" id="1"]
++[ext_resource type="Script" path="res://kinloom/tests/check.gd" id="2"]
++
++[node name="Check" type="Node"]
++script = ExtResource("2")
++
++[node name="Main" parent="." instance=ExtResource("1")]
+--- /dev/null
++++ b/kinloom/tests/no-model.test.json
+@@ -0,0 +1,5 @@
++{
++  "description": "Without any model the game still gets announcer lines.",
++  "steps": [ { "time": 1, "event": { "type": "game_started", "data": {} } } ],
++  "expect": [ { "effect": { "kind": "say" } }, { "fallback": true } ]
++}
+--- /dev/null
++++ b/kinloom/tests/waves.test.json
+@@ -0,0 +1,18 @@
++{
++  "description": "A death makes the director ease the waves and the announcer comment; without a model the ramp and the canned lines take over.",
++  "script": {
++    "role:director": ["{\"thought\":\"Quick death, ease off.\",\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"arena\",\"param\":\"spawn_interval\",\"value\":0.8}},{\"tool\":\"set_param\",\"args\":{\"thing\":\"arena\",\"param\":\"creep_speed\",\"value\":170}}]}"],
++    "role:announcer": ["{\"actions\":[{\"tool\":\"say\",\"args\":{\"text\":\"Four seconds. A new low.\"}}]}"],
++    "*": ["{\"actions\":[]}"]
++  },
++  "steps": [
++    { "time": 1, "update": { "thing": "arena", "props": { "score": 4, "best": 4, "deaths": 1, "running": false } } },
++    { "time": 2, "event": { "type": "game_over", "data": { "score": 4, "best": 4 } } }
++  ],
++  "expect": [
++    { "effect": { "kind": "set", "thing": "arena", "member": "spawn_interval" } },
++    { "effect": { "kind": "set", "thing": "arena", "member": "creep_speed" } },
++    { "effect": { "kind": "say", "text": "new low" } },
++    { "noEffect": { "kind": "destroy" } }
++  ]
++}

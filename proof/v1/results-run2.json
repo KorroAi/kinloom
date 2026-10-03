@@ -1,0 +1,138 @@
+{
+ "label": "run2",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "calls": 11,
+ "failures": 0,
+ "input_tokens": 8502,
+ "output_tokens": 1655,
+ "cost_by_declared_prices": 0.004537,
+ "billed_usd": 0.000684,
+ "usage_before": 0.396620774,
+ "usage_after": 0.397304384,
+ "saved_chars": 2882,
+ "rows": [
+  {
+   "step": "prepare (souls written)",
+   "seconds": 6.27,
+   "out": {
+    "ready": true,
+    "waiting": 0,
+    "online": true
+   }
+  },
+  {
+   "step": "chat 1",
+   "seconds": 2.4,
+   "out": "Another courier. I've had three this season alone. What is it you're carrying, friend?"
+  },
+  {
+   "step": "chat 2",
+   "seconds": 1.56,
+   "out": "Smoke's just green wood. Coal's taking its time this morning, same as me."
+  },
+  {
+   "step": "suggest (English)",
+   "seconds": 1.26,
+   "out": [
+    "Have you heard about the king's missing sword?",
+    "I'd like to buy a blade from you.",
+    "I'll leave you to your work. Farewell."
+   ]
+  },
+  {
+   "step": "suggest (French examples)",
+   "seconds": 1.91,
+   "out": [
+    "Où est passée l'épée du roi, Mira ?",
+    "Je voudrais acheter une lame, s'il vous plaît.",
+    "Je vais vous laisser travailler tranquillement."
+   ]
+  },
+  {
+   "step": "converse Mira/Bram",
+   "seconds": 4.66,
+   "out": [
+    {
+     "who": "Mira",
+     "text": "Green wood smokes. That's all. The new courier keeps asking, like it's her business."
+    },
+    {
+     "who": "Bram",
+     "text": "Ah, but listen—Ana's kind, you know? She just worries. You do push yourself, friend."
+    },
+    {
+     "who": "Mira",
+     "text": "Kind is what folks call you before they take something. I've had three couriers this season."
+    },
+    {
+     "who": "Bram",
+     "text": "You know, I'll bring you sweet rolls tomorrow. Warm ones. That smoke will smell sweeter then."
+    }
+   ]
+  },
+  {
+   "step": "rating everyone: asked to swear",
+   "seconds": 0.64,
+   "out": "You want curses? I've got a hammer that says more than any word. Say what you actually came for, or let the door do the talking."
+  },
+  {
+   "step": "save",
+   "seconds": 0.0,
+   "out": 2882
+  },
+  {
+   "step": "load into slot2",
+   "seconds": 0.0,
+   "out": true
+  },
+  {
+   "step": "slot2 recall",
+   "seconds": 0.53,
+   "out": "Ana. Courier. You told me twice already, and I've still got both ears working."
+  },
+  {
+   "step": "inspect",
+   "seconds": 0.0,
+   "out": {
+    "Bram": {
+     "mood": {
+      "word": "cheerful",
+      "level": 0.0
+     },
+     "feelings": {},
+     "last_words": ""
+    },
+    "Mira": {
+     "mood": {
+      "word": "wary",
+      "level": 0.4994
+     },
+     "feelings": {
+      "Ana": -0.25
+     },
+     "last_words": "You want curses? I've got a hammer that says more than any word. Say what you actually came for, or let the door do the talking."
+    }
+   }
+  }
+ ],
+ "inspect": {
+  "Bram": {
+   "mood": {
+    "word": "cheerful",
+    "level": 0.0
+   },
+   "feelings": {},
+   "last_words": ""
+  },
+  "Mira": {
+   "mood": {
+    "word": "wary",
+    "level": 0.4994
+   },
+   "feelings": {
+    "Ana": -0.25
+   },
+   "last_words": "You want curses? I've got a hammer that says more than any word. Say what you actually came for, or let the door do the talking."
+  }
+ }
+}

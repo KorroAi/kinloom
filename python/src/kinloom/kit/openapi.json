@@ -1,0 +1,2558 @@
+{
+ "components": {
+  "securitySchemes": {
+   "token": {
+    "description": "--token (admin) or --player-token (a shipped game)",
+    "scheme": "bearer",
+    "type": "http"
+   }
+  }
+ },
+ "info": {
+  "description": "The API of `kinloom serve`: every engine's client speaks it. Local by default (only pages from this machine); `--public --token` for an online server. A client answers offline itself when the server cannot be reached: the game's lines, offline replies and examples.",
+  "title": "Kinloom",
+  "version": "1.0.0"
+ },
+ "openapi": "3.1.0",
+ "paths": {
+  "/v1/act": {
+   "post": {
+    "operationId": "act",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "situation": {},
+         "think": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "actions": {
+           "items": {
+            "properties": {
+             "args": {
+              "type": "object"
+             },
+             "tool": {
+              "type": "string"
+             }
+            },
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "declared": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Tool calls the character chose (handed out once)."
+   }
+  },
+  "/v1/character": {
+   "post": {
+    "operationId": "character",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "events": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "object"
+           }
+          ]
+         },
+         "every": {
+          "type": "number"
+         },
+         "group": {
+          "type": "string"
+         },
+         "invent": {
+          "type": "boolean"
+         },
+         "language": {
+          "type": "string"
+         },
+         "lines": {
+          "anyOf": [
+           {
+            "type": "object"
+           },
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           }
+          ]
+         },
+         "max_chars": {
+          "type": "integer"
+         },
+         "max_words": {
+          "type": "integer"
+         },
+         "name": {
+          "type": "string"
+         },
+         "offline": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           }
+          ]
+         },
+         "personality": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "soul": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "boolean"
+           },
+           {
+            "type": "object"
+           }
+          ]
+         },
+         "tools": {
+          "anyOf": [
+           {
+            "type": "object"
+           },
+           {
+            "type": "array"
+           },
+           {
+            "type": "string"
+           }
+          ]
+         },
+         "trust": {
+          "type": "object"
+         },
+         "voice": {
+          "anyOf": [
+           {
+            "type": "string"
+           },
+           {
+            "type": "object"
+           }
+          ]
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "ok": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Declare a character (characters in kinloom.json need no call)."
+   }
+  },
+  "/v1/chat": {
+   "post": {
+    "operationId": "chat",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "do": {
+          "type": "boolean"
+         },
+         "facts": {
+          "type": "object"
+         },
+         "image": {
+          "description": "a picture the model looks at: base64 or a data URI (PNG, JPEG, GIF, WebP; 8 MB)",
+          "type": "string"
+         },
+         "max_chars": {
+          "type": "integer"
+         },
+         "message": {
+          "type": "string"
+         },
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "speaker": {
+          "type": "string"
+         },
+         "stream": {
+          "type": "boolean"
+         }
+        },
+        "required": [
+         "name",
+         "message"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "declared": {
+           "type": "boolean"
+          },
+          "do": {
+           "items": {
+            "properties": {
+             "args": {
+              "type": "object"
+             },
+             "tool": {
+              "type": "string"
+             }
+            },
+            "type": "object"
+           },
+           "type": "array"
+          },
+          "feeling": {
+           "type": "number"
+          },
+          "gesture": {
+           "type": "string"
+          },
+          "mood": {
+           "type": "string"
+          },
+          "source": {
+           "type": "string"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A reply in character (stream: true answers with server-sent events {piece} then {done, ...})."
+   }
+  },
+  "/v1/converse": {
+   "post": {
+    "operationId": "converse",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "a": {
+          "type": "string"
+         },
+         "about": {
+          "type": "string"
+         },
+         "b": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "turns": {
+          "type": "integer"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "lines": {
+           "items": {
+            "properties": {
+             "text": {
+              "type": "string"
+             },
+             "who": {
+              "type": "string"
+             }
+            },
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A short exchange between two characters, remembered by both ([] offline)."
+   }
+  },
+  "/v1/create": {
+   "post": {
+    "operationId": "create",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "context": {},
+         "count": {
+          "type": "integer"
+         },
+         "example": {},
+         "image": {
+          "description": "a picture the model looks at: base64 or a data URI (PNG, JPEG, GIF, WebP; 8 MB)",
+          "type": "string"
+         },
+         "instant": {
+          "type": "boolean"
+         },
+         "session": {
+          "type": "string"
+         },
+         "what": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "what",
+         "example"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "value": {}
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Content shaped like the example (the example is the offline answer)."
+   }
+  },
+  "/v1/decide": {
+   "post": {
+    "operationId": "decide",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "choices": {
+          "type": "object"
+         },
+         "every": {
+          "type": "number"
+         },
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "situation": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "name",
+         "choices"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "decision": {
+           "type": "object"
+          },
+          "declared": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "An instant decision shaped like the choices, refreshed in the background."
+   }
+  },
+  "/v1/event": {
+   "post": {
+    "operationId": "event",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "about": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "string"
+           }
+          ]
+         },
+         "by": {
+          "type": "string"
+         },
+         "impact": {
+          "type": "number"
+         },
+         "importance": {
+          "type": "number"
+         },
+         "seen_by": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "session": {
+          "type": "string"
+         },
+         "tag": {
+          "type": "string"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "text"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "ok": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Something happened; witnesses remember it."
+   }
+  },
+  "/v1/explain": {
+   "post": {
+    "operationId": "explain",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "senses": {
+          "type": "object"
+         },
+         "session": {
+          "type": "string"
+         },
+         "who": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "action": {
+           "type": "string"
+          },
+          "scores": {
+           "type": "object"
+          },
+          "variant": {
+           "type": "integer"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Every action's score for one moment."
+   }
+  },
+  "/v1/feel": {
+   "post": {
+    "operationId": "feel",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "a": {
+          "type": "string"
+         },
+         "b": {
+          "type": "string"
+         },
+         "change": {
+          "type": "number"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "opinion": {
+           "type": "number"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Move a's opinion of b."
+   }
+  },
+  "/v1/inspect": {
+   "post": {
+    "operationId": "inspect",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "session": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "calls": {
+           "type": "integer"
+          },
+          "characters": {
+           "type": "object"
+          },
+          "cost": {
+           "type": "number"
+          },
+          "failures": {
+           "type": "integer"
+          },
+          "minds": {
+           "type": "object"
+          },
+          "online": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A snapshot for a debug overlay: characters, minds, calls (admin token)."
+   }
+  },
+  "/v1/journal": {
+   "get": {
+    "operationId": "get_v1/journal",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "n",
+      "required": false,
+      "schema": {
+       "type": "integer"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "What Kinloom did lately (admin token)."
+   }
+  },
+  "/v1/knows": {
+   "post": {
+    "operationId": "knows",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "tag": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "tag"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "knows": {
+           "type": "boolean"
+          },
+          "notes": {
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Whether a character knows about a tagged event."
+   }
+  },
+  "/v1/listen": {
+   "post": {
+    "operationId": "listen",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "audio": {
+          "type": "string"
+         },
+         "language": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "audio"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "text": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "What was said in a recording (base64; 12 MB)."
+   }
+  },
+  "/v1/load": {
+   "post": {
+    "operationId": "load",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "data": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "data"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "ok": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Puts back what save gave (this session's state is replaced; 12 MB)."
+   }
+  },
+  "/v1/lore": {
+   "post": {
+    "operationId": "lore",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "lines": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "string"
+           }
+          ]
+         },
+         "session": {
+          "type": "string"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "lines": {
+           "type": "integer"
+          },
+          "lore": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "World facts every character takes as true ({} reads them)."
+   }
+  },
+  "/v1/meet": {
+   "post": {
+    "operationId": "meet",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "a": {
+          "type": "string"
+         },
+         "b": {
+          "type": "string"
+         },
+         "k": {
+          "type": "integer"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "shared": {
+           "items": {
+            "properties": {
+             "from": {
+              "type": "string"
+             },
+             "tag": {
+              "type": "string"
+             },
+             "text": {
+              "type": "string"
+             },
+             "to": {
+              "type": "string"
+             }
+            },
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Two characters share what they know."
+   }
+  },
+  "/v1/mind": {
+   "get": {
+    "operationId": "get_v1/mind",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "name",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "A mind and its report (404 when unknown)."
+   }
+  },
+  "/v1/openapi.json": {
+   "get": {
+    "operationId": "get_v1/openapi_json",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "This description."
+   }
+  },
+  "/v1/opinion": {
+   "post": {
+    "operationId": "opinion",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "a": {
+          "type": "string"
+         },
+         "b": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "a",
+         "b"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "opinion": {
+           "type": "number"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "What a thinks of b (-1..1)."
+   }
+  },
+  "/v1/opinions": {
+   "post": {
+    "operationId": "opinions",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "opinions": {
+           "type": "object"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Everything a thinks of others."
+   }
+  },
+  "/v1/prepare": {
+   "post": {
+    "operationId": "prepare",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "session": {
+          "type": "string"
+         },
+         "timeout": {
+          "type": "number"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "online": {
+           "type": "boolean"
+          },
+          "ready": {
+           "type": "boolean"
+          },
+          "waiting": {
+           "type": "integer"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "For a loading screen: waits until what Kinloom writes ahead is ready."
+   }
+  },
+  "/v1/remember": {
+   "post": {
+    "operationId": "remember",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "importance": {
+          "type": "number"
+         },
+         "name": {
+          "type": "string"
+         },
+         "note": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "note"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "ok": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A memory for one character."
+   }
+  },
+  "/v1/report": {
+   "post": {
+    "operationId": "report",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "mind": {
+           "type": "object"
+          },
+          "missing": {
+           "type": "boolean"
+          },
+          "report": {
+           "type": "object"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A mind and how it is doing."
+   }
+  },
+  "/v1/reputation": {
+   "post": {
+    "operationId": "reputation",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "group": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "target": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "target",
+         "group"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "reputation": {
+           "type": "number"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A group's average opinion of target."
+   }
+  },
+  "/v1/reward": {
+   "post": {
+    "operationId": "reward",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "rewards": {
+          "items": {
+           "properties": {
+            "action": {
+             "type": "string"
+            },
+            "done": {
+             "type": "boolean"
+            },
+            "id": {},
+            "mind": {
+             "type": "string"
+            },
+            "reward": {
+             "type": "number"
+            },
+            "senses": {
+             "type": "object"
+            },
+            "variant": {
+             "type": "integer"
+            },
+            "who": {
+             "type": "string"
+            }
+           },
+           "type": "object"
+          },
+          "type": "array"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "rewards"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "versions": {
+           "type": "object"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "How well units' last choices went (minds learn)."
+   }
+  },
+  "/v1/save": {
+   "post": {
+    "operationId": "save",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "session": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "data": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Everything Kinloom knows about this session, as one text for the game's save slot."
+   }
+  },
+  "/v1/say": {
+   "post": {
+    "operationId": "say",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "event": {
+          "type": "string"
+         },
+         "facts": {
+          "type": "object"
+         },
+         "fresh": {
+          "type": "boolean"
+         },
+         "max_chars": {
+          "type": "integer"
+         },
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "event"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "declared": {
+           "type": "boolean"
+          },
+          "source": {
+           "type": "string"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "An instant line for an event, the facts filled in."
+   }
+  },
+  "/v1/soul": {
+   "get": {
+    "operationId": "get_v1/soul",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "name",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     },
+     {
+      "in": "query",
+      "name": "speaker",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "Like POST /v1/soul."
+   }
+  },
+  "/v1/speak": {
+   "post": {
+    "operationId": "speak",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "text"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "audio": {
+           "type": "string"
+          },
+          "format": {
+           "type": "string"
+          },
+          "seconds": {
+           "type": "number"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A line said aloud (WAV, base64); audio \"\" when no voice can speak."
+   }
+  },
+  "/v1/spread": {
+   "post": {
+    "operationId": "spread",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "group": {
+          "type": "string"
+         },
+         "rounds": {
+          "type": "integer"
+         },
+         "session": {
+          "type": "string"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "shared": {
+           "items": {
+            "properties": {
+             "from": {
+              "type": "string"
+             },
+             "tag": {
+              "type": "string"
+             },
+             "text": {
+              "type": "string"
+             },
+             "to": {
+              "type": "string"
+             }
+            },
+            "type": "object"
+           },
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Rounds of talk in a group."
+   }
+  },
+  "/v1/state": {
+   "post": {
+    "operationId": "state",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "session": {
+          "type": "string"
+         },
+         "state": {
+          "type": "object"
+         }
+        },
+        "required": [
+         "state"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "ok": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "A live snapshot every call can see."
+   }
+  },
+  "/v1/status": {
+   "get": {
+    "operationId": "get_v1/status",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "Mode, model, stats, characters and minds (a player token sees only the mode)."
+   }
+  },
+  "/v1/stream": {
+   "get": {
+    "operationId": "get_v1/stream",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "The journal live, as server-sent events (admin token)."
+   }
+  },
+  "/v1/suggest": {
+   "post": {
+    "operationId": "suggest",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "examples": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array"
+         },
+         "facts": {
+          "type": "object"
+         },
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "speaker": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "examples"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "replies": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "What the player could say now: one reply per example, in its order (the examples are the offline answer)."
+   }
+  },
+  "/v1/think": {
+   "post": {
+    "operationId": "think",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "senses": {
+          "type": "object"
+         },
+         "session": {
+          "type": "string"
+         },
+         "who": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "action": {
+           "type": "string"
+          },
+          "args": {
+           "type": "object"
+          },
+          "variant": {
+           "type": "integer"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "Run a mind on one moment."
+   }
+  },
+  "/v1/tools": {
+   "post": {
+    "operationId": "tools",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "session": {
+          "type": "string"
+         },
+         "tools": {
+          "type": "object"
+         }
+        },
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "tools": {
+           "items": {
+            "type": "string"
+           },
+           "type": "array"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "The game's tools, declared once; characters use them by name ({} reads the names)."
+   }
+  }
+ },
+ "security": [
+  {},
+  {
+   "token": []
+  }
+ ],
+ "servers": [
+  {
+   "url": "http://127.0.0.1:7717"
+  }
+ ]
+}

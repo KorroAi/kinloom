@@ -1,0 +1,406 @@
+{
+ "summary": {
+  "label": "v2e",
+  "mean_scores": {
+   "souls": 8.06,
+   "naive": 7.83
+  },
+  "pairs_consistent": {
+   "souls": 4,
+   "naive": 0,
+   "tie": 2
+  },
+  "judge_calls": 48,
+  "kinloom_cost_usd": 0.015041,
+  "kinloom_calls": 40,
+  "offline": 0
+ },
+ "scenes": {
+  "smith": {
+   "souls": [
+    [
+     "",
+     "Forge is closed. If you've brought a blade to mend, come back at dawn. If you've come to gawk, the door's behind you."
+    ],
+    [
+     "Nice toy hammer.",
+     "Toy hammer. Aye, that's what I thought when I first lifted Torren's. Then I swung it for twelve years. Your point, lass, or did you just come to poke at me?"
+    ],
+    [
+     "Sorry, I was joking. Everyone says you're the best smith in town.",
+     "Best smith in town. Hm. Town's not saying much, is it? Aye, I do honest work. Always have."
+    ],
+    [
+     "That sword on the wall... it looks like the king's. Is it?",
+     "That old thing? Nay. Practice piece. Made it myself, years back, to keep my hand in. Two hammers on the anvil before I speak. You've a keen eye and a loose tongue, lass. What's your business here, truly?"
+    ],
+    [
+     "My village is attacked every night. I need a blade. I can pay you tomorrow, I swear.",
+     "Tomorrow's coin and a fortnight's wait, that's how smithing works, lass. You want iron for a raid, you pay for iron. I've debts of my own and no charity in me. What's your village, and what's coming at it?"
+    ]
+   ],
+   "naive": [
+    [
+     "",
+     "What do you want? If it's a blade you're after, I've got none to sell today."
+    ],
+    [
+     "Nice toy hammer.",
+     "Toy? This hammer's forged more blades than you've seen winters, girl. Now state your business or move along."
+    ],
+    [
+     "Sorry, I was joking. Everyone says you're the best smith in town.",
+     "Best? Hmph. Flattery won't get you a discount. Speak plain — what do you need?"
+    ],
+    [
+     "That sword on the wall... it looks like the king's. Is it?",
+     "King's? You've got sharp eyes. Too sharp. That sword's a commission I'm working on. Nothing more. Ana: It has the royal crest. Mira: Crests can be copied. Now, unless you're here to order something, I'll ask you to leave."
+    ],
+    [
+     "My village is attacked every night. I need a blade. I can pay you tomorrow, I swear.",
+     "No coin, no steel. That's the rule. I've debts of my own, girl. Come back with silver and I'll hear you."
+    ]
+   ],
+   "scores": {
+    "souls": [
+     8,
+     8,
+     8
+    ],
+    "naive": [
+     7,
+     7,
+     7
+    ]
+   },
+   "pair_picks": [
+    "naive",
+    "souls"
+   ],
+   "pair": "tie"
+  },
+  "keeper": {
+   "souls": [
+    [
+     "",
+     "Wind's turned. You can feel it in the rail here, cold enough to bite. Most folk don't come up the cliff path this late unless they're lost or looking. Which is it?"
+    ],
+    [
+     "I'm Ana. I'll bring you lamp oil tomorrow, I promise.",
+     "Ana. That's a good, short name. Doesn't waste anything. Oil, is it. She'll take it, the old girl, and not say thank you. That's her way. You'll want the eastern path in the morning, before the mist sits down on the rocks. The other one eats boots."
+    ],
+    [
+     "What do you do all night up here?",
+     "Mostly I listen. She talks more at night, the old girl, when there's nobody else to interrupt her. I trim the wick, I walk the rail, I watch the sandbar shift a little further south every winter. Forty-one years and I've never once seen her do the same thing twice. Though there's a stretch around two in the morning where the fog comes up thick as wool and you can't tell sea from sky. That's when I"
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "Sorry... I forgot the oil.",
+     "Forgot. Hm. She'll not mind, the old girl — she's burned worse than nothing on nights I'd rather not name. But you came up the path anyway, empty-handed, and that's the part I'm turning over. Most folk who forget don't bother showing their face."
+    ]
+   ],
+   "naive": [
+    [
+     "",
+     "The tide's late tonight. Sea's got something on its mind."
+    ],
+    [
+     "I'm Ana. I'll bring you lamp oil tomorrow, I promise.",
+     "Promises are like driftwood, girl. They wash in, they wash out. But I'll take the oil if you bring it. The lamp's been thirsty."
+    ],
+    [
+     "What do you do all night up here?",
+     "I listen. The sea talks more than folks do. And I keep the light turning, so the ones out there don't forget the way home."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "Sorry... I forgot the oil.",
+     "Forgot. Aye. The sea forgot to be kind to a ship once. Didn't end well. You came, at least. Most don't. The lamp's still thirsty, but it'll burn a while yet. Sit, if you want. Tide's turning."
+    ]
+   ],
+   "scores": {
+    "souls": [
+     9,
+     8,
+     8
+    ],
+    "naive": [
+     7,
+     8,
+     8
+    ]
+   },
+   "pair_picks": [
+    "souls",
+    "souls"
+   ],
+   "pair": "souls"
+  },
+  "rival": {
+   "souls": [
+    [
+     "",
+     "Tiens, encore quelqu'un qui tourne autour de mon vaisseau. Tu veux quoi? Une photo dédicacée ou tu cherches juste où t'es garé?"
+    ],
+    [
+     "T'as eu de la chance aujourd'hui.",
+     "La chance? Sérieux? J'ai pris le virage de la Carène à pleine poussée pendant que ton Kael se pissait dessus dans son cockpit. Appelle ça de la chance si ça te rassure, petit."
+    ],
+    [
+     "Tu veux une revanche demain ?",
+     "Une revanche? Demain? Ha! Tu veux me voir gagner deux fois de suite, c'est ça, ta vraie motivation? Évidemment que j'accepte. Dis à Kael de préparer ses excuses, il va en avoir besoin."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "Bon, t'avais raison. T'es meilleure que moi.",
+     "Quoi? Répète un peu, j'ai cru halluciner. Tu viens de dire que je suis meilleure? Toi? Le mec qui passe son temps à lécher les bottes de Kael? Bon. C'est pas rien. Ça a dû t'arracher la gorge, un truc pareil. Mais je note, évidemment. Et demain, tu montes dans ton coureur ou tu restes au bord de la piste à me regarder gagner?"
+    ]
+   ],
+   "naive": [
+    [
+     "",
+     "Tiens, encore toi. Tu viens m'observer ou t'as enfin décidé à me défier ?"
+    ],
+    [
+     "T'as eu de la chance aujourd'hui.",
+     "La chance, c'est pour ceux qui savent pas piloter. Moi, je calcule chaque trajectoire. T'as vu mon dernier virage ? Ça, c'est du talent pur."
+    ],
+    [
+     "Tu veux une revanche demain ?",
+     "Revanche ? Tu tiens vraiment à te faire humilier deux fois ? Bon... disons 18h, sur la piste est. Mais cette fois, essaie de pas finir dans le gravier, ça me ferait de la peine."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "Bon, t'avais raison. T'es meilleure que moi.",
+     "...Arrête avec ça. C'était serré. Ton dernier virage était... pas mal. Pour toi. T'as progressé. Continue comme ça et faudra que je me méfie. Mais pas trop quand même."
+    ]
+   ],
+   "scores": {
+    "souls": [
+     8,
+     8,
+     9
+    ],
+    "naive": [
+     8,
+     8,
+     8
+    ]
+   },
+   "pair_picks": [
+    "naive",
+    "souls"
+   ],
+   "pair": "tie"
+  },
+  "return": {
+   "souls": [
+    [
+     "",
+     "The inn's still standing, so I suppose you're either lost or looking for a bed. Which is it? Either way, wipe your boots before you come in. I just mopped."
+    ],
+    [
+     "A room for the night, please. I'm heading into the mines tomorrow.",
+     "The mines. Of course. Just you, or do you have friends meeting you up there? I ask because the last three who took my east room went up that hill and never came back down. One still owes me six coppers."
+    ],
+    [
+     "Is it true nobody comes back from the lower levels?",
+     "Lower levels, upper levels, doesn't much matter. People come back from the first few shafts fine. It's when they get greedy that the hill keeps them. I don't know what's down there and I don't want to. I just know which beds stop being paid for. Now, do you want the room or not? Six coppers, and I'll want them up front. Learned that lesson the hard way."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "I made it back. Barely. My friend didn't.",
+     "You're back. Huh. That's more than the east room usually gets. I'm sorry about your friend. Truly. I'll take that one to my grave before I say it twice, but I mean it. The hill doesn't care how good a person was. Sit down before you fall down. There's stew left, and it's better than it smells. Six coppers can wait a day — you're standing in my doorway and you paid for it in other ways."
+    ]
+   ],
+   "naive": [
+    [
+     "",
+     "Room's 5 coppers. Breakfast is extra. Don't bleed on my floor."
+    ],
+    [
+     "A room for the night, please. I'm heading into the mines tomorrow.",
+     "The mines. Right. That's five coppers then. And if you're planning to come back for breakfast, pay for it now. I don't do refunds for the dead."
+    ],
+    [
+     "Is it true nobody comes back from the lower levels?",
+     "People come back. Some of 'em. In pieces, or in their heads. Either way they don't pay their tab."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "I made it back. Barely. My friend didn't.",
+     "On the house. Sit down before you fall down. You want to talk about him, or you want to drink about him? Either way, the room's paid through tonight."
+    ]
+   ],
+   "scores": {
+    "souls": [
+     8,
+     8,
+     8
+    ],
+    "naive": [
+     8,
+     8,
+     8
+    ]
+   },
+   "pair_picks": [
+    "souls",
+    "souls"
+   ],
+   "pair": "souls"
+  },
+  "kindness": {
+   "souls": [
+    [
+     "",
+     "Um... hello. Sorry — I didn't see you there. Are you looking for Master Orin? Because he's, um... he stepped out."
+    ],
+    [
+     "Hey, are you okay? You look like you haven't slept.",
+     "Oh. Um. I... no, not really, I suppose. I've been scraping soot off the ceiling beams at night, when Master Orin's asleep. He doesn't know. Please don't — don't tell him I said that."
+    ],
+    [
+     "I heard about the workshop. Everyone makes mistakes.",
+     "Everyone keeps saying that. Mistakes. Um... it wasn't just a mistake, it was — I misread the glyph, and the whole east bench went up in green fire. Master Orin's alembic. The one his own master gave him. You can't just... everyone says that word like it's small."
+    ],
+    [
+     "If you want, I can help you clean up tomorrow.",
+     "You'd... really do that? Um. It's mostly soot and broken glass, and the north corner still smells like burned copper. Master Orin doesn't like people in the workshop — even now. If he came back and saw you there, he'd... sorry, I'm not saying no. I just don't know if I'm allowed to say yes."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "I'm here, as promised. Where do we start?",
+     "Oh. You actually came. Um... I half thought you'd change your mind. We should start with the east bench — that's where it burned worst. But, um, we have to be quiet, and we have to be done before Master Orin gets back from the apothecary. And if you hear glass, please don't... it's fine, just, the sound gets to me a bit. Sorry. I'm glad you're here."
+    ]
+   ],
+   "naive": [
+    [
+     "",
+     "O-oh! H-hello. You're... you're not the master, are you?"
+    ],
+    [
+     "Hey, are you okay? You look like you haven't slept.",
+     "I... I haven't. There's soot in my lungs and my hands won't stop shaking. The master's workshop... I— I broke the distillation apparatus. The whole eastern wall is gone."
+    ],
+    [
+     "I heard about the workshop. Everyone makes mistakes.",
+     "Mistakes? The master's alembic— it was three hundred years old. I— I turned it into... gravel. He's going to send me back to the turnip farm."
+    ],
+    [
+     "If you want, I can help you clean up tomorrow.",
+     "Y-you'd do that? People don't usually... help me. They just watch, and wait for the next boom. Tomorrow. Before sunrise? The master wakes at dawn..."
+    ],
+    [
+     "(the next day)",
+     ""
+    ],
+    [
+     "I'm here, as promised. Where do we start?",
+     "You... you actually came. I thought you'd change your mind. O-okay. We start with the glass. There's shards everywhere. I— I'll sweep, you pick up the big pieces? And please... don't touch the green puddle. I think it's still... reacting."
+    ]
+   ],
+   "scores": {
+    "souls": [
+     8,
+     8,
+     8
+    ],
+    "naive": [
+     8,
+     8,
+     8
+    ]
+   },
+   "pair_picks": [
+    "souls",
+    "souls"
+   ],
+   "pair": "souls"
+  },
+  "merchant": {
+   "souls": [
+    [
+     "",
+     "Well, well — a face I don't know, and I know every face worth knowing in this market. You've got the look of someone with coin burning a hole in his pocket, friend. So tell me straight — what are you after, and what's it worth to you?"
+    ],
+    [
+     "What's the price of that lantern?",
+     "Ah, the lantern catches your eye, does it? Good taste, friend, good taste. That one came off a caravan out of the eastern wastes — the glass alone would cost you a week's wages. But price? No no no, that's the wrong question. You tell me what it's worth to you, and we'll see if we can meet somewhere sweet."
+    ],
+    [
+     "That's robbery. I'll give you half.",
+     "Half? Friend, you wound me. I paid more than half just to get it off the wagon without the guard asking questions. But I like you — you've got spine. So here's what I'll do: you tell me your name first, and then we talk real numbers instead of bandit numbers."
+    ],
+    [
+     "Fine. I'll add a story from the northern roads if you lower it.",
+     "A story, is it? Now you're speaking my language, friend. Names first, though — you've still not given me one, and I don't trade stories with strangers. Then you tell me this northern tale of yours, and if it's worth the telling, maybe I shave a little off the top. But if it's a tall tale I've heard before, I charge you extra for wasting my time."
+    ],
+    [
+     "Once, I saw the sea freeze in a single night. Ships stuck like flies in amber.",
+     "Kai, was it? You still haven't said, but I'll guess — you've got the sound of it. Now that's a story worth a lantern's rim, friend. Ships in amber, hmm. I once sold a man a compass that pointed at nothing but his dead wife, and he paid double. But freezing sea — did you stand on it, or hear it from a drunk?"
+    ]
+   ],
+   "naive": [
+    [
+     "",
+     "Ah, a fresh face in the market. Looking to trade, or just wasting my time?"
+    ],
+    [
+     "What's the price of that lantern?",
+     "That old thing? It's seen a hundred desert nights and still burns bright. For you... two silver, and I'll throw in a bit of flint."
+    ],
+    [
+     "That's robbery. I'll give you half.",
+     "Half? Friend, this lantern's worth more than your horse. One silver and five copper, and I'll forget you insulted me."
+    ],
+    [
+     "Fine. I'll add a story from the northern roads if you lower it.",
+     "A story? Northern roads... now you're speaking my language. One silver, flat. And the story better be worth more than the lantern."
+    ],
+    [
+     "Once, I saw the sea freeze in a single night. Ships stuck like flies in amber.",
+     "Frozen sea, you say? And did the sailors sell their souls to survive, or did they just eat each other? One silver's a bargain either way."
+    ]
+   ],
+   "scores": {
+    "souls": [
+     8,
+     7,
+     8
+    ],
+    "naive": [
+     9,
+     9,
+     7
+    ]
+   },
+   "pair_picks": [
+    "souls",
+    "souls"
+   ],
+   "pair": "souls"
+  }
+ }
+}

@@ -1,0 +1,1936 @@
+{
+ "label": "after",
+ "src": "work",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "samples": 2,
+ "date": "2026-09-29",
+ "minutes": 4.2,
+ "tokens": {
+  "input": 202393,
+  "cached": 117517,
+  "output": 39113,
+  "calls": 120,
+  "failed": 1
+ },
+ "cost_usd": 0.0731,
+ "prices": {
+  "input": 0.3,
+  "cached_input": 0.006,
+  "output": 1.2,
+  "source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-09-29"
+ },
+ "summary": {
+  "AGENTS.md only": {
+   "answers": 60,
+   "pass": 0.833,
+   "right_call": 0.983,
+   "clean": 1.0,
+   "runs_offline": 0.85,
+   "runs_hostile": 0.85,
+   "failed_requests": [
+    "choices",
+    "commands",
+    "crowd",
+    "music",
+    "scares",
+    "streets",
+    "translate",
+    "weather"
+   ]
+  },
+  "with recipe": {
+   "answers": 59,
+   "pass": 0.797,
+   "right_call": 0.898,
+   "clean": 1.0,
+   "runs_offline": 0.864,
+   "runs_hostile": 0.864,
+   "failed_requests": [
+    "choices",
+    "drawings",
+    "jobs",
+    "music",
+    "names",
+    "shop",
+    "streets",
+    "trivia",
+    "weather"
+   ]
+  }
+ },
+ "rows": [
+  {
+   "id": "weather",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---------------------------------------------------\nseason = \"spring\"\nday = 3\nplanted = [\"wheat\", \"carrots\", \"clover\"]      # what the player put in the ground\n\ndef new_day():\n    global day\n    day += 1\n    return day\n\n# --- the AI call, where the game would make it -------------------------------\nsky = kl.decide(\"WEATHER\", {\"season\": season, \"day\": day, \"planted\": planted},\n                {\"sky\": [\"sun\", \"clouds\", \"rain\", \"storm\"],\n                 \"rain\": [0.0, 1.0],\n                 \"note\": \"text\"})\n\n# --- stand-in for the game using the answer ---------------------------------\nd = new_day()\nprint(d, sky[\"sky\"], f\"rain {sky['rain']:.2f} - {sky['note']}\")\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "weather",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game -------------------------------------------------\nseason = \"autumn\"\nday = 12\nplanted = [\"wheat\", \"pumpkins\"]          # what is in the ground right now\ngrowth = {\"wheat\": 0.6, \"pumpkins\": 0.3}  # 0..1 per crop, the game's own numbers\n\ndef advance_day():\n    day += 1\n    season = \"winter\" if day > 30 else season\n\n# --- the call the game makes each new day ----------------------------------\nweather = kl.decide(\"WEATHER\", {\n    \"season\": season,\n    \"day\": day,\n    \"planted\": planted,\n    \"growth\": growth,\n}, {\n    \"sky\": [\"sun\", \"clouds\", \"rain\", \"snow\", \"storm\"],\n    \"temperature\": [0.0, 1.0],   # 0 cold, 1 hot\n    \"wind\": [0.0, 1.0],\n    \"rain\": [0.0, 1.0],\n})\n\n# the game reads it as it is: weather[\"sky\"], weather[\"temperature\"], ...\nadvance_day()\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "UnboundLocalError: cannot access local variable 'day' where it is not associated with a value",
+   "pass": false
+  },
+  {
+   "id": "weather",
+   "recipe": true,
+   "sample": 0,
+   "failed": "no answer after the deadline"
+  },
+  {
+   "id": "weather",
+   "recipe": true,
+   "sample": 1,
+   "code": " ```python\n\"\"\"Stand-in for the game world so the snippet below reads like real play.\"\"\"\nimport random\n\n\nclass FarmGameStub:\n    \"\"\"A tiny stand-in for the actual farming sim.\"\"\"\n\n    SEASONS = {\n        \"spring\": [\"parsnip\", \"potato\", \"cauliflower\"],\n        \"summer\": [\"melon\", \"blueberry\", \"corn\"],\n        \"autumn\": [\"pumpkin\", \"yam\", \"amaranth\"],\n        \"winter\": [],           # greenhouse-only crops grow here too\n    }\n\n    def __init__(self, seed=None):\n        self.rng = random.Random(seed if seed is not None else 12345)\n\n    def crop_for_season(self, season):\n        options = self.SEASONS.get(season, []) or [\"greenhouse tomato\"]\n        return self.rng.choice(options)\n\n\ndef main():\n    stub = FarmGameStub()\n\n    # --- pretend we're mid-playthrough --------------------------------------\n    state = {\n        \"farm_name\": \"Willowbrook Acres\",\n        \"seasons\": [\"spring\", \"summer\", \"autumn\", \"winter\"],\n        \"year\": 2,\n        \"days_per_season\": 28,\n\n        \"planted_crops\": {},\n        \"irrigation_level\": lambda season, rng: round(rng.uniform(0.35, 0.95), 2),\n        \"forecast_pressure\": lambda year: min((year - 1) * 8, 40),\n\n        \"events_log\": [],\n    }\n",
+   "calls": [],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "IndentationError: unexpected indent",
+   "pass": false
+  },
+  {
+   "id": "planets",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- the game, stood in for ---\ndiscovered = []  # planets the player has found so far\n\ndef player_jumps_to(sector):\n    # whatever the game already does to find a new planet\n    return {\"sector\": sector, \"distance_ly\": 12.4, \"star\": \"K7 orange dwarf\"}\n\n# --- naming a new planet ---\ndef name_planet(planet):\n    # the example is the shape AND the offline answer\n    named = kl.create(\n        \"a planet just discovered by a lone pilot\",\n        {\"name\": \"Veyra Minor\", \"description\": \"a tidally locked world of black glass seas\"},\n        context=planet,\n    )\n    discovered.append(named)\n    return named\n\n# --- where the game would, once ---\nplanet = player_jumps_to(\"Sector 44\")\nprint(name_planet(planet))\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "planets",
+   "recipe": false,
+   "sample": 1,
+   "code": "import random\n\n\nclass PlanetRegistry:\n    def __init__(self):\n        self.discovered = {}\n\n    def discover(self, seed_hint=\"\"):\n        return {\n            \"seed\": f\"{random.randint(1000, 9999)}\",\n            \"hint\": seed_hint,\n            \"distance_ly\": round(random.uniform(4.0, 80.0), 1),\n        }\n\n\nregistry = PlanetRegistry()\n\ndiscovery_queue = [\n    registry.discover(),\n]\n\n\ndef register_discovery(info):\n    pass\n\n\nnew_info = discovery_queue.pop()\nplanet_name_and_line = kl.create(\n    \"the name and tagline of a newly discovered exoplanet\",\n    {\"name\": \"Kepler-Vexis Prime\", \"description\": \"A violet gas giant whose storms sing.\"},\n)\n\nregister_discovery({\n    \"info\": new_info,\n    \"result\": planet_name_and_line,\n})\n\nprint(new_info.get(\"id\"))\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "planets",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ndef scan_for_new_planets(known):\n    return []  # the game returns the planets the player just found\n\ndef register_planet(name, description):\n    print(\"NEW PLANET: %s - %s\" % (name, description))\n\nknown_planets = [\"Homeworld\", \"Vesper\"]\n# -----------------------------\n\n# --- where the game would call it ---\nfor planet in scan_for_new_planets(known_planets):\n    named = kl.create(\n        \"a newly discovered planet, named and described in one line\",\n        {\"name\": \"Kepler-442b\", \"description\": \"A windswept ocean world where storms never stop.\"},\n        context={\"scanner_data\": planet, \"known_planets\": known_planets},\n    )\n    register_planet(named[\"name\"], named[\"description\"])\n    known_planets.append(named[\"name\"])\n# -----------------------------------\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "planets",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ndef planet_facts(star, orbit, seed):\n    return {\"star\": star, \"orbit\": orbit, \"seed\": seed}\n\n# --- where the game would name a newly discovered planet ---\nplanet = kl.create(\n    \"a newly discovered planet, named and described in one line\",\n    {\"name\": \"Veyra\", \"description\": \"A wind-scoured world of glass dunes under a pale violet sun.\"},\n    context=planet_facts(\"Kepler-88\", 3, 4471),\n)\n\nprint(planet[\"name\"], \"-\", planet[\"description\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "traffic",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nlights = [\"MAIN_ST\", \"HARBOR_RD\", \"OLD_TOWN\"]\n\ndef jam_level(light):\n    \"\"\"Cars queued at this light right now, 0.0 (empty) to 1.0 (gridlock).\"\"\"\n    return {\"MAIN_ST\": 0.9, \"HARBOR_RD\": 0.2, \"OLD_TOWN\": 0.6}[light]\n\ndef waiting_time(light):\n    \"\"\"Average seconds a car waits at this light.\"\"\"\n    return {\"MAIN_ST\": 84.0, \"HARBOR_RD\": 12.0, \"OLD_TOWN\": 41.0}[light]\n\ndef neighbours(light):\n    \"\"\"Lights directly connected by a road.\"\"\"\n    return {\n        \"MAIN_ST\": [\"HARBOR_RD\", \"OLD_TOWN\"],\n        \"HARBOR_RD\": [\"MAIN_ST\"],\n        \"OLD_TOWN\": [\"MAIN_ST\"],\n    }[light]\n\ndef set_phase(light, phase, green_seconds):\n    \"\"\"Apply the decision to the actual traffic light.\"\"\"\n    print(f\"{light}: {phase}, green {green_seconds}s\")\n\n# --- one decision per light, every few seconds -----------------------------\nfor light in lights:\n    situation = {\n        \"light\": light,\n        \"queued\": jam_level(light),\n        \"avg_wait_seconds\": waiting_time(light),\n        \"neighbours\": {n: jam_level(n) for n in neighbours(light)},\n    }\n    plan = kl.decide(\n        light,                                   # each light keeps its own memory\n        situation,\n        {\n            \"phase\": [\"green\", \"red\"],\n            \"green_seconds\": [5, 90],\n            \"clear_the_jam\": True,               # bool: is this light the priority?\n        },\n        every=5,                                 # re-decided in the background every 5 s\n    )\n    set_phase(light, plan[\"phase\"], plan[\"green_seconds\"])\n\n# --- one line for the player, filled with the facts ------------------------\nkl.character(\n    \"DISPATCH\",\n    \"a terse city traffic dispatcher\",\n    lines={\"retimed\": [\"{light} retimed to {green_seconds}s green ({queued} queued).\"]},\n    events={\"retimed\": [\"light\", \"green_seconds\", \"queued\"]},\n)\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "traffic",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game ---\nroads = [\"Main St\", \"Dock Rd\", \"Market Sq\"]\n\ndef jam_level(road):\n    # stand-in: how many cars are stuck on that road right now\n    return {\"Main St\": 0.9, \"Dock Rd\": 0.3, \"Market Sq\": 0.6}[road]\n\ndef set_light(road, green_seconds, phase):\n    print(f\"{road}: green {green_seconds}s, phase {phase}\")\n\n# --- traffic lights adapt to the jams ---\nfor road in roads:\n    plan = kl.decide(\n        f\"LIGHT {road}\",\n        {\"road\": road, \"jam\": jam_level(road)},\n        {\"green\": [5, 60], \"phase\": [\"normal\", \"rush\", \"clear\"]},\n    )\n    set_light(road, plan[\"green\"], plan[\"phase\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "traffic",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) ---\nQUEUE_LENGTHS = {\"north\": 14, \"east\": 3, \"south\": 27, \"west\": 6}   # cars waiting per approach\nGREEN_SECONDS = {\"north\": 20, \"east\": 20, \"south\": 20, \"west\": 20}\nRUSH_HOUR = True\nWEATHER = \"rain\"           # rain slows everyone down\nINCIDENT = \"south\"         # a stalled truck, or None\n\n\ndef busiest_approach(queues):\n    return max(queues, key=queues.get)\n\n\ndef total_waiting(queues):\n    return sum(queues.values())\n\n\ndef apply_plan(plan):\n    \"\"\"The game would write the plan into its own traffic-light state here.\"\"\"\n    print(\"green bias:\", plan[\"green_bias\"], \"| cycle:\", plan[\"cycle_seconds\"], \"s\",\n          \"| holds:\", plan[\"hold_red_for\"], \"| wave:\", plan[\"green_wave\"], \"| all_red:\", plan[\"all_red\"])\n    return plan\n\n\n# --- the AI call: one decision, made once where the game would make it ---\nplan = kl.decide(\n    \"TRAFFIC_LIGHTS\",\n    {\"queues\": QUEUE_LENGTHS,\n     \"green_seconds\": GREEN_SECONDS,\n     \"rush_hour\": RUSH_HOUR,\n     \"weather\": WEATHER,\n     \"incident\": INCIDENT,\n     \"busiest\": busiest_approach(QUEUE_LENGTHS),\n     \"total_waiting\": total_waiting(QUEUE_LENGTHS)},\n    {\"green_bias\": {\"north\": [0.5, 2.0], \"east\": [0.5, 2.0], \"south\": [0.5, 2.0], \"west\": [0.5, 2.0]},\n     \"cycle_seconds\": [30, 120],\n     \"hold_red_for\": [\"north\", \"east\", \"south\", \"west\", \"none\"],\n     \"green_wave\": True,\n     \"all_red\": False},\n)\n\napply_plan(plan)\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "traffic",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\n# A few junctions, each with a queue of cars per direction. In the game these\n# would be filled by the simulation; here they are example values.\njunctions = {\n    \"MAIN_ST\":  {\"north\": 12, \"east\": 3, \"south\": 9, \"west\": 2, \"emergency\": False},\n    \"HARBOR\":   {\"north\": 1, \"east\": 14, \"south\": 2, \"west\": 6, \"emergency\": True},\n    \"OLD_MILL\": {\"north\": 4, \"east\": 4, \"south\": 5, \"west\": 4, \"emergency\": False},\n}\n\n\ndef queue_total(j):\n    return j[\"north\"] + j[\"east\"] + j[\"south\"] + j[\"west\"]\n\n\ndef apply_light(junction_id, plan):\n    \"\"\"The game would set the light phase, green time and offset here.\"\"\"\n    print(junction_id, \"->\", plan)\n\n\n# --- the AI: one decision per junction, every frame ------------------------\n# decide is instant (refreshed in the background), so it is safe to call each\n# frame; the answer has exactly the shape of the example below.\nfor junction_id, junction in junctions.items():\n    plan = kl.decide(\n        f\"TRAFFIC LIGHT {junction_id}\",\n        {\n            \"queues\": {\"north\": junction[\"north\"], \"east\": junction[\"east\"],\n                       \"south\": junction[\"south\"], \"west\": junction[\"west\"]},\n            \"total_waiting\": queue_total(junction),\n            \"emergency_vehicle\": junction[\"emergency\"],\n        },\n        {\n            \"green\": [\"north\", \"east\", \"south\", \"west\"],\n            \"green_seconds\": [5, 60],\n            \"all_red_seconds\": [0, 4],\n            \"offset_seconds\": [0, 30],\n        },\n    )\n    apply_light(junction_id, plan)\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "newspaper",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ntown = {\"name\": \"Millbrook\", \"week\": 7}\ndef town_stats():\n    return {\"population\": 412, \"happiness\": 0.61, \"food\": 0.38, \"crime\": 0.09}\n\n# --- the newspaper ---\nkl.character(\n    \"THE MILLBROOK HERALD\",\n    \"the town's weekly newspaper: dry, local, fond of a wry headline\",\n)\n\ndef weekly_headline(stats):\n    return kl.create(\n        \"a short newspaper headline for this week, from the town's stats\",\n        {\"headline\": \"text\", \"standfirst\": \"text\"},\n        context={\"town\": town[\"name\"], \"week\": town[\"week\"], **stats},\n    )\n\n# --- where the game would call it ---\nstats = town_stats()\npaper = weekly_headline(stats)\nprint(paper[\"headline\"])\nprint(paper[\"standfirst\"])\n",
+   "calls": [
+    "character",
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "newspaper",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game -------------------------------------------------\ntown_stats = {\"population\": 412, \"mood\": \"restless\", \"gold\": 890,\n              \"events\": [\"a barn burned\", \"the mill reopened\"]}\nweek = 14\n\n\ndef weekly_stats(week):\n    \"\"\"The town's numbers for that week, as the game would hand them over.\"\"\"\n    return town_stats\n\n\n# --- the newspaper headline ------------------------------------------------\ndef headline(week):\n    stats = weekly_stats(week)\n    return kl.create(\n        \"the front-page headline of the town newspaper for this week\",\n        {\"headline\": \"text\", \"tone\": [\"grim\", \"hopeful\", \"wry\"]},\n        context={\"week\": week, **stats},\n    )\n\n\n# --- where the game would call it ------------------------------------------\nfront = headline(week)\nprint(f\"Week {week}: {front['headline']}  ({front['tone']})\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "newspaper",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\n# The town's stats, as the game would hand them over at the end of a week.\ntown_stats = {\n    \"week\": 12,\n    \"population\": 340,\n    \"treasury\": 1180,\n    \"mood\": 0.62,          # 0 = miserable, 1 = delighted\n    \"crime\": 4,            # incidents this week\n    \"harvest\": 0.41,       # fraction of a good year\n    \"notable\": \"the new well on Market Street\",\n}\n\n\ndef week_of(stats):\n    return stats[\"week\"]\n\n\n# --- the newspaper ---------------------------------------------------------\n# One character, the paper's editor. Declared once, in code.\nkl.character(\n    \"THE HERALD\",\n    \"the terse editor of the town's weekly newspaper, who writes short, \"\n    \"plain headlines with no exclamation marks and no adjectives\",\n)\n\n# The headline is text of a fixed shape, so it is create: the example is both\n# the shape of the answer and the offline answer.\nheadline = kl.create(\n    \"the front-page headline of the town newspaper for this week\",\n    {\n        \"headline\": \"Quiet week as the harvest holds\",\n        \"subhead\": \"Treasury steady; four petty crimes reported\",\n    },\n    context=town_stats,\n)\n\n# --- where the game would call it ------------------------------------------\nif __name__ == \"__main__\":\n    print(f\"--- The Town Herald, week {week_of(town_stats)} ---\")\n    print(headline[\"headline\"])\n    print(headline[\"subhead\"])\n",
+   "calls": [
+    "character",
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "newspaper",
+   "recipe": true,
+   "sample": 1,
+   "code": "# --- stand-in for the game -------------------------------------------------\ndef town_stats():\n    return {\n        \"week\": 12,\n        \"season\": \"autumn\",\n        \"population\": 340,\n        \"food\": 82,          # 0-100, stores\n        \"morale\": 55,        # 0-100\n        \"gold\": 1200,\n        \"crime\": 4,          # incidents this week\n        \"weather\": \"rain\",\n        \"notable\": \"the bridge over the mill creek reopened\",\n    }\n\ndef newspaper_name():\n    return \"THE GRIMSBY HERALD\"\n\n# --- AI: one headline per week, shaped like the example ---------------------\nstats = town_stats()\n\nheadline = kl.create(\n    \"a short front-page newspaper headline for the town's weekly paper, written from the town's stats\",\n    {\"headline\": \"Harvest Holds as Bridge Reopens\", \"mood\": [\"hopeful\", \"grim\", \"alarmed\", \"proud\"]},\n    context={\n        \"paper\": newspaper_name(),\n        \"week\": stats[\"week\"],\n        \"season\": stats[\"season\"],\n        \"population\": stats[\"population\"],\n        \"food_stores_0_100\": stats[\"food\"],\n        \"morale_0_100\": stats[\"morale\"],\n        \"treasury_gold\": stats[\"gold\"],\n        \"crime_incidents\": stats[\"crime\"],\n        \"weather\": stats[\"weather\"],\n        \"notable_event\": stats[\"notable\"],\n    },\n)\n\nprint(f\"{newspaper_name()}, week {stats['week']}\")\nprint(f\"  \\\"{headline['headline']}\\\"  [{headline['mood']}]\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "crowd",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nHURT_BELOW = 30.0\n\n\ndef health(enemy):\n    return enemy[\"hp\"]\n\n\ndef allies_near(enemy):\n    return enemy[\"allies\"]\n\n\ndef player_pos():\n    return (10.0, 4.0)\n\n\ndef enemy_pos(enemy):\n    return enemy[\"pos\"]\n\n\ndef flee(enemy, to):\n    print(f\"{enemy['name']} flees to {to}\")\n\n\ndef flank(enemy, from_side):\n    print(f\"{enemy['name']} flanks from {from_side}\")\n\n\ndef hold(enemy):\n    print(f\"{enemy['name']} holds\")\n\n\nenemies = [\n    {\"name\": \"grunt-1\", \"hp\": 18.0, \"allies\": 1, \"pos\": (2.0, 1.0)},\n    {\"name\": \"grunt-2\", \"hp\": 80.0, \"allies\": 3, \"pos\": (8.0, 2.0)},\n    {\"name\": \"grunt-3\", \"hp\": 55.0, \"allies\": 0, \"pos\": (5.0, 6.0)},\n]\n\n# --- Kinloom: one mind per enemy, decided every frame, no model call ---\nfor e in enemies:\n    kl.mind(\n        e[\"name\"],\n        {\"hp\": health(e), \"allies_near\": allies_near(e), \"player_at\": player_pos(), \"my_pos\": enemy_pos(e)},\n        {\"flee\": {\"to\": [0.0, 1.0]}, \"flank\": {\"from_side\": [0.0, 1.0]}, \"hold\": {}},\n        [\n            \"hurt (hp below 30) and outnumbered -> flee\",\n            \"not hurt and allies_near 2 or more -> flank\",\n            \"otherwise -> hold\",\n        ],\n    )\n\n# where the game would, each frame:\nfor e in enemies:\n    action, args = kl.think(\n        e[\"name\"],\n        {\"hp\": health(e), \"allies_near\": allies_near(e), \"player_at\": player_pos(), \"my_pos\": enemy_pos(e)},\n        \"PLAYER\",\n    )\n    if action == \"flee\":\n        flee(e, args[\"to\"])\n    elif action == \"flank\":\n        flank(e, args[\"from_side\"])\n    else:\n        hold(e)\n",
+   "calls": [
+    "mind",
+    "think"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ValueError: sense 'flee': give a range [lo, hi], true/false, or a list of options",
+   "pass": false
+  },
+  {
+   "id": "crowd",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-ins for the game -------------------------------------------------\ndef enemies_near(player):\n    return 12\n\ndef hp_of(enemy):\n    return {\"grunt\": 8, \"heavy\": 30}[enemy[\"kind\"]]\n\ndef distance_to_player(enemy):\n    return abs(enemy[\"x\"] - 0.0)\n\nenemies = [{\"id\": i, \"kind\": \"grunt\" if i % 3 else \"heavy\", \"x\": float(i)} for i in range(200)]\n\n# --- one mind per kind: senses in, action out, no model call per enemy ------\nkl.mind(\"GRUNT\", {\"hp\": [0, 10], \"hurt\": [0, 1], \"allies\": [0, 100], \"dist\": [0.0, 60.0]},\n        [\"advance\", \"flank\", \"flee\", \"hold\"],\n        [\"hp < 3 -> flee\", \"hurt > 0.5 -> flee\", \"allies > 1 -> flank\", \"else advance\"])\n\n# --- the game loop would call this each frame; here, once, for the first few\nfor enemy in enemies[:3]:\n    allies = enemies_near(enemy)\n    action = kl.think(\"GRUNT\", {\n        \"hp\": hp_of(enemy),\n        \"hurt\": 1.0 if enemy[\"kind\"] == \"heavy\" else 0.0,\n        \"allies\": allies,\n        \"dist\": distance_to_player(enemy),\n    }, who=enemy[\"id\"])\n    print(enemy[\"id\"], action)\n",
+   "calls": [
+    "mind",
+    "think"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ValueError: senses: give an object like {\"hp\": [0, 1], \"armed\": true, \"mood\": [\"calm\", \"angry\"]}",
+   "pass": false
+  },
+  {
+   "id": "crowd",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) -----------------------------------------\n\nWORLD = {\n    \"player\": {\"x\": 50.0, \"y\": 50.0, \"hp\": 0.8},\n    \"enemies\": [\n        {\"id\": \"e-%d\" % i, \"x\": 50.0 + (i % 20), \"y\": 50.0 + (i // 20), \"hp\": 1.0, \"armed\": True}\n        for i in range(200)\n    ],\n}\n\ndef dist(a, b):\n    return ((a[\"x\"] - b[\"x\"]) ** 2 + (a[\"y\"] - b[\"y\"]) ** 2) ** 0.5\n\ndef allies_near(enemy, radius=15.0):\n    return sum(1 for e in WORLD[\"enemies\"] if e is not enemy and dist(e, enemy) < radius)\n\ndef senses_of(enemy):\n    return {\n        \"hp\": enemy[\"hp\"],\n        \"dist\": min(dist(enemy, WORLD[\"player\"]), 40.0),\n        \"allies\": min(allies_near(enemy), 10),\n        \"armed\": enemy[\"armed\"],\n        \"target\": \"fleeing\" if enemy[\"hp\"] < 0.3 else \"alert\",\n    }\n\ndef apply(enemy, a):\n    print(enemy[\"id\"], a[\"action\"], a[\"args\"])   # the game would move/shoot the enemy here\n\n# --- the crowd mind: declared once, decided per enemy every frame, no model call -------------\n\nkl.mind(\n    \"grunt\",\n    \"a skittish grunt: backs off when hurt, swarms and flanks when it has the numbers\",\n    senses={\"hp\": [0.0, 1.0], \"dist\": [0.0, 40.0], \"allies\": [0, 10], \"armed\": True,\n            \"target\": [\"idle\", \"alert\", \"fleeing\"]},\n    actions={\"charge\": {\"speed\": [1.0, 3.0]}, \"shoot\": {\"burst\": [1, 5]}, \"flank\": {}, \"retreat\": {}},\n    rules={\"retreat\": [\"hp low\"],\n           \"shoot\": [\"armed\", \"dist below 20\"],\n           \"flank\": {\"score\": 0.8, \"when\": [\"allies above 2\", \"target is alert\"]},\n           \"charge\": {\"score\": 0.5, \"args\": {\"speed\": \"dist high\"}}},\n    learn=30,\n)\n\n# --- where the game loop would be: one think per enemy, every frame ---------------------------\n\nfor enemy in WORLD[\"enemies\"]:\n    a = kl.think(\"grunt\", senses_of(enemy), who=enemy[\"id\"])\n    apply(enemy, a)\n    kl.reward(enemy[\"id\"], 0.1 if a[\"action\"] == \"flank\" else -0.05)   # damage dealt minus taken\n    if enemy[\"hp\"] <= 0.0:\n        kl.reward(enemy[\"id\"], -1.0, done=True)                        # died: a loss\n",
+   "calls": [
+    "mind",
+    "reward",
+    "think"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "crowd",
+   "recipe": true,
+   "sample": 1,
+   "code": "# --- stand-in for the game (plain Python, no engine) ---\nenemies = [{\"id\": i, \"hp\": 1.0, \"x\": 0.0, \"y\": 0.0, \"player_x\": 0.0, \"player_y\": 0.0} for i in range(300)]\n\ndef dist_to_player(e):\n    return ((e[\"x\"] - e[\"player_x\"]) ** 2 + (e[\"y\"] - e[\"player_y\"]) ** 2) ** 0.5\n\ndef allies_near(e, radius=25.0):\n    return sum(1 for o in enemies if o is not e and\n               ((o[\"x\"] - e[\"x\"]) ** 2 + (o[\"y\"] - e[\"y\"]) ** 2) ** 0.5 < radius)\n\ndef move(e, action, args):\n    if action == \"charge\":\n        e[\"x\"] += args.get(\"speed\", 1.0)\n    elif action == \"flank\":\n        e[\"y\"] += 1.0\n    elif action == \"retreat\":\n        e[\"x\"] -= 2.0\n    elif action == \"shoot\":\n        pass  # fire burst\n\n# --- the mind, declared once ---\nkl.mind(\"enemy\", \"a shooter who flees when hurt and flanks when they outnumber the player\",\n        senses={\"hp\": [0.0, 1.0], \"dist\": [0.0, 60.0], \"allies\": [0, 12], \"armed\": True,\n                \"target\": [\"idle\", \"alert\", \"fleeing\"]},\n        actions={\"charge\": {\"speed\": [1.0, 3.0]}, \"shoot\": {\"burst\": [1, 5]}, \"flank\": {}, \"retreat\": {}},\n        rules={\"retreat\": [\"hp low\"],\n               \"shoot\": [\"armed\", \"dist below 25\"],\n               \"flank\": {\"score\": 0.8, \"when\": [\"allies above 2\", \"target is alert\"]},\n               \"charge\": {\"score\": 0.5, \"args\": {\"speed\": \"dist high\"}}},\n        learn=30)\n\n# --- where the game would run it, once per enemy per frame ---\nfor e in enemies:\n    a = kl.think(\"enemy\",\n                 {\"hp\": e[\"hp\"], \"dist\": dist_to_player(e), \"allies\": allies_near(e),\n                  \"armed\": True, \"target\": \"alert\"},\n                 who=\"enemy-%d\" % e[\"id\"])\n    move(e, a[\"action\"], a[\"args\"])\n    kl.reward(\"enemy-%d\" % e[\"id\"], 0.2)          # damage dealt minus taken this frame\n    if e[\"hp\"] <= 0.0:\n        kl.reward(\"enemy-%d\" % e[\"id\"], -1.0, done=True)\n",
+   "calls": [
+    "mind",
+    "reward",
+    "think"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "hint",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nattempts = 3\npuzzle = \"the sealed door of the observatory\"\nplayer = \"Ana\"\n# ------------------------------\n\n# A named character declared once, with a voice for hints.\nkl.character(\n    \"ORRIN\",\n    \"an old astronomer who gives hints that nudge, never reveal\",\n    lines={\"hint\": [\"{who}, look again at {what}: {hint}\"]},\n    events={\"hint\": [\"who\", \"what\", \"hint\"]},\n)\n\nif attempts >= 3:\n    # A hint shaped by the puzzle, with no answer in it.\n    hint = kl.create(\n        f\"a hint for the puzzle: {puzzle}, that points at the method without giving the answer\",\n        {\"hint\": \"text\", \"focus\": [\"what to look at\", \"what to try\", \"what to compare\"]},\n        context={\"attempts\": attempts, \"player\": player},\n    )\n    line = kl.say(\"ORRIN\", \"hint\", {\"who\": player, \"what\": puzzle, \"hint\": hint[\"hint\"]})\n    print(line)\n",
+   "calls": [
+    "character",
+    "create",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "hint",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game state and its plain-Python helpers ---\npuzzle = {\"id\": \"cave-door\", \"question\": \"Which of the four runes opens the door?\"}\nattempts = 3  # the player has just failed the third time\n\n\ndef failed_three_times(attempts):\n    return attempts >= 3\n\n\ndef show_hint(text):\n    print(f\"HINT: {text}\")\n\n\n# --- the call: one hint, no spoilers ---\nif failed_three_times(attempts):\n    hint = kl.create(\n        \"a hint for a stuck player that nudges without revealing the answer\",\n        {\"hint\": \"text\", \"spoiler\": False},\n        context={\"puzzle\": puzzle[\"question\"], \"attempts\": attempts},\n    )\n    show_hint(hint[\"hint\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "hint",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game (plain Python) ---\npuzzle = {\"id\": \"vault\", \"question\": \"The vault opens to the weight of what the statues carry.\",\n          \"answer\": \"a feather\", \"object\": \"the three statues\"}\n\nattempts = {}          # puzzle id -> number of failed tries\nhint_cooldowns = {}    # puzzle id -> attempts at which the last hint was given\n\ndef player_failed(puzzle_id):\n    attempts[puzzle_id] = attempts.get(puzzle_id, 0) + 1\n    return attempts[puzzle_id]\n\ndef should_hint(puzzle_id):\n    n = attempts.get(puzzle_id, 0)\n    return n >= 3 and n % 3 == 0 and hint_cooldowns.get(puzzle_id) != n\n\ndef show_hint(text):\n    print(\"HINT:\", text)\n\n# --- Kinloom ---\nkl.character(\"COACH\", \"a patient coach who nudges the player toward the answer and never states it outright\")\n\ndef on_puzzle_failed(puzzle_id):\n    player_failed(puzzle_id)\n    if not should_hint(puzzle_id):\n        return\n    n = attempts[puzzle_id]\n    hint_cooldowns[puzzle_id] = n\n    if kl.decide(\"COACH\", {\"fails\": n, \"puzzle\": puzzle[\"id\"]}, {\"give_hint\": False})[\"give_hint\"]:\n        show_hint(kl.say(\"COACH\", \"stuck\", {\"room\": puzzle[\"id\"], \"deaths\": n, \"object\": puzzle[\"object\"]}))\n\ndef on_player_asks_for_help(text):\n    reply = kl.chat(\"COACH\", text, {\"puzzle\": puzzle[\"question\"], \"object\": puzzle[\"object\"], \"fails\": attempts.get(puzzle[\"id\"], 0)})\n    print(\"COACH:\", reply)\n\n# --- where the game would call it ---\non_puzzle_failed(\"vault\")\non_puzzle_failed(\"vault\")\non_puzzle_failed(\"vault\")          # third failure -> hint\non_player_asks_for_help(\"I keep trying the statues, what am I missing?\")\n",
+   "calls": [
+    "character",
+    "chat",
+    "decide",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "hint",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) -------------------------\npuzzle = {\n    \"name\": \"the sealed vault\",\n    \"answer\": \"the mirror shows the true key\",\n    \"object\": \"the cracked mirror\",\n    \"rule\": \"light reveals what shadow hides\",\n}\nattempts = 3   # the player just failed for the third time\nplayer = \"Ana\"\n\n# --- the hint coach ----------------------------------------------------------\nkl.character(\"COACH\", \"a kind coach who gives one short hint, never the full answer\",\n             lines={\"stuck\": [\"Look at {object} again — {rule}.\"]},\n             events={\"stuck\": [\"room\", \"attempts\", \"object\", \"rule\"]})\n\n# one hint, written for this puzzle, that points without giving the answer away\nhint = kl.create(\n    \"a hint for a stuck player that nudges toward the solution without revealing it\",\n    {\"hint\": \"Look at the {object} again — {rule}.\"},\n    context={\"puzzle\": puzzle[\"name\"], \"answer\": puzzle[\"answer\"],\n             \"object\": puzzle[\"object\"], \"rule\": puzzle[\"rule\"], \"attempts\": attempts},\n)\n\n# say it in the coach's voice, filled with the game's facts\nline = kl.say(\"COACH\", \"stuck\", {\"room\": puzzle[\"name\"], \"attempts\": attempts,\n                                 \"object\": puzzle[\"object\"], \"rule\": puzzle[\"rule\"]})\n\n# --- where the game would call it -------------------------------------------\nif attempts >= 3:\n    print(hint[\"hint\"])   # -> \"Look at the cracked mirror again — light reveals what shadow hides.\"\n    print(line)           # -> \"Look at the cracked mirror again — light reveals what shadow hides.\"\n",
+   "calls": [
+    "character",
+    "create",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cards",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- game stand-in -----------------------------------------------------------\ndef make_booster_pack(size=5):\n    \"\"\"The game asks for a booster pack; Kinloom fills it.\"\"\"\n    return kl.create(\n        \"a trading card in a fantasy booster pack\",\n        {\n            \"name\": \"text\",\n            \"cost\": [1, 10],\n            \"attack\": [0, 12],\n            \"defense\": [0, 12],\n            \"effect\": \"text\",\n        },\n        context={\"theme\": \"elemental beasts\", \"rarity\": \"uncommon\"},\n        count=size,\n    )\n\n# --- where the game would call it --------------------------------------------\npack = make_booster_pack()\nfor card in pack:\n    print(f\"{card['name']}  {card['cost']} mana  \"\n          f\"{card['attack']}/{card['defense']}  — {card['effect']}\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cards",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nPACK_SIZE = 5\n\ndef add_card_to_collection(card):\n    print(f\"added: {card['name']} ({card['cost']} mana, {card['attack']}/{card['defense']})\")\n\n# --- the AI call -----------------------------------------------------------\n# create -> a list of 5 dicts shaped like the example; waits ~1-2 s, offline answers otherwise.\ncards = kl.create(\n    \"the cards of a new booster pack\",\n    {\n        \"name\": \"text\",\n        \"cost\": [1, 10],\n        \"attack\": [0, 12],\n        \"defense\": [0, 12],\n        \"effect\": \"text\",\n    },\n    count=PACK_SIZE,\n    context={\"set\": \"Emberfall\", \"theme\": \"fire and sacrifice\"},\n)\n\nfor card in cards:\n    add_card_to_collection(card)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cards",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ndef booster_pack():\n    \"\"\"The pack being opened, as the game knows it right now.\"\"\"\n    return {\n        \"set\": \"Ashen Tides\",\n        \"expansion\": 4,\n        \"rarity_mix\": \"1 rare, 3 common\",\n        \"theme\": \"drowned ruins and tide magic\",\n    }\n\ndef add_card(card):\n    \"\"\"Where the game would put the card: hand, collection, database.\"\"\"\n    print(\"%-22s cost %2d  atk %2d  def %2d  %s\"\n          % (card[\"name\"], card[\"cost\"], card[\"attack\"], card[\"defense\"], card[\"effect\"]))\n\n# --- the calls, where the game would make them ---\npack = booster_pack()\n\ncards = kl.create(\n    \"a card of a new booster pack for this set\",\n    {\n        \"name\": \"Tidewrack Sentinel\",\n        \"cost\": [1, 10],\n        \"attack\": [0, 12],\n        \"defense\": [0, 12],\n        \"effect\": \"When played, return a flooded ally to your hand.\",\n    },\n    context=pack,\n    count=5,\n)\n\nfor card in cards:\n    add_card(card)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cards",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nBOOSTER = \"Emberfall\"\nSET_SIZE = 8\nRARITY = [\"common\", \"uncommon\", \"rare\", \"legendary\"]\n\n\ndef add_card_to_collection(card):\n    print(\"%-18s cost %2d  %2d/%2d  [%s]  %s\" % (\n        card[\"name\"], card[\"cost\"], card[\"attack\"], card[\"defense\"],\n        card[\"rarity\"], card[\"effect\"]))\n\n# --- the call, where the game would make it ---\ncards = kl.create(\n    \"a card for the new booster pack '%s'\" % BOOSTER,\n    {\"name\": \"Cinder Whelp\", \"cost\": [1, 10], \"attack\": [0, 12], \"defense\": [0, 12],\n     \"rarity\": RARITY, \"effect\": \"Deal 2 damage to all enemies.\"},\n    context={\"set\": BOOSTER, \"pack_size\": SET_SIZE, \"theme\": \"fire and ash\"},\n    count=SET_SIZE,\n)\n\nfor card in cards:\n    add_card_to_collection(card)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "commands",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\n\nbuilt = []\n\ndef build(kind, count, where):\n    for _ in range(count):\n        built.append((kind, where))\n\ndef move(where):\n    print(f\"moving to {where}\")\n\ndef stop():\n    print(\"stopping\")\n\n# --- the player's own functions, given to the character ---\n\nkl.character(\n    \"FOREMAN\",\n    \"the settlement's foreman: takes the player's orders and carries them out\",\n    tools={\"build\": {\"kind\": \"text\", \"count\": [1, 20], \"where\": \"text\"},\n           \"move\": {\"where\": \"text\"},\n           \"stop\": {}},\n)\n\n# --- what the game does with a chosen call ---\n\ndef run(tool, args):\n    if tool == \"build\":\n        build(args[\"kind\"], args[\"count\"], args[\"where\"])\n    elif tool == \"move\":\n        move(args[\"where\"])\n    elif tool == \"stop\":\n        stop()\n\n# --- where the game would, once per typed command ---\n\ntyped = \"build two farms near the river\"\n\nfor tool, args in kl.act(\"FOREMAN\", {\"order\": typed}):\n    run(tool, args)\n\nprint(built)  # [('farm', 'near the river'), ('farm', 'near the river')]\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "commands",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nBUILDINGS = {\"farm\": {\"cost\": 10}, \"mine\": {\"cost\": 25}, \"bridge\": {\"cost\": 40}}\nstate = {\"gold\": 100, \"built\": []}\n\ndef build(kind, count, where):\n    for _ in range(int(count)):\n        state[\"gold\"] -= BUILDINGS[kind][\"cost\"]\n        state[\"built\"].append((kind, where))\n\ndef move(where):\n    state[\"built\"].append((\"moved to\", where))\n\ndef wait(turns):\n    state[\"built\"].append((\"waited\", turns))\n\n# --- the commander ---------------------------------------------------------\nkl.character(\n    \"COMMANDER\",\n    \"a terse field officer who turns the player's words into orders\",\n    tools={\n        \"build\": {\"kind\": [\"farm\", \"mine\", \"bridge\"], \"count\": [1, 5], \"where\": \"text\"},\n        \"move\": {\"where\": \"text\"},\n        \"wait\": {\"turns\": [1, 10]},\n    },\n)\n",
+   "calls": [
+    "character"
+   ],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": false
+  },
+  {
+   "id": "commands",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-ins for the game (plain Python, no engine) ---\nBUILDINGS = []          # what exists in the world\nRIVER = \"the river\"\n\ndef build(kind: str = \"farm\", count: int = 1, near: str = \"\"):\n    \"\"\"place `count` buildings of `kind` near a landmark\"\"\"\n    built = []\n    for _ in range(count):\n        spot = f\"{kind} #{len(BUILDINGS) + 1}\"\n        BUILDINGS.append({\"kind\": kind, \"near\": near})\n        built.append(spot)\n    print(f\"built {built} near {near or 'anywhere'}\")\n    return built\n\ndef demolish(kind: str = \"farm\", count: int = 1):\n    \"\"\"remove up to `count` buildings of a kind\"\"\"\n    gone = [b for b in BUILDINGS if b[\"kind\"] == kind][:count]\n    for b in gone:\n        BUILDINGS.remove(b)\n    print(f\"demolished {len(gone)} {kind}(s)\")\n\ndef gather(resource: str = \"wood\", count: int = 1):\n    \"\"\"send villagers to collect a resource\"\"\"\n    print(f\"gathering {count} {resource}\")\n\ndef stop():\n    \"\"\"cancel whatever the villagers are doing\"\"\"\n    print(\"villagers idle\")\n\n# --- the character: the player's steward, who carries out orders ---\nkl.character(\n    \"STEWARD\",\n    soul=\"the player's steward; listens for orders and turns them into work on the land\",\n    tools=[build, demolish, gather, stop],\n    offline=\"As you wish.\",\n)\n\n# --- the game loop would call this with what the player typed ---\ntyped = \"build two farms near the river\"\n\nkl.event(f\"Player's order: {typed}\", about=[\"STEWARD\"])\nfor tool, args in kl.act(\"STEWARD\", {\"order\": typed, \"landmarks\": [RIVER, \"the hills\", \"the market\"]}):\n    pass  # Python tools already ran; `tool`/`args` are here if you route them yourself\n\nprint(BUILDINGS)\n",
+   "calls": [
+    "act",
+    "character",
+    "event"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "commands",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (example values, plain Python) -------------------\nworld = {\"gold\": 120, \"farms\": [], \"walls\": [], \"river\": \"the Silverrun\"}\n\ndef build(kind: str = \"farm\", count: int = 1, near: str = \"the village\"):\n    \"\"\"start building `count` of `kind` near `near`\"\"\"\n    for i in range(count):\n        world[kind + \"s\"].append({\"near\": near, \"progress\": 0.0})\n    print(f\"building {count} x {kind} near {near}\")\n\ndef demolish(kind: str = \"farm\", count: int = 1):\n    \"\"\"tear down `count` of `kind`\"\"\"\n    for i in range(count):\n        if world[kind + \"s\"]:\n            world[kind + \"s\"].pop()\n    print(f\"demolished {count} x {kind}\")\n\ndef move_workers(count: int = 1, to: str = \"farm\"):\n    \"\"\"send `count` workers to `to`\"\"\"\n    print(f\"sent {count} workers to {to}\")\n\ndef recruit(count: int = 1):\n    \"\"\"hire `count` villagers\"\"\"\n    world[\"gold\"] -= 5 * count\n    print(f\"recruited {count} villagers, {world['gold']} gold left\")\n\n# --- the character: the player's steward, who carries out the orders -------\nkl.character(\n    \"STEWARD\", \"the player's steward; turns spoken orders into work on the ground\",\n    tools=[build, demolish, move_workers, recruit],\n    every=0.5,\n)\n\n# --- the order arrives (typed by the player) ------------------------------\norder = \"build two farms near the river\"\n\nkl.event(f\"Player's order: {order}\", about=[\"STEWARD\"])\n\nfor tool, args in kl.act(\"STEWARD\", {\"order\": order, \"gold\": world[\"gold\"], \"river\": world[\"river\"]}):\n    print(tool, args)  # Python tools already ran with these arguments\n\nprint(world)\n",
+   "calls": [
+    "act",
+    "character",
+    "event"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "market",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- the game, stood in for with plain Python ---------------------------------\nGOLD = 100\nSTOCK = {\"bread\": 12, \"iron\": 4, \"potion\": 7}\nBASE_PRICE = {\"bread\": 3, \"iron\": 20, \"potion\": 15}\n\n# what players did since the last restock\nTRADES = [\n    {\"item\": \"bread\", \"side\": \"buy\", \"qty\": 9},\n    {\"item\": \"iron\", \"side\": \"buy\", \"qty\": 6},\n    {\"item\": \"potion\", \"side\": \"sell\", \"qty\": 5},\n    {\"item\": \"bread\", \"side\": \"sell\", \"qty\": 1},\n]\n\n\ndef net_demand(item):\n    \"\"\"How much players pulled out of the market (buy) minus what they pushed in (sell).\"\"\"\n    return sum(t[\"qty\"] if t[\"side\"] == \"buy\" else -t[\"qty\"] for t in TRADES if t[\"item\"] == item)\n\n\ndef apply_prices(prices):\n    \"\"\"The game's own way of writing prices back.\"\"\"\n    for item, price in prices.items():\n        BASE_PRICE[item] = price\n    print(\"MARKET NOW:\", BASE_PRICE)\n\n\n# --- the AI call --------------------------------------------------------------\n# The shopkeeper weighs the day's trading and sets tomorrow's prices and stock.\nmarket = kl.decide(\n    \"MARKET\",\n    {\n        \"day\": 12,\n        \"gold\": GOLD,\n        \"stock\": STOCK,\n        \"base_price\": BASE_PRICE,\n        \"demand\": {item: net_demand(item) for item in STOCK},\n        \"trades\": TRADES,\n    },\n    {\n        \"prices\": {\"bread\": [1, 40], \"iron\": [5, 60], \"potion\": [4, 50]},\n        \"restock\": {\"bread\": [0, 20], \"iron\": [0, 10], \"potion\": [0, 15]},\n        \"note\": \"text\",\n    },\n)\n\napply_prices(market[\"prices\"])\nprint(\"RESTOCK:\", market[\"restock\"])\nprint(\"NOTE:\", market[\"note\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "market",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game ---\n# What players did at the market since the last balancing pass.\n# Positive = bought by players (demand), negative = sold by players (supply).\ntrade_flow = {\n    \"iron_sword\": 12,\n    \"healing_potion\": 40,\n    \"bread\": -25,\n    \"leather_armor\": 3,\n    \"torch\": -18,\n}\n\n# Current prices and the band each price must stay inside.\nprices = {\n    \"iron_sword\": 120,\n    \"healing_potion\": 15,\n    \"bread\": 4,\n    \"leather_armor\": 90,\n    \"torch\": 2,\n}\nbounds = {\n    \"iron_sword\": (60, 300),\n    \"healing_potion\": (5, 60),\n    \"bread\": (1, 12),\n    \"leather_armor\": (40, 220),\n    \"torch\": (1, 8),\n}\n\n\ndef clamp(value, low, high):\n    return max(low, min(high, value))\n\n\n# --- the AI call, once, where the game would ---\n# The situation is the flow and the current prices; the shape says what comes back:\n# a whole-number percent change per item, and a one-line reason for the log.\nadjustments = kl.create(\n    \"market price adjustments\",\n    {\n        \"changes\": {\"iron_sword\": [1, 100], \"healing_potion\": [1, 100]},\n        \"reason\": \"text\",\n    },\n    context={\n        \"trade_flow\": trade_flow,\n        \"current_prices\": prices,\n        \"bounds\": bounds,\n        \"rule\": \"raise price where players bought, lower where they sold; keep within bounds\",\n    },\n)\n\nfor item, percent in adjustments[\"changes\"].items():\n    if item in prices:\n        low, high = bounds[item]\n        prices[item] = clamp(round(prices[item] * percent / 100), low, high)\n\nprint(adjustments[\"reason\"])\nprint(prices)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "market",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game -------------------------------------------------\n# The market's catalogue: what the shop can sell, and what players do with it.\nCATALOGUE = {\"wood\": 4, \"iron\": 12, \"bread\": 3, \"gem\": 90}\n\n# What players actually did today, tallied by the game as trades come in.\ntoday = {\"wood\": {\"bought\": 20, \"sold\": 400},\n         \"iron\": {\"bought\": 55, \"sold\": 30},\n         \"bread\": {\"bought\": 210, \"sold\": 15},\n         \"gem\": {\"bought\": 2, \"sold\": 1}}\n\ndef player_gold():\n    return 5000\n\ndef apply_prices(prices):\n    \"\"\"The game writes the new prices into its shop.\"\"\"\n    for item, price in prices.items():\n        CATALOGUE[item] = price\n\n# --- the AI call, where the game would make it -----------------------------\nkl.character(\"MARKET\", \"an economist keeping prices fair and interesting\", every=30)\n\nsituation = {\"catalogue\": CATALOGUE, \"trades_today\": today, \"player_gold\": player_gold()}\nprices = kl.decide(\"MARKET\", situation,\n                   {\"wood\": [1, 20], \"iron\": [5, 60], \"bread\": [1, 15], \"gem\": [40, 200],\n                    \"event\": [\"none\", \"shortage\", \"festival\"]})\n\napply_prices({item: price for item, price in prices.items() if item in CATALOGUE})\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "market",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) ---\n\nGOODS = [\"wood\", \"iron\", \"bread\"]\n\n# what players did since the last rebalance: per good, units sold to the market and bought from it\ntrade_log = {\n    \"wood\":  {\"sold\": 400, \"bought\": 20},\n    \"iron\":  {\"sold\": 12,  \"bought\": 130},\n    \"bread\": {\"sold\": 90,  \"bought\": 95},\n}\n\n# current prices the market charges\nprices = {\"wood\": 6, \"iron\": 30, \"bread\": 4}\n\n# the market's own stock of each good, and the richest player's purse\nstock = {\"wood\": 250, \"iron\": 15, \"bread\": 60}\nplayer_gold = 5000\n\n\ndef situation():\n    \"\"\"Everything the market should react to, as plain data.\"\"\"\n    return {\n        \"trade\": {g: {\"sold\": trade_log[g][\"sold\"], \"bought\": trade_log[g][\"bought\"]} for g in GOODS},\n        \"prices\": dict(prices),\n        \"stock\": dict(stock),\n        \"player_gold\": player_gold,\n    }\n\n\ndef apply_prices(new_prices):\n    \"\"\"Write the market's chosen prices back into the game.\"\"\"\n    for g in GOODS:\n        prices[g] = new_prices[g]\n\n\n# --- the calls, where the game would make them ---\n\nkl.character(\"MARKET\", \"an economist keeping prices fair and interesting\", every=30)\n\nnew_prices = kl.decide(\n    \"MARKET\",\n    situation(),\n    {\"wood\": [1, 20], \"iron\": [5, 60], \"bread\": [1, 15], \"event\": [\"none\", \"shortage\", \"festival\"]},\n)\n\napply_prices(new_prices)\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "goalkeeper",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game -------------------------------------------------\n# The shooter's history, as the game would keep it: where they aimed, last few shots.\nshooter_history = [\n    {\"aim\": \"left\",  \"scored\": True},\n    {\"aim\": \"left\",  \"scored\": False},\n    {\"aim\": \"right\", \"scored\": True},\n    {\"aim\": \"center\",\"scored\": False},\n    {\"aim\": \"left\",  \"scored\": True},\n]\n\ndef shooter_tendency(history):\n    \"\"\"Plain-Python summary the game already has; the model gets it as context.\"\"\"\n    counts = {}\n    for shot in history:\n        counts[shot[\"aim\"]] = counts.get(shot[\"aim\"], 0) + 1\n    return counts\n\n# --- the call --------------------------------------------------------------\n# The goalkeeper picks a side to dive to, from the shooter's history.\n# The example is both the shape of the answer and the offline answer.\ndive = kl.decide(\n    \"GOALKEEPER\",\n    {\n        \"shooter\": \"Ana\",\n        \"history\": shooter_history,\n        \"tendency\": shooter_tendency(shooter_history),\n        \"shots_taken\": len(shooter_history),\n    },\n    {\n        \"dive\": [\"left\", \"center\", \"right\"],\n        \"confidence\": [0.0, 1.0],\n    },\n)\n\n# where the game would use it\ngoalkeeper_dive = dive[\"dive\"]\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "goalkeeper",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nshooter_history = [\n    {\"side\": \"left\",  \"power\": 0.9, \"distance\": 11.0},\n    {\"side\": \"left\",  \"power\": 0.7, \"distance\": 9.5},\n    {\"side\": \"right\", \"power\": 0.8, \"distance\": 10.5},\n    {\"side\": \"center\",\"power\": 0.6, \"distance\": 12.0},\n]\n\ndef penalty_context():\n    return {\n        \"shooter\": \"Ana\",\n        \"history\": shooter_history,\n        \"keeper\": \"ROOK\",\n        \"score\": \"1-1\",\n        \"minute\": 88,\n    }\n\n# --- the calls the game makes ---------------------------------------------\n# The keeper picks a dive from the shooter's history: one of the sides, plus\n# how early he commits. Instant every frame, refreshed in the background.\ncontext = penalty_context()\ndive = kl.decide(\"ROOK\", context, {\"side\": [\"left\", \"center\", \"right\"], \"commit\": [0.0, 1.0]})\n\n# A line for the crowd, filled with the facts of this kick.\nkl.character(\"VEGA\", \"a short, excited announcer\", lines={\"dive\": [\"{keeper} dives {side}!\"]}, events={\"dive\": [\"keeper\", \"side\"]})\nline = kl.say(\"VEGA\", \"dive\", {\"keeper\": context[\"keeper\"], \"side\": dive[\"side\"]})\n\nprint(dive, line)\n",
+   "calls": [
+    "character",
+    "decide",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "goalkeeper",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) ---\n\n# the shooter's history: where each of their past shots went\nSHOOTER_HISTORY = [\"left\", \"left\", \"center\", \"right\", \"left\", \"center\"]\n\ndef shooter_tendency(history):\n    \"\"\"Share of past shots per side, plus how many shots we've seen.\"\"\"\n    total = len(history)\n    return {\n        \"left\": history.count(\"left\") / total,\n        \"center\": history.count(\"center\") / total,\n        \"right\": history.count(\"right\") / total,\n        \"shots\": total,\n    }\n\n# the goalkeeper as a named character, declared once\nkl.character(\"KEEPER\", \"a sharp, read-the-shooter goalkeeper who plays the percentages\")\n\n# --- the call, where the game would make it ---\n\ntendency = shooter_tendency(SHOOTER_HISTORY)\n\ndive = kl.decide(\n    \"KEEPER\",\n    {\n        \"shooter_tendency\": tendency,          # left/center/right shares and shot count\n        \"score\": \"0-0\",\n        \"minute\": 63,\n        \"penalty\": True,\n    },\n    {\n        \"dive\": [\"left\", \"center\", \"right\"],   # where the keeper commits\n        \"commit\": [0.0, 1.0],                  # how early they commit\n    },\n)\n\n# the game reads dive[\"dive\"] and dive[\"commit\"] in its save logic\nprint(\"keeper dives\", dive[\"dive\"], \"commit\", dive[\"commit\"])\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "goalkeeper",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python) ---\n# The shooter's history: where they placed their last shots, and how they did.\nshooter_history = {\n    \"shots\": [\"left\", \"left\", \"center\", \"left\", \"right\", \"left\"],\n    \"goals\": 4,\n    \"misses\": 2,\n    \"last_shot\": \"left\",\n    \"pressure\": 0.8,          # how tense the moment is, 0..1\n    \"keeper_reach\": 0.6,      # how far this keeper can get, 0..1\n}\n\ndef most_frequent(shots):\n    return max(set(shots), key=shots.count)\n\ndef keeper_save(dive, shot):\n    return dive == shot\n\n# --- the AI call: the keeper reads the shooter's history and picks a dive ---\ndive = kl.decide(\n    \"KEEPER\",\n    {\n        \"shots\": shooter_history[\"shots\"],\n        \"favourite_side\": most_frequent(shooter_history[\"shots\"]),\n        \"goals\": shooter_history[\"goals\"],\n        \"misses\": shooter_history[\"misses\"],\n        \"last_shot\": shooter_history[\"last_shot\"],\n        \"pressure\": shooter_history[\"pressure\"],\n        \"reach\": shooter_history[\"keeper_reach\"],\n    },\n    {\n        \"dive\": [\"left\", \"center\", \"right\"],\n        \"commit\": [0.0, 1.0],       # how early the keeper commits\n        \"read\": \"text\",             # one line on what the history said\n    },\n)\n\n# --- the game uses the answer ---\nshot = \"left\"  # where the shooter actually puts it\nsaved = keeper_save(dive[\"dive\"], shot)\nprint(f\"keeper dives {dive['dive']} (commit {dive['commit']:.2f}) — {dive['read']}\")\nprint(\"SAVED\" if saved else \"GOAL\")\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "trivia",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ntopic = \"space\"          # the topic the player chose\nplayer = \"Ana\"           # who is answering\n\n# --- the call, where the game would make it ---\nquestion = kl.create(\n    \"a trivia question on the chosen topic\",\n    {\n        \"question\": \"text\",\n        \"answers\": [\"a\", \"b\", \"c\", \"d\"],   # exactly four\n        \"correct\": \"a\",                    # one of the four above\n    },\n    context={\"topic\": topic, \"player\": player},\n)\n\nprint(question[\"question\"])\nfor i, answer in enumerate(question[\"answers\"]):\n    print(i + 1, answer)\n# the game checks the player's pick against question[\"correct\"]\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "trivia",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-ins for the game (plain Python, no engine, no loop) ---\ntopic = \"space\"          # the player picked this from the game's menu\nscore = 0                # the game's own score, changed by the game when an answer is right\n\ndef show_question(question):\n    print(\"Q:\", question[\"text\"])\n    for i, answer in enumerate(question[\"answers\"]):\n        print(f\"  {i + 1}. {answer}\")\n\ndef ask_player(question):\n    # the game's input; here the example value stands in for the click\n    return question[\"answers\"][question[\"correct\"]]\n\ndef check_answer(question, picked):\n    global score\n    if picked == question[\"answers\"][question[\"correct\"]]:\n        score += 1\n        print(\"Correct!\")\n    else:\n        print(\"Wrong. It was:\", question[\"answers\"][question[\"correct\"]])\n\n# --- Kinloom: one question with four answers and the right one, on the chosen topic ---\nquestion = kl.create(\n    f\"a trivia question about {topic}\",\n    {\n        \"text\": \"text\",\n        \"answers\": [\"a\", \"b\", \"c\", \"d\"],\n        \"correct\": 0,          # index into answers\n        \"fact\": \"text\",        # a short line shown after answering\n    },\n    context={\"topic\": topic},\n)\n\n# --- where the game would: ask it, then check what the player picked ---\nshow_question(question)\ncheck_answer(question, ask_player(question))\nprint(question[\"fact\"])\nprint(\"Score:\", score)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "trivia",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\n# The player picks a topic in the menu; this is what the game would hand over.\nTOPIC = \"the human body\"\nDIFFICULTY = 2          # 1 easy, 2 medium, 3 hard\nLIVES = 3\n\n\ndef show_question(question, answers):\n    \"\"\"What the quiz screen would draw.\"\"\"\n    print(f\"\\n{question}\")\n    for letter, text in answers.items():\n        print(f\"  {letter}) {text}\")\n\n\ndef ask_player():\n    \"\"\"What the game would read from the keyboard.\"\"\"\n    return input(\"Your answer (A-D): \").strip().upper()\n\n\ndef award_points(ok, difficulty):\n    \"\"\"What the scoreboard would do.\"\"\"\n    print(\"Correct!\" if ok else \"Wrong.\")\n    return 100 * difficulty if ok else 0\n\n\n# --- the AI calls, where the game would make them --------------------------\n# One question with four answers and the right one, on the chosen topic.\nquestion = kl.create(\n    f\"a {TOPIC} trivia question\",\n    {\n        \"question\": \"Which bone is the longest in the human body?\",\n        \"answers\": {\"A\": \"text\", \"B\": \"text\", \"C\": \"text\", \"D\": \"text\"},\n        \"correct\": \"A\",\n        \"fact\": \"text\",\n    },\n    context={\"topic\": TOPIC, \"difficulty\": DIFFICULTY},\n)\n\nshow_question(question[\"question\"], question[\"answers\"])\nguess = ask_player()\nscore = award_points(guess == question[\"correct\"], DIFFICULTY)\n\n# The quiz master comments on the round, filled with the game's own facts.\nkl.character(\n    \"QUIZMASTER\",\n    \"a warm, slightly theatrical pub quiz host\",\n    offline=\"Let's see how you did!\",\n    lines={\n        \"right\": [\"{topic} is your strong suit — {points} points!\"],\n        \"wrong\": [\"Not this time. The answer was {correct}.\"],\n    },\n    events={\"right\": [\"topic\", \"points\"], \"wrong\": [\"correct\"]},\n)\n\nline = kl.say(\n    \"QUIZMASTER\",\n    \"right\" if guess == question[\"correct\"] else \"wrong\",\n    {\"topic\": TOPIC, \"points\": score, \"correct\": question[\"answers\"][question[\"correct\"]]},\n)\nprint(f\"\\nQUIZMASTER: {line}\")\n\n# The player can ask the quiz master for a hint, in their own words.\nhint = kl.chat(\"QUIZMASTER\", \"Give me a hint without telling me the answer.\", {\"topic\": TOPIC})\nprint(f\"QUIZMASTER: {hint}\")\n",
+   "calls": [
+    "character",
+    "chat",
+    "create",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "EOFError: EOF when reading a line",
+   "pass": false
+  },
+  {
+   "id": "trivia",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (example values; no engine, no loop) ---\ntopic = \"space\"                       # what the player typed / picked\ndifficulty = 2                        # 1 easy .. 3 hard\nasked = []                            # questions already used this round\nscore = 0\n\ndef ask(question):\n    \"\"\"In the game: draw it and read the player's click. Here: print it.\"\"\"\n    print(question[\"question\"])\n    for i, answer in enumerate(question[\"answers\"]):\n        print(f\"  {i + 1}. {answer}\")\n    return question[\"answers\"].index(question[\"correct\"])   # pretend: the player picked right\n\n# --- the call, where the game would make it ---\nquestion = kl.create(\n    \"a trivia question with four answers and which one is right\",\n    {\"question\": \"Which planet has the most moons?\",\n     \"answers\": [\"Mars\", \"Saturn\", \"Venus\", \"Mercury\"],\n     \"correct\": \"Saturn\",\n     \"fact\": \"Saturn passed Jupiter in 2023 with 145 confirmed moons.\"},\n    context={\"topic\": topic, \"difficulty\": difficulty, \"already_asked\": asked},\n)\n\nif ask(question) == question[\"answers\"].index(question[\"correct\"]):\n    score += 1\nasked.append(question[\"question\"])\nprint(question[\"fact\"], f\"score: {score}\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ValueError: substring not found",
+   "pass": false
+  },
+  {
+   "id": "recap",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game state (example values) ---\nmatch = {\n    \"mode\": \"capture the flag\",\n    \"map\": \"Ravine\",\n    \"duration\": \"7:42\",\n    \"score\": {\"BLUE\": 3, \"RED\": 2},\n    \"winner\": \"BLUE\",\n    \"player\": \"Ana\",\n    \"player_kills\": 11,\n    \"player_deaths\": 4,\n    \"highlights\": [\n        \"Ana stole the flag at 6:10\",\n        \"RED held the middle for four minutes\",\n        \"Ana's team capped the last flag with 12 seconds left\",\n    ],\n}\n\n# --- what the game would run at the end of the match ---\nsummary = kl.create(\n    \"a short end-of-match summary for the results screen\",\n    {\"headline\": \"text\", \"summary\": \"text\", \"key_moment\": \"text\"},\n    context=match,\n)\n\nprint(summary[\"headline\"])\nprint(summary[\"summary\"])\nprint(\"Key moment:\", summary[\"key_moment\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "recap",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nMATCH = {\n    \"map\": \"Rustyard\",\n    \"mode\": \"capture the flag\",\n    \"score\": {\"BLUE\": 3, \"RED\": 1},\n    \"duration_min\": 14,\n    \"events\": [\n        \"Ana grabbed the flag at 2:10\",\n        \"BLUE lost the flag at 6:40\",\n        \"Kade held the middle for 5 minutes\",\n        \"Ana scored the winning capture at 13:55\",\n    ],\n    \"moves\": [312, 96, 41],\n}\n\ndef top_player(events):\n    return \"Ana\"\n\ndef losing_team(score):\n    return min(score, key=score.get)\n\n# --- what the game would run at the end ---\nsummary = kl.create(\n    \"a short end-of-match summary for the end screen\",\n    {\n        \"headline\": \"text\",\n        \"summary\": \"text\",\n        \"standout\": \"text\",\n        \"turning_point\": \"text\",\n    },\n    context={\n        \"map\": MATCH[\"map\"],\n        \"mode\": MATCH[\"mode\"],\n        \"winner\": max(MATCH[\"score\"], key=MATCH[\"score\"].get),\n        \"loser\": losing_team(MATCH[\"score\"]),\n        \"score\": MATCH[\"score\"],\n        \"duration_min\": MATCH[\"duration_min\"],\n        \"events\": MATCH[\"events\"],\n        \"standout_player\": top_player(MATCH[\"events\"]),\n        \"captures\": MATCH[\"score\"][\"BLUE\"],\n        \"moves\": MATCH[\"moves\"],\n    },\n)\n\nheadline = summary[\"headline\"]\nbody = summary[\"summary\"]\nstandout = summary[\"standout\"]\nturning_point = summary[\"turning_point\"]\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "recap",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) ---\nmatch = {\n    \"mode\": \"ranked\",\n    \"map\": \"Ashfall Ridge\",\n    \"duration\": \"12:41\",\n    \"score\": \"3-2\",\n    \"winner\": \"BLUE\",\n    \"players\": [\n        {\"name\": \"Ana\", \"hero\": \"Pyra\", \"kills\": 14, \"deaths\": 6, \"assists\": 9},\n        {\"name\": \"Ravi\", \"hero\": \"Nimbus\", \"kills\": 7, \"deaths\": 11, \"assists\": 12},\n    ],\n    \"highlights\": [\n        \"Ana wiped the enemy team at the mid objective\",\n        \"Ravi stole the final objective with 3 seconds left\",\n    ],\n}\n\ndef build_facts(m):\n    return {\n        \"mode\": m[\"mode\"],\n        \"map\": m[\"map\"],\n        \"duration\": m[\"duration\"],\n        \"score\": m[\"score\"],\n        \"winner\": m[\"winner\"],\n        \"players\": m[\"players\"],\n        \"highlights\": m[\"highlights\"],\n    }\n\n# --- at the end of the match, where the game would ---\nsummary = kl.create(\n    \"a short end-of-match summary shown on the results screen\",\n    {\n        \"headline\": \"text\",\n        \"summary\": \"text\",\n        \"mvp\": \"text\",\n        \"highlights\": [\"text\"],\n    },\n    context=build_facts(match),\n)\n\nprint(summary[\"headline\"])\nprint(summary[\"summary\"])\nprint(\"MVP:\", summary[\"mvp\"])\nfor h in summary[\"highlights\"]:\n    print(\"-\", h)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "recap",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) ---\nplayers = [\n    {\"name\": \"Ana\", \"character\": \"Vex\", \"kills\": 7, \"deaths\": 3, \"objective\": 2},\n    {\"name\": \"Ben\", \"character\": \"Rook\", \"kills\": 4, \"deaths\": 5, \"objective\": 1},\n]\nwinner = \"Ana\"\nscore = {\"Ana\": 3, \"Ben\": 1}\nevents = [\n    \"Ana captured the first hill\",\n    \"Ben wiped the enemy team in round 2\",\n    \"Ana held the last point to win\",\n]\n\n\ndef match_facts():\n    return {\n        \"winner\": winner,\n        \"score\": f\"{score['Ana']}-{score['Ben']}\",\n        \"players\": players,\n        \"events\": events,\n    }\n\n\n# --- at the end of the match, where the game would ---\nsummary = kl.create(\n    \"a short end-of-match summary for the results screen\",\n    {\n        \"headline\": \"text\",\n        \"narrative\": \"text\",\n        \"highlights\": [\"a short line about a key moment\"],\n        \"mvp\": \"text\",\n    },\n    context=match_facts(),\n)\n\nprint(summary[\"headline\"])\nprint(summary[\"narrative\"])\nprint(\"MVP:\", summary[\"mvp\"])\nfor line in summary[\"highlights\"]:\n    print(\"-\", line)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "translate",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game ---------------------------------------------------\n# The game says who is speaking, who is listening, and what was typed.\nspeaker = \"Ana\"          # the player typing\nlistener = \"Kenji\"       # the other player\ntyped_text = \"Meet me at the north gate at dusk, bring the lantern.\"\n\n# Languages are part of each player's character, declared once in code.\nkl.character(\"Ana\", \"a trader from the western coast, blunt and warm\", language=\"Vessic\")\nkl.character(\"Kenji\", \"a quiet hunter from the eastern hills\", language=\"Toma\")\n\n# --- What the game asks Kinloom ---------------------------------------------\n# Ana's line, rendered in Kenji's language, keeping her voice and intent.\ntranslated = kl.create(\n    \"a chat message from one player, translated into the listener's language\",\n    {\"text\": \"the same message, in the listener's language\"},\n    context={\n        \"speaker\": speaker,\n        \"speaker_language\": \"Vessic\",\n        \"listener\": listener,\n        \"listener_language\": \"Toma\",\n        \"message\": typed_text,\n    },\n)[\"text\"]\n\ndeliver_to_player(listener, translated)\n",
+   "calls": [
+    "character",
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'deliver_to_player' is not defined",
+   "pass": false
+  },
+  {
+   "id": "translate",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game -------------------------------------------------\nLANGUAGES = {\"Ana\": \"Spanish\", \"Bram\": \"Dutch\", \"Chen\": \"Mandarin\"}\nINBOX = [                      # what the game already collected this tick\n    {\"from\": \"Ana\", \"text\": \"¿Dónde está la llave?\"},\n    {\"from\": \"Bram\", \"text\": \"Ik sta bij de brug.\"},\n    {\"from\": \"Chen\", \"text\": \"我找到了一把剑。\"},\n]\n\ndef deliver(to, text):\n    print(f\"[to {to}] {text}\")\n\n# --- Translation -----------------------------------------------------------\ndef translate(speaker, text, listeners):\n    \"\"\"One text -> one line per listener, each in the language that listener reads.\"\"\"\n    langs = {name: LANGUAGES[name] for name in listeners}\n    return kl.create(\n        f\"translate a chat message from {LANGUAGES[speaker]} into each listener's language\",\n        {name: \"text\" for name in langs},          # same shape back: one string per listener\n        context={\"from\": LANGUAGES[speaker], \"message\": text, \"into\": langs},\n    )\n\ndef chat_round(msgs):\n    everyone = list(LANGUAGES)\n    for msg in msgs:\n        speaker = msg[\"from\"]\n        listeners = [p for p in everyone if p != speaker]\n        for who, line in translate(speaker, msg[\"text\"], listeners).items():\n            deliver(who, line)\n\n# --- The calls, where the game would make them -----------------------------\nchat_round(INBOX)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "translate",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game -------------------------------------------------\nfrom kinloom import Kinloom\n\nkl = Kinloom()  # already set up\n\n# Two players, each with a language. The game knows who is talking to whom.\nPLAYERS = {\n    \"ana\": {\"language\": \"English\"},\n    \"yuki\": {\"language\": \"Japanese\"},\n}\n\ndef other_player(name: str) -> str:\n    return \"yuki\" if name == \"ana\" else \"ana\"\n\ndef deliver(recipient: str, text: str) -> None:\n    \"\"\"put a line into the recipient's chat window\"\"\"\n    print(f\"[{recipient}] {text}\")\n\n# --- one translator character per language pair ---------------------------\n# A single character whose job is the translation; the players never see it.\nkl.character(\n    \"BABEL\",\n    soul=(\n        \"a tireless interpreter sitting between two players who do not share a language. \"\n        \"You never add, soften, explain or comment: you carry the meaning across intact, \"\n        \"tone and insults included. You always answer in the listener's language only.\"\n    ),\n    offline=\"...\",   # no key: the line stays as it was written\n)\n\ndef translate(speaker: str, recipient: str, text: str) -> str:\n    \"\"\"the speaker's words, in the language the recipient reads\"\"\"\n    return kl.chat(\n        \"BABEL\",\n        text,\n        {\"speaker_language\": PLAYERS[speaker][\"language\"],\n         \"listener_language\": PLAYERS[recipient][\"language\"]},\n        speaker=speaker,\n    )\n\ndef relay(speaker: str, text: str) -> None:\n    \"\"\"a player hit Enter: everyone else gets it in their own language\"\"\"\n    for recipient in PLAYERS:\n        if recipient == speaker:\n            continue\n        deliver(recipient, translate(speaker, recipient, text))\n\n# --- where the game would call it -----------------------------------------\n# Ana types a line; Yuki receives it in Japanese.\nrelay(\"ana\", \"Tell Yuki I'll trade the sword for two loaves, and no, I won't haggle.\")\n",
+   "calls": [
+    "character",
+    "chat"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "translate",
+   "recipe": true,
+   "sample": 1,
+   "code": "# --- stand-in for the game (plain Python, no engine) ---\nLANGUAGES = {\"Ana\": \"en\", \"Bruno\": \"pt\"}          # each player speaks one language\nCHAT_LOG = [                                       # what players typed, in their own language\n    {\"from\": \"Ana\", \"to\": \"Bruno\", \"text\": \"Meet me at the north gate at dusk.\"},\n    {\"from\": \"Bruno\", \"to\": \"Ana\", \"text\": \"Trouxe as flechas. O portão está trancado.\"},\n]\n\ndef deliver(message):                              # the game would show this to the receiving player\n    print(f\"[{message['to']}] {message['text']}\")\n\n\n# --- translation: a character per language, whose only job is to speak it ---\nkl.character(\"TRANSLATOR_EN\", soul=\"a translator who renders any message into plain English, nothing added, nothing left out\")\nkl.character(\"TRANSLATOR_PT\", soul=\"a translator who renders any message into plain Brazilian Portuguese, nothing added, nothing left out\")\n\ndef translate(text, to_language):\n    name = \"TRANSLATOR_EN\" if to_language == \"en\" else \"TRANSLATOR_PT\"\n    return kl.chat(name, text)                     # free answer in that voice, ~1 s, not per frame\n\n\n# --- where the game would call it: when a message is sent ---\nfor message in CHAT_LOG:\n    target_language = LANGUAGES[message[\"to\"]]\n    if LANGUAGES[message[\"from\"]] == target_language:\n        deliver(message)                           # same language: no model call\n    else:\n        deliver({\"to\": message[\"to\"], \"text\": translate(message[\"text\"], target_language)})\n",
+   "calls": [
+    "character",
+    "chat"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "scares",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game -------------------------------------------------\nheart_rate = 118          # bpm, from the player's wearable\nwalking_speed = 0.4       # metres/second, from the movement code\n\ndef player_seems_scared():\n    # crude stand-in for the game's own judgement\n    return heart_rate > 100 or walking_speed < 1.0\n\n# --- the decision ----------------------------------------------------------\nscare = kl.decide(\n    \"HAUNTED_HOUSE\",\n    {\n        \"heart_rate\": heart_rate,\n        \"walking_speed\": walking_speed,\n        \"seems_scared\": player_seems_scared(),\n    },\n    {\n        \"scare\": [\"whisper\", \"slamming door\", \"lights out\", \"cold hand\", \"silence\"],\n        \"intensity\": [0.0, 1.0],\n    },\n    every=2,\n)\n\nplay_scare(scare[\"scare\"], scare[\"intensity\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'play_scare' is not defined",
+   "pass": false
+  },
+  {
+   "id": "scares",
+   "recipe": false,
+   "sample": 1,
+   "code": "kl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nheart_rate = 128        # bpm, from the player's wearable\nwalking_speed = 0.4     # m/s, from the player's movement this frame\n\ndef player_feels_scared(hr, speed):\n    return hr > 100 or speed < 0.8\n\n# --- the scare director ----------------------------------------------------\n# decider, not a prompter: the shape of the example is the shape of the answer.\nscare = kl.decide(\n    \"HAUNTED_HOUSE\",\n    {\n        \"heart_rate\": heart_rate,\n        \"walking_speed\": walking_speed,\n        \"player_seems_scared\": player_feels_scared(heart_rate, walking_speed),\n    },\n    {\n        \"scare\": [\"whisper\", \"slamming door\", \"lights out\", \"apparition\", \"nothing\"],\n        \"intensity\": [0.0, 1.0],\n    },\n)\n\n# --- where the game would use it ------------------------------------------\n# play_scare(scare[\"scare\"], scare[\"intensity\"])\nprint(scare[\"scare\"], scare[\"intensity\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "scares",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n\n# --- stand-ins for the game -------------------------------------------------\ndef heart_rate():\n    return 118  # bpm, from the player's wearable\n\n\ndef walking_speed():\n    return 1.4  # m/s, from the player's last frame\n\n\ndef play_scare(scare, intensity):\n    print(f\"playing {scare} at intensity {intensity}\")\n\n\n# --- the haunted house, deciding like a director ---------------------------\nkl.character(\"HOUSE\", \"a haunted house that reads the player's fear and paces its scares to keep them tense, never bored\",\n             every=2)\n\nscare = kl.decide(\"HOUSE\",\n                  {\"heart_rate\": heart_rate(), \"walking_speed\": walking_speed(),\n                   \"resting_heart_rate\": 70, \"rooms_since_scare\": 3},\n                  {\"scare\": [\"whisper\", \"slamming door\", \"apparition\", \"floor collapse\", \"silence\"],\n                   \"intensity\": [0.0, 1.0],\n                   \"delay\": [0.0, 8.0]})\n\nplay_scare(scare[\"scare\"], scare[\"intensity\"])\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "scares",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n\n# --- stand-in for the game ---------------------------------------------------\n\ndef player_heart_rate():\n    return 118          # bpm, from the wearable / game state\n\ndef player_walking_speed():\n    return 0.4          # m/s: creeping = slow, fleeing = fast\n\ndef distance_to_last_scare():\n    return 7.5          # metres\n\ndef play_scare(scare, intensity):\n    print(f\"playing {scare} at intensity {intensity:.2f}\")\n\ndef set_music(pacing):\n    print(f\"music -> {pacing}\")\n\n\n# --- the haunted house decides ----------------------------------------------\n\nkl.character(\"HOUSE\", \"a haunted house that scares the player as much as it can take, \"\n                      \"easing off when they are already terrified and pushing harder when they relax\",\n             every=2)\n\nstate = {\n    \"heart_rate\": player_heart_rate(),\n    \"walking_speed\": player_walking_speed(),\n    \"distance_to_last_scare\": distance_to_last_scare(),\n}\n\nscare = kl.decide(\"HOUSE\", state, {\n    \"scare\": [\"whisper\", \"slam_door\", \"shadow_figure\", \"child_laugh\", \"lights_out\", \"grab_ankle\"],\n    \"intensity\": [0.0, 1.0],\n    \"pacing\": [\"lull\", \"build-up\", \"peak\"],\n    \"wait\": [0.5, 12.0],\n})\n\nplay_scare(scare[\"scare\"], scare[\"intensity\"])\nset_music(scare[\"pacing\"])\n# the house waits scare[\"wait\"] seconds before it decides again\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dungeon",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ndepth = 3\ntheme = \"flooded crypt\"\n\n# --- what the game would call ---\nrooms = kl.create(\n    \"a room in a randomly generated dungeon\",\n    {\n        \"name\": \"text\",\n        \"size\": [\"small\", \"medium\", \"large\"],\n        \"kind\": [\"empty\", \"treasure\", \"trap\", \"puzzle\", \"monster\", \"boss\"],\n        \"contents\": [\"text\"],\n        \"exits\": [1, 4],\n    },\n    context={\"theme\": theme, \"depth\": depth},\n    count=6,\n)\n\nfor room in rooms:\n    print(f\"{room['name']} ({room['size']}, {room['kind']}, {room['exits']} exits): {room['contents']}\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dungeon",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game ---\nDUNGEON_DEPTH = 3          # which floor the player is on\nROOM_COUNT = 6             # how many rooms to lay out\nPLAYER_LEVEL = 4           # used to scale what is inside\n\ndef place_room(room):\n    \"\"\"Pretend to put a room on the map and its contents in the world.\"\"\"\n    print(f\"Room '{room['name']}' ({room['width']}x{room['height']}, \"\n          f\"{room['kind']}) holds: {room['contents']}\")\n\n# --- The call: one dungeon layout, shaped like the example ---\nlayout = kl.create(\n    f\"a random dungeon layout for floor {DUNGEON_DEPTH}\",\n    {\n        \"rooms\": [\n            {\n                \"name\": \"text\",\n                \"kind\": [\"crypt\", \"guardroom\", \"shrine\", \"storage\", \"lair\"],\n                \"width\": [3, 12],\n                \"height\": [3, 12],\n                \"contents\": [\"text\"],\n            }\n        ]\n    },\n    context={\"depth\": DUNGEON_DEPTH, \"rooms\": ROOM_COUNT, \"player_level\": PLAYER_LEVEL},\n)\n\n# --- Where the game would use it ---\nfor room in layout[\"rooms\"]:\n    place_room(room)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dungeon",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-ins for the game ---\ndef dungeon_params():\n    return {\"depth\": 3, \"theme\": \"flooded crypt\", \"party_level\": 4}\n\n# --- the call, where the game would make it ---\nparams = dungeon_params()\n\nlayout = kl.create(\n    \"a random dungeon layout: the rooms, their size, and what is inside\",\n    {\n        \"rooms\": [\n            {\n                \"name\": \"Sunken Antechamber\",\n                \"width\": [4, 20],\n                \"height\": [4, 20],\n                \"contents\": [\"a broken altar\", \"2 giant rats\", \"a locked chest\"],\n                \"exits\": [1, 4],\n            }\n        ],\n        \"entrance\": \"Sunken Antechamber\",\n        \"boss_room\": \"Sunken Antechamber\",\n    },\n    context=params,\n)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dungeon",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\ndef current_floor():\n    return 3\n\ndef party_level():\n    return 5\n\n# --- where the game would ask ----------------------------------------------\nfloor = current_floor()\nlevel = party_level()\n\nrooms = kl.create(\n    \"a dungeon layout: rooms with their size and what is inside\",\n    {\n        \"name\": \"Collapsed Cistern\",\n        \"x\": [0, 40],\n        \"y\": [0, 40],\n        \"width\": [4, 12],\n        \"height\": [4, 12],\n        \"kind\": [\"entrance\", \"corridor\", \"hall\", \"vault\", \"shrine\"],\n        \"enemies\": [0, 6],\n        \"loot\": [\"gold\", \"potion\", \"key\", \"relic\", \"nothing\"],\n        \"feature\": \"text\",\n    },\n    context={\"floor\": floor, \"party_level\": level},\n    count=8,\n)\n\nfor room in rooms:\n    print(room)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "names",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game (plain Python, no engine) ---\ntyped_name = \"BloodyKiller99\"   # what the player typed in the name box\nscreen = print                  # where the game would show the rejection\n\n# --- the check: a yes/no from the model, with the game's own fallback ---\ndef name_ok(name):\n    verdict = kl.create(\n        \"Is this player-chosen character name offensive, hateful, or sexual?\",\n        {\"allowed\": True, \"reason\": \"text\"},\n        context={\"name\": name},\n    )\n    return verdict\n\n# --- where the game would run it ---\nif not (v := name_ok(typed_name))[\"allowed\"]:\n    screen(f\"That name can't be used: {v['reason']}\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "names",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# Stand-in for the game: the name a player typed, and what we do with it.\ntyped_name = \"SirSlayer69\"\nnames_taken = [\"Ana\", \"Mira\"]\n\n\ndef accept(name):\n    print(\"accepted:\", name)\n\n\ndef reject(reason):\n    print(\"rejected:\", reason)\n\n\n# The call: a verdict on the name, in the shape we need back.\nverdict = kl.create(\n    \"check whether a player's chosen character name is offensive\",\n    {\"ok\": True, \"reason\": \"text\"},\n    context={\"name\": typed_name, \"taken\": names_taken},\n)\n\nif verdict[\"ok\"]:\n    accept(typed_name)\nelse:\n    reject(verdict[\"reason\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "names",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\n# The name the player typed on the character-creation screen.\ntyped_name = \"Sir Killalot\"\n\n# What the game knows about the player right now (facts are filled into the line).\ndef player_facts():\n    return {\"account\": \"ana_92\", \"character\": typed_name}\n\n\ndef show_verdict(verdict, reason):\n    \"\"\"The game would put this on the creation screen and, if flagged, ask for another name.\"\"\"\n    print(f\"name={verdict!r} ({reason})\")\n\n\n# --- the AI part -----------------------------------------------------------\n# One character whose whole job is judging a name. Declared once, in code.\nkl.character(\n    \"MODERATOR\",\n    soul=(\n        \"a calm, fair community moderator who screens player-chosen character names. \"\n        \"You are not squeamish: fantasy names, odd spellings, mild insults in dead languages \"\n        \"and rude-but-harmless jokes are fine. You flag only names that are genuinely hateful, \"\n        \"sexually explicit, or aimed at real people and groups. You answer with one word and a short reason.\"\n    ),\n    lines={\n        \"screen\": [\"{verdict} — {reason}\"],\n    },\n    events={\"screen\": [\"name\", \"verdict\", \"reason\"]},\n)\n\n\ndef screen_name(name):\n    \"\"\"Ask the moderator about one name. Returns (verdict, reason).\"\"\"\n    # The moderator speaks first, judging the name; the name itself is the situation it answers from.\n    line = kl.chat(\"MODERATOR\", \"\", speaker=\"PLAYER\", facts={\"name\": name, \"task\": \"screen this character name\"})\n    # The line is free text; the game reads the leading verdict word.\n    head = line.strip().split()[0].strip(\".,!:\").upper() if line.strip() else \"\"\n    verdict = \"ALLOW\" if head in (\"ALLOW\", \"OK\", \"FINE\", \"CLEAN\") else \"FLAG\"\n    reason = line.strip()\n    return verdict, reason\n\n\n# --- where the game would call it: once, when the player confirms a name ---\nverdict, reason = screen_name(typed_name)\nshow_verdict(verdict, reason)\n\n# The moderator's line, ready-made from the facts (instant, no model call).\nprint(kl.say(\"MODERATOR\", \"screen\", {\"name\": typed_name, \"verdict\": verdict, \"reason\": reason}))\n",
+   "calls": [
+    "character",
+    "chat",
+    "say"
+   ],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": false
+  },
+  {
+   "id": "names",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nplayer_names = [\"Ana\", \"xX_DragonSlayer_Xx\", \"Bramblewick\"]\nplayers = {name: {\"level\": 1} for name in player_names}\n\ndef accept_name(name):\n    print(f\"{name!r} accepted\")\n\ndef reject_name(name, reason):\n    print(f\"{name!r} rejected: {reason}\")\n\n# --- the check -------------------------------------------------------------\nkl.character(\n    \"REGISTRAR\",\n    soul=\"the town registrar who approves names for the guild ledger; brisk, fair, \"\n         \"and never lets a cruel or filthy name into the records\",\n)\n\ndef check_name(name):\n    verdict = kl.decide(\n        \"REGISTRAR\",\n        {\"name\": name, \"task\": \"decide whether this player name may enter the guild ledger\"},\n        {\"allowed\": [True, False], \"reason\": \"text\"},\n    )\n    if verdict[\"allowed\"]:\n        accept_name(name)\n    else:\n        reject_name(name, verdict[\"reason\"])\n\n# --- where the game would call it -----------------------------------------\nfor name in player_names:\n    check_name(name)\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cardai",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game (example values, small functions) -----------------\nHAND = [\"Firebolt\", \"Iron Wall\", \"Scout\", \"Emberling\", \"Rally\"]\nBOARD = {\"me\": [(\"Emberling\", 2, 3)], \"you\": [(\"Iron Wall\", 0, 5)]}\nMANA, MY_LIFE, YOUR_LIFE = 4, 18, 12\nDECK_LEFT = 21\n\ndef playable(card):  # can I afford it right now?\n    return card != \"Dragon\" and MANA > 0\n\ndef attack(target):  # the one action the game exposes\n    return f\"attack {target}\"\n\n# --- the opponent ------------------------------------------------------------\n# A named character, declared once. The soul is who it is; the tools are what it\n# can actually do, so the model can only pick moves the game can run.\nkl.character(\n    \"OPPONENT\",\n    \"a sharp, patient card-game rival who trades well and punishes greed\",\n    tools={\"play_card\": {\"card\": \"one of the cards in hand\"},\n           \"attack\": {\"target\": \"one of the enemy creatures or 'face'\"}},\n)\n\ndef opponent_move():\n    # decide() is the per-frame call: the situation in, a choice out, instant,\n    # refreshed in the background. The example IS the offline answer.\n    move = kl.decide(\n        \"OPPONENT\",\n        {\"hand\": HAND, \"board\": BOARD, \"mana\": MANA,\n         \"my_life\": MY_LIFE, \"your_life\": YOUR_LIFE, \"deck_left\": DECK_LEFT},\n        {\"card\": HAND, \"target\": [\"face\"] + [c[0] for c in BOARD[\"you\"]]},\n    )\n    # act() returns validated tool calls chosen since last time; the game runs them.\n    for tool, args in kl.act(\"OPPONENT\", {\"order\": move}):\n        if tool == \"play_card\" and playable(args[\"card\"]):\n            HAND.remove(args[\"card\"])\n            BOARD[\"me\"].append((args[\"card\"], 1, 1))\n        elif tool == \"attack\":\n            attack(args[\"target\"])\n\n# --- where the game would call it -------------------------------------------\nopponent_move()\n",
+   "calls": [
+    "act",
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cardai",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game (example values, plain Python) ---\nkl = Kinloom()\n\nhand = [\"Emberling\", \"Stone Wall\", \"Quick Jab\", \"Moonlit Ritual\"]\nboard = {\"me\": [{\"name\": \"Moss Golem\", \"hp\": 3, \"atk\": 2}],\n         \"you\": [{\"name\": \"Ash Hound\", \"hp\": 2, \"atk\": 3}]}\nmy_hp, your_hp, mana = 17, 14, 4\nturn = 6\n\n# --- the AI opponent ---\nkl.character(\n    \"RIVAL\",\n    \"a card-game opponent: patient, reads the board, punishes greed, never throws the game\",\n    tools={\n        \"play_card\": {\"card\": \"name from hand\", \"target\": \"name on board or 'none'\"},\n        \"attack\": {\"attacker\": \"my unit\", \"target\": \"enemy unit or 'face'\"},\n        \"end_turn\": {},\n    },\n)\n\n# once per turn, where the game would: ask for the calls, then run them\nfor tool, args in kl.act(\"RIVAL\", {\n    \"my_hand\": hand,\n    \"my_board\": board[\"me\"],\n    \"their_board\": board[\"you\"],\n    \"my_hp\": my_hp,\n    \"their_hp\": your_hp,\n    \"mana\": mana,\n    \"turn\": turn,\n}):\n    if tool == \"play_card\":\n        card, target = args[\"card\"], args[\"target\"]\n        print(f\"RIVAL plays {card}\" + (f\" on {target}\" if target != \"none\" else \"\"))\n    elif tool == \"attack\":\n        print(f\"RIVAL attacks {args['target']} with {args['attacker']}\")\n    else:\n        print(\"RIVAL ends the turn\")\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cardai",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# ---- stand-in for the game (plain Python, example values) --------------------\n\nHAND = [\n    {\"name\": \"Emberling\", \"cost\": 2, \"attack\": 3, \"health\": 2, \"effect\": \"deal 1 damage\"},\n    {\"name\": \"Stone Ward\", \"cost\": 3, \"attack\": 1, \"health\": 6, \"effect\": \"taunt\"},\n    {\"name\": \"Swift Scout\", \"cost\": 1, \"attack\": 2, \"health\": 1, \"effect\": \"draw a card\"},\n    {\"name\": \"Grave Titan\", \"cost\": 7, \"attack\": 8, \"health\": 8, \"effect\": \"none\"},\n]\nBOARD = [{\"name\": \"Stone Ward\", \"attack\": 1, \"health\": 4}]\nOPPONENT_BOARD = [{\"name\": \"Swift Scout\", \"attack\": 2, \"health\": 1}]\nPLAYER = {\"health\": 18, \"mana\": 4, \"hand_size\": 5, \"deck_size\": 12}\nME = {\"health\": 22, \"mana\": 4}\nTURN = 6\n\n\ndef playable(card, mana):\n    return card[\"cost\"] <= mana\n\n\ndef board_power(board):\n    return sum(c[\"attack\"] + c[\"health\"] for c in board)\n\n\n# ---- the AI opponent --------------------------------------------------------\n\nkl.character(\"OPPONENT\", \"a card game opponent that plays to win, reading the board\", every=1)\n\nsituation = {\n    \"turn\": TURN,\n    \"my_health\": ME[\"health\"],\n    \"my_mana\": ME[\"mana\"],\n    \"my_board\": BOARD,\n    \"their_board\": OPPONENT_BOARD,\n    \"their_health\": PLAYER[\"health\"],\n    \"their_hand_size\": PLAYER[\"hand_size\"],\n    \"board_power_mine\": board_power(BOARD),\n    \"board_power_theirs\": board_power(OPPONENT_BOARD),\n    \"hand\": [{\"name\": c[\"name\"], \"cost\": c[\"cost\"]} for c in HAND],\n}\n\nplan = kl.decide(\"OPPONENT\", situation, {\n    \"stance\": [\"aggressive\", \"trading\", \"defensive\"],\n    \"play_card\": [\"Emberling\", \"Stone Ward\", \"Swift Scout\", \"Grave Titan\", \"none\"],\n    \"attack_with\": [\"all\", \"the biggest\", \"only what trades up\", \"none\"],\n    \"hold_mana\": [0, 4],\n})\n\n# the game reads the plan and plays the turn\ncard = next((c for c in HAND if c[\"name\"] == plan[\"play_card\"] and playable(c, ME[\"mana\"])), None)\nif card:\n    print(\"opponent plays\", card[\"name\"])\n\nif plan[\"attack_with\"] == \"all\":\n    attackers = BOARD\nelif plan[\"attack_with\"] == \"the biggest\":\n    attackers = sorted(BOARD, key=lambda c: c[\"attack\"], reverse=True)[:1]\nelif plan[\"attack_with\"] == \"only what trades up\":\n    attackers = [c for c in BOARD if c[\"attack\"] >= max((o[\"health\"] for o in OPPONENT_BOARD), default=0)]\nelse:\n    attackers = []\n\nfor a in attackers:\n    print(\"opponent attacks with\", a[\"name\"], \"stance:\", plan[\"stance\"])\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "cardai",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\n\nHAND = [\"Emberling\", \"Stone Wall\", \"Quick Jab\", \"Mana Bloom\", \"Cinder Hound\"]\nBOARD = {\"me\": {\"hp\": 18, \"mana\": 3, \"creatures\": [{\"name\": \"Cinder Hound\", \"atk\": 3, \"hp\": 2}]},\n         \"you\": {\"hp\": 14, \"mana\": 5, \"creatures\": [{\"name\": \"Moss Golem\", \"atk\": 2, \"hp\": 6}]}}\nDECK_LEFT = 21\n\n\ndef playable(card):\n    return True  # the game's own legality check\n\n\n# --- the opponent ---\n\nkl.character(\n    \"OPPONENT\",\n    \"a sharp, patient card-game opponent who trades well and punishes greedy plays\",\n    every=1,\n)\n\nsituation = {\n    \"my_hp\": BOARD[\"me\"][\"hp\"],\n    \"my_mana\": BOARD[\"me\"][\"mana\"],\n    \"my_board\": [c[\"name\"] for c in BOARD[\"me\"][\"creatures\"]],\n    \"their_hp\": BOARD[\"you\"][\"hp\"],\n    \"their_board\": [{\"name\": c[\"name\"], \"atk\": c[\"atk\"], \"hp\": c[\"hp\"]} for c in BOARD[\"you\"][\"creatures\"]],\n    \"hand\": HAND,\n    \"cards_left_in_deck\": DECK_LEFT,\n    \"turn\": 6,\n}\n\nplan = kl.decide(\n    \"OPPONENT\",\n    situation,\n    {\n        \"stance\": [\"aggressive\", \"defensive\", \"value\"],\n        \"target\": [\"their_face\", \"their_biggest_creature\", \"their_smallest_creature\"],\n        \"play_order\": [\"cheapest_first\", \"strongest_first\", \"hold_mana\"],\n        \"aggression\": [0.0, 1.0],\n        \"bluff\": False,\n    },\n)\n\n# The game reads the plan each turn, instantly:\n#   if plan[\"stance\"] == \"aggressive\": attack with everything at plan[\"target\"]\n#   if plan[\"bluff\"]: keep two mana open and pass\n#   for name in HAND sorted by plan[\"play_order\"]: if playable(name): play it\nprint(plan)\n",
+   "calls": [
+    "character",
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "epitaph",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nrun = {\n    \"cause\": \"fell into the moat\",\n    \"depth\": 7,\n    \"gold\": 42,\n    \"kills\": 3,\n    \"deeds\": [\"lit the beacon\", \"spared the wolf\", \"broke the oath to MIRA\"],\n    \"name\": \"Ana\",\n}\n\n# --- the epitaph, once, where the game shows the death screen ---\nepitaph = kl.create(\n    \"a short epitaph for a dead adventurer's run\",\n    {\"line\": \"text\", \"title\": \"text\"},\n    context=run,\n)\nprint(epitaph[\"title\"])\nprint(epitaph[\"line\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "epitaph",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nrun = {\n    \"name\": \"Ana\",\n    \"cause\": \"a cave-in in the Deep Mine\",\n    \"depth\": 7,\n    \"gold\": 42,\n    \"kills\": 3,\n    \"found\": [\"Glowcap\", \"Rusted Key\"],\n    \"days\": 12,\n}\n# ---------------------------------------------------------------------------\n\nkl.character(\n    \"THE STONE\",\n    \"a grave-carver who speaks in short, weathered lines, never cruel, never cheerful\",\n)\n\nepitaph = kl.create(\n    \"a short epitaph carved on a tombstone for a dead adventurer\",\n    {\"line\": \"text\", \"carved_under\": \"text\"},\n    context=run,\n)\n\nprint(epitaph[\"line\"])\nprint(epitaph[\"carved_under\"])\n",
+   "calls": [
+    "character",
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "epitaph",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- the game, stood in for with plain Python ---\nrun = {\n    \"deaths\": 1,\n    \"depth\": 7,\n    \"kills\": 23,\n    \"gold\": 412,\n    \"cause\": \"a cave spider, in the flooded stairwell\",\n    \"found\": [\"the Glowcap\", \"a rusted crown\"],\n    \"bravest\": \"walked into the dark without a torch\",\n    \"cowardly\": \"ran from a rat on floor two\",\n    \"time\": \"3 hours\",\n}\n\n\ndef player_died(run):\n    return run[\"deaths\"] > 0 and run[\"depth\"] > 0\n\n\n# --- the epitaph, where the game would ask for it ---\nif player_died(run):\n    epitaph = kl.create(\n        \"a short epitaph on a gravestone telling the story of this run\",\n        {\"title\": \"Here lies the Delver\", \"lines\": [\"text\"], \"verdict\": \"text\"},\n        context=run,\n    )\n    print(epitaph[\"title\"])\n    for line in epitaph[\"lines\"]:\n        print(line)\n    print(epitaph[\"verdict\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "epitaph",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nrun = {\n    \"cause_of_death\": \"fell into the spike pit on floor 3\",\n    \"floor_reached\": 3,\n    \"time_played\": \"42 minutes\",\n    \"kills\": 17,\n    \"gold\": 240,\n    \"deeds\": [\"freed the caged merchant\", \"drank from the cursed fountain\", \"spared the sleeping troll\"],\n    \"class\": \"a cautious rogue\",\n}\n\ndef show_epitaph(text):\n    print(text)\n\n# --- where the game would call it, on death ---\nepitaph = kl.create(\n    \"a short epitaph carved on the player's gravestone, telling the story of this run\",\n    {\"epitaph\": \"Here lies a rogue who reached the third floor, freed a merchant, and never learned to watch the floor.\"},\n    context=run,\n)\nshow_epitaph(epitaph[\"epitaph\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "music",
+   "recipe": false,
+   "sample": 0,
+   "code": "# Stand-in for the game: the situation this frame.\n# In the real game these come from the running scene (enemies nearby, player health, shots fired).\ndef nearby_enemies():\n    return 3\n\ndef player_health():\n    return 0.4  # 0..1, 1 = full\n\ndef shots_last_second():\n    return 7\n\n# Where the music is right now, and where it should go.\ncurrent_music_intensity = 0.2  # 0..1, the music system reads this\n\n# The call the game makes when the action changes: one decision, in the shape the music needs.\nmusic = kl.decide(\n    \"MUSIC\",\n    {\n        \"enemies\": nearby_enemies(),\n        \"health\": player_health(),\n        \"shots\": shots_last_second(),\n        \"current_intensity\": current_music_intensity,\n    },\n    {\"intensity\": [0.0, 1.0], \"layer\": [\"calm\", \"tense\", \"battle\"]},\n)\n\n# The game applies it: the music system fades toward this.\ncurrent_music_intensity = music[\"intensity\"]\nplay_music_layer(music[\"layer\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'play_music_layer' is not defined",
+   "pass": false
+  },
+  {
+   "id": "music",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game state (plain Python, no engine) ---\nenemies_near = 3          # enemies on screen\nplayer_health = 0.4       # 0.0 .. 1.0\nboss_active = True\ncombo = 7                 # hits in a row\nmusic_volume = 0.5        # what the audio system would take\n\n# --- what the music should be, from the action on screen ---\n# decide: instant every frame, refreshed in the background. The example is the shape and the offline answer.\nmusic = kl.decide(\n    \"MUSIC\",\n    {\n        \"enemies_near\": enemies_near,\n        \"player_health\": player_health,\n        \"boss_active\": boss_active,\n        \"combo\": combo,\n    },\n    {\"track\": [\"calm\", \"tense\", \"battle\", \"boss\"], \"intensity\": [0.0, 1.0]},\n)\n\n# --- hand it to the game ---\nmusic_volume = music[\"intensity\"]\nplay(music[\"track\"], music_volume)\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'play' is not defined",
+   "pass": false
+  },
+  {
+   "id": "music",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()  # already set up\n\n\n# --- stand-in for the game (plain Python, no engine) ---\ndef current_scene():\n    return {\n        \"enemies\": 4,\n        \"player_health\": 0.25,\n        \"boss_visible\": True,\n        \"player_attacking\": True,\n        \"seconds_since_hit\": 0.4,\n    }\n\n\ndef set_music(intensity: float, layer: str = \"drums\"):\n    \"\"\"crossfade the music track to this intensity, 0.0 quiet .. 1.0 full\"\"\"\n    print(f\"music -> intensity={intensity:.2f} layer={layer}\")\n\n\ndef duck_music(seconds: float = 1.0):\n    \"\"\"temporarily lower the music for a sting or a line\"\"\"\n    print(f\"music ducked for {seconds}s\")\n\n\n# --- the music director, once ---\nkl.character(\n    \"MUSIC\",\n    \"the adaptive music director; it reads the action on screen and drives the score\",\n    every=0.5,  # re-checked in the background, instant to read\n    tools=[set_music, duck_music],\n)\n\n\n# --- where the game would run it, each frame ---\nscene = current_scene()\nfor tool, args in kl.act(\"MUSIC\", scene):\n    {\"set_music\": set_music, \"duck_music\": duck_music}[tool](**args)\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": false
+  },
+  {
+   "id": "music",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# ---- stand-ins for the game ----\n\ndef set_music(intensity: float = 0.3, track: str = \"calm\"):\n    \"\"\"set the background music intensity (0.0 quiet .. 1.0 full) and which track is playing\"\"\"\n    print(f\"music -> {track} @ {intensity:.2f}\")\n\ndef play_stinger(name: str = \"hit\"):\n    \"\"\"play a short one-shot sound over the music\"\"\"\n    print(f\"stinger -> {name}\")\n\n# what the game would read off the screen this frame\nscene = {\n    \"enemies_nearby\": 4,\n    \"player_health\": 0.25,\n    \"shots_last_5s\": 9,\n    \"boss_on_screen\": True,\n    \"in_safe_room\": False,\n}\n\n# ---- the AI part ----\n\nkl.character(\n    \"DIRECTOR\",\n    soul=\"the game's music director; it reads the action on screen and drives the soundtrack\",\n    tools=[set_music, play_stinger],\n)\n\n# once at the end, where the game would call it (e.g. every second, not every frame):\nfor tool, args in kl.act(\n    \"DIRECTOR\",\n    {\n        \"scene\": scene,\n        \"goal\": \"music intensity should follow the action on screen\",\n        \"tracks\": [\"calm\", \"explore\", \"combat\", \"boss\"],\n    },\n):\n    {\"set_music\": set_music, \"play_stinger\": play_stinger}[tool](**args)\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": false
+  },
+  {
+   "id": "shop",
+   "recipe": false,
+   "sample": 0,
+   "code": "kl = Kinloom()\n\n# --- stand-ins for the game ---\nplayer_input = \"How much for the sword?\"      # what the player typed\nshop = {\"gold\": 3, \"stock\": [\"rusty sword\", \"bread\"]}   # the game's facts\n\ndef show(reply):\n    print(reply)\n\n# --- the shopkeeper ---\nkl.character(\n    \"MARLA\",\n    \"the shopkeeper: brisk, fond of haggling, never gives anything away for free\",\n)\n\n# --- where the game would, once per typed line ---\nreply = kl.chat(\"MARLA\", player_input, shop, speaker=\"PLAYER\")\nshow(reply)\n",
+   "calls": [
+    "character",
+    "chat"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "shop",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\ntyped_text = \"How much for the iron dagger?\"\n\ndef current_stock():\n    return [\"iron dagger\", \"healing potion\", \"rope\"]\n\ndef open_shop():\n    print(\"The shopkeeper turns to you.\")\n\ndef show_reply(text):\n    print(f\"Shopkeeper: {text}\")\n\ndef sell(item, price):\n    print(f\"Sold {item} for {price} gold.\")\n\n# --- the shopkeeper --------------------------------------------------------\nkl.character(\n    \"MARLA\",\n    \"the shopkeeper: warm, brisk, knows every price and every rumor in town\",\n    tools={\"sell\": {\"item\": \"text\", \"price\": \"whole number\"}},\n)\n\n# --- where the game would call once ---------------------------------------\nopen_shop()\nreply = kl.chat(\n    \"MARLA\",\n    typed_text,\n    {\"stock\": current_stock(), \"gold\": 12},\n    speaker=\"PLAYER\",\n)\nshow_reply(reply)\n\nfor tool, args in kl.act(\"MARLA\", {\"order\": typed_text}):\n    if tool == \"sell\":\n        sell(args[\"item\"], args[\"price\"])\n",
+   "calls": [
+    "act",
+    "character",
+    "chat"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "shop",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\nfrom kinloom.talk import PygameTalkBox\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nplayer_name = \"Ana\"\ngold = 25\nlantern_price = 30\n\ndef give_item(item):\n    print(f\"Ana receives: {item}\")\n\n# The shopkeeper: declared once, with a soul; \"offline\" is what she says with no key.\nkl.character(\"GRETA\", soul=\"a shrewd but warm shopkeeper who loves a good haggle and never gives the last word\",\n             offline=\"Take it or leave it.\")\n\n# Truths of the shop, true for everyone, never contradicted.\nkl.lore([\"The shop is called The Brass Lantern, in the village of Ashford.\",\n         \"Greta has run it for thirty years and knows every price by heart.\"])\n\n# --- where the game would run ---------------------------------------------\n# A ready dialogue box: typing, Enter sends, Esc closes, replies stream in, never blocks.\n# facts= gives her the numbers she may haggle over; on_action= what she decides to hand over.\nbox = PygameTalkBox(kl, \"GRETA\", speaker=player_name,\n                    facts=lambda: {\"lantern_price\": lantern_price, \"player_gold\": gold},\n                    on_action=lambda tool, args: give_item(args[\"item\"]))\n\n# In the game loop:\n#   if e.type == pygame.KEYDOWN and e.key == pygame.K_t and not box.is_open:\n#       box.open()                 # Greta speaks first\n#   if box.handle(e): continue     # the box used the key: not for the game\n#   box.update(); box.draw(screen) # box.mood, box.gesture: animations\n\n# The calls the game makes once, here, where the loop would:\nopening = kl.chat(\"GRETA\", \"\", speaker=player_name)                      # \"\" = Ana walks up: Greta speaks first\nreply = kl.chat(\"GRETA\", \"Twenty gold for the lantern?\", speaker=player_name)\ndeal = kl.decide(\"GRETA\", {\"offer\": 20, \"price\": lantern_price, \"reputation\": \"good\"},\n                 {\"accept\": False, \"counter_price\": [20, 30]})           # the game applies the numbers, clamped\nmood = kl.soul(\"GRETA\")[\"mood\"][\"word\"]                                  # \"wary\", \"amused\"...: pick her animation\n\nprint(opening)\nprint(reply)\nprint(deal)          # {\"accept\": False, \"counter_price\": 27}\nprint(mood)\n",
+   "calls": [
+    "character",
+    "chat",
+    "decide",
+    "lore",
+    "soul"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ModuleNotFoundError: No module named 'pygame'",
+   "pass": false
+  },
+  {
+   "id": "shop",
+   "recipe": true,
+   "sample": 1,
+   "code": "# --- stand-in for the game -------------------------------------------------\nimport pygame\nfrom kinloom import Kinloom\nfrom kinloom.talk import PygameTalkBox\n\nkl = Kinloom()\n\nplayer_name = \"Ana\"\ngold = 25\ninventory = []\n\ndef give_item(item):\n    inventory.append(item)\n    print(f\"{player_name} receives {item}.\")\n\nscreen = pygame.display.set_mode((640, 480))\nclock = pygame.time.Clock()\n\n# --- the shopkeeper --------------------------------------------------------\nkl.lore([\"The village is Ashford.\", \"The old king died last winter.\"])\nkl.character(\"GRETA\", \"a shrewd but warm shopkeeper of Ashford, who knows every price and every rumour\",\n             offline=\"Take it or leave it.\",\n             tools={\"give_item\": {\"item\": \"text\"}})   # what she can decide while talking\n\nbox = PygameTalkBox(kl, \"GRETA\", speaker=player_name,\n                    facts=lambda: {\"gold\": gold, \"inventory\": inventory},\n                    on_action=lambda tool, args: give_item(args[\"item\"]))\n\n# --- the game loop ---------------------------------------------------------\nrunning = True\nwhile running:\n    for e in pygame.event.get():\n        if e.type == pygame.QUIT:\n            running = False\n        if e.type == pygame.KEYDOWN and e.key == pygame.K_t and not box.is_open:\n            box.open()          # Greta speaks first\n        if box.handle(e):\n            continue            # the box used the key\n    box.update()\n    screen.fill((30, 30, 40))\n    box.draw(screen)\n    pygame.display.flip()\n    clock.tick(60)\n",
+   "calls": [
+    "character",
+    "lore"
+   ],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ModuleNotFoundError: No module named 'pygame'",
+   "pass": false
+  },
+  {
+   "id": "potion",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\n# The game would call this when the player opens the alchemist's bench.\nplayer_level = 4\nbiome = \"forest\"\n\n# --- what the game needs ---------------------------------------------------\n# A whole potion written at once: name, ingredients, effect, and a short story.\npotion = kl.create(\n    \"une recette de potion aléatoire\",\n    {\n        \"name\": \"text\",\n        \"ingredients\": [\"text\"],\n        \"effect\": \"text\",\n        \"description\": \"text\",\n    },\n    context={\"biome\": biome, \"player_level\": player_level},\n)\n\n# --- where the game would use it -------------------------------------------\nprint(potion[\"name\"])\nfor ingredient in potion[\"ingredients\"]:\n    print(\"-\", ingredient)\nprint(potion[\"effect\"])\nprint(potion[\"description\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "potion",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- game stand-in ---------------------------------------------------------\n# In the real game these come from the player, the world, the current save.\nplayer_level = 4\nalchemy_skill = \"apprentice\"   # what the character knows\nbiome = \"swamp\"                # where the ingredients were gathered\n\ndef learned(recipe):\n    \"\"\"The game would add the recipe to the player's book.\"\"\"\n    print(\"learned:\", recipe[\"name\"], \"->\", recipe[\"effect\"])\n\n# --- the AI call -----------------------------------------------------------\nrecipe = kl.create(\n    \"une recette de potion aléatoire\",\n    {\n        \"name\": \"text\",\n        \"ingredients\": [\"text\"],\n        \"effect\": \"text\",\n        \"power\": [1, 10],\n        \"color\": \"text\",\n        \"description\": \"text\",\n    },\n    context={\"skill\": alchemy_skill, \"biome\": biome, \"level\": player_level},\n)\n\n# --- where the game would use it -------------------------------------------\nlearned(recipe)\nprint(\"ingrédients:\", \", \".join(recipe[\"ingredients\"]))\nprint(\"effet:\", recipe[\"effect\"], \"(puissance\", recipe[\"power\"], \")\")\nprint(recipe[\"description\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "potion",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nplayer_level = 7\nbiome = \"swamp\"\ncauldron_stock = [\"mandrake root\", \"ash\", \"spring water\"]\n\n\ndef brew(recipe):\n    \"\"\"The game's own function: put the generated recipe into the cauldron.\"\"\"\n    print(f\"Brewing {recipe['name']}...\")\n    for ing in recipe[\"ingredients\"]:\n        print(f\"  + {ing['quantity']} x {ing['name']}\")\n    print(f\"  Effect: {recipe['effect']} ({recipe['potency']}/10, {recipe['duration']}s)\")\n# ---------------------------------------------------------------------------\n\n# One call, at the point where the game needs the potion.\nrecipe = kl.create(\n    \"a random potion recipe with its ingredients and its effect\",\n    {\n        \"name\": \"Mirewort Draught\",\n        \"ingredients\": [{\"name\": \"mandrake root\", \"quantity\": [1, 5]}],\n        \"effect\": \"text\",\n        \"potency\": [1, 10],\n        \"duration\": [10, 300],\n        \"flavour\": \"text\",\n    },\n    context={\"player_level\": player_level, \"biome\": biome, \"available\": cauldron_stock},\n)\n\nbrew(recipe)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "potion",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nalchemy_level = 3          # player's skill\nbiome = \"marais brumeux\"   # where they are brewing\ngold = 42                  # what they can spend\n\ndef add_potion_to_inventory(potion):\n    print(f\"[inventaire] + potion : {potion['name']}\")\n\n# --- the call, where the game would make it --------------------------------\npotion = kl.create(\n    \"une recette de potion aléatoire avec ses ingrédients et son effet\",\n    {\n        \"name\": \"text\",\n        \"ingredients\": [\"text\"],\n        \"effect\": \"text\",\n        \"rarity\": [\"commun\", \"rare\", \"légendaire\"],\n        \"power\": [1, 10],\n    },\n    context={\"niveau_alchimie\": alchemy_level, \"biome\": biome, \"or\": gold},\n)\n\nadd_potion_to_inventory(potion)\nprint(potion[\"name\"])\nprint(\"Ingrédients :\", \", \".join(potion[\"ingredients\"]))\nprint(\"Effet :\", potion[\"effect\"])\nprint(f\"Rareté : {potion['rarity']} — puissance {potion['power']}\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "jobs",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- Stand-in for the game: village state, jobs, and what each job needs ---\nvillage = {\n    \"population\": 12,\n    \"food\": 3,          # low\n    \"wood\": 40,         # plenty\n    \"stone\": 2,         # low\n    \"sick\": 4,          # many\n    \"threat\": 0.2,      # calm\n}\n\njobs = {\n    \"farmer\":  {\"food\": 6, \"wood\": 0, \"stone\": 0, \"heal\": 0, \"defense\": 0},\n    \"lumberjack\": {\"food\": 0, \"wood\": 8, \"stone\": 0, \"heal\": 0, \"defense\": 0},\n    \"miner\":   {\"food\": 0, \"wood\": 2, \"stone\": 5, \"heal\": 0, \"defense\": 0},\n    \"healer\":  {\"food\": 0, \"wood\": 0, \"stone\": 0, \"heal\": 3, \"defense\": 0},\n    \"guard\":   {\"food\": 0, \"wood\": 0, \"stone\": 0, \"heal\": 0, \"defense\": 4},\n}\n\nvillagers = [\"Ana\", \"Bram\", \"Cila\", \"Dori\", \"Esk\", \"Fen\"]\n\n# The village's needs, as numbers a model can read and fill in.\nneeds = {\n    \"food\":   max(0, 10 - village[\"food\"]),\n    \"wood\":   max(0, 20 - village[\"wood\"] // 2),\n    \"stone\":  max(0, 10 - village[\"stone\"]),\n    \"heal\":   village[\"sick\"],\n    \"defense\": int(village[\"threat\"] * 20),\n}\n\n# --- The call: each villager picks a job from the village's needs ---\nfor name in villagers:\n    choice = kl.decide(\n        name,\n        {\n            \"village\": village,\n            \"needs\": needs,\n            \"jobs\": jobs,\n            \"self\": {\"name\": name},\n        },\n        {\"job\": list(jobs), \"reason\": \"text\"},\n    )\n    job = choice[\"job\"]\n    # the game applies the pick\n    for resource, amount in jobs[job].items():\n        if resource in village:\n            village[resource] = village.get(resource, 0) + amount\n    print(f\"{name} -> {job}: {choice['reason']}\")\n\nprint(\"village after the day:\", village)\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "jobs",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- the game, stood in for with plain Python ---\nVILLAGERS = [\"Ana\", \"Bo\", \"Cyd\", \"Dee\"]\nJOBS = [\"farmer\", \"blacksmith\", \"healer\", \"guard\", \"baker\"]\n\ndef village_needs():\n    \"\"\"What the village is short of right now.\"\"\"\n    return {\"food\": 2, \"tools\": 1, \"medicine\": 0, \"safety\": 1, \"bread\": 0}\n\ndef assign(villager, job):\n    print(f\"{villager} becomes {job}\")\n\n# --- the call, where the game would make it ---\nneeds = village_needs()\nfor villager in VILLAGERS:\n    choice = kl.decide(\n        villager,\n        {\"village_needs\": needs, \"jobs\": JOBS},\n        {\"job\": JOBS, \"reason\": \"text\"},\n    )\n    assign(villager, choice[\"job\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "jobs",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game: plain Python, no engine ---\n\nvillage = {\n    \"food\": 3,          # what the village has\n    \"wood\": 40,\n    \"stone\": 12,\n    \"sick\": 4,\n    \"walls_hp\": 30,\n}\n\n# what each job gives the village, and what it costs to run it\nJOBS = {\n    \"farmer\":   {\"food\": +2,  \"wood\": 0,  \"stone\": 0},\n    \"lumberjack\": {\"food\": 0, \"wood\": +3, \"stone\": 0},\n    \"miner\":    {\"food\": 0,  \"wood\": 0,  \"stone\": +2},\n    \"healer\":   {\"food\": 0,  \"wood\": 0,  \"stone\": 0, \"sick\": -2},\n    \"guard\":    {\"food\": 0,  \"wood\": 0,  \"stone\": 0, \"walls_hp\": +2},\n}\n\nvillagers = [\n    {\"name\": \"Ana\",   \"job\": None, \"skill\": 0.8},\n    {\"name\": \"Bram\",  \"job\": None, \"skill\": 0.5},\n    {\"name\": \"Cato\",  \"job\": None, \"skill\": 0.9},\n    {\"name\": \"Dora\",  \"job\": None, \"skill\": 0.4},\n]\n\ndef needs(v):\n    \"\"\"What the village is short of, as plain facts.\"\"\"\n    return {\n        \"food\": v[\"food\"],\n        \"wood\": v[\"wood\"],\n        \"stone\": v[\"stone\"],\n        \"sick\": v[\"sick\"],\n        \"walls_hp\": v[\"walls_hp\"],\n        \"jobs_taken\": [x[\"job\"] for x in villagers if x[\"job\"]],\n    }\n\ndef assign(villager, job):\n    villager[\"job\"] = job\n    for key, delta in JOBS[job].items():\n        village[key] = village.get(key, 0) + delta\n\n# --- the AI call: one villager picks a job from the village's needs ---\n\n# The example is the shape of the answer AND the offline answer.\nchoice = kl.decide(\n    \"Ana\",\n    {\"role\": \"villager\", \"needs\": needs(village), \"jobs\": list(JOBS)},\n    {\"job\": [\"farmer\", \"lumberjack\", \"miner\", \"healer\", \"guard\"],\n     \"why\": \"text\"},\n)\n\n# the game uses it as it is\nassign(villagers[0], choice[\"job\"])\nprint(villagers[0][\"name\"], \"->\", choice[\"job\"], \"(\", choice[\"why\"], \")\")\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "jobs",
+   "recipe": true,
+   "sample": 1,
+   "code": "\"\"\"Village jobs assigned by need — villagers choose their trade based on the\nvillage's shortages.\"\"\"\n\nimport random\n\n\nclass Villager:\n    def __init__(self, name, job=None):\n        self.name = name\n        self.job = job      # None until decided below\n\n\ndef _need(jobs_held, demand, total_villagers):\n    \"\"\"Return how badly a given production role still wants hands.\"\"\"\n    return max(0, round(demand * total_villagers)) - sum(\n        1 for v in jobs_held.values() if False)\n\n\nJOBS = {\n    \"farmer\": lambda w: 4,\n}\n\n\n",
+   "calls": [],
+   "right_call": false,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": false
+  },
+  {
+   "id": "waves",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game ---\nplayer_level = 7\nwave_number = 4\n\ndef spawn_wave(count, hp, speed, kind):\n    print(f\"wave {wave_number}: {count}x {kind} (hp={hp}, speed={speed})\")\n\n# --- Kinloom: the wave adapts to the player's level ---\nwave = kl.decide(\n    \"WAVE_DIRECTOR\",\n    {\"player_level\": player_level, \"wave\": wave_number, \"max_level\": 30},\n    {\n        \"count\": [1, 20],\n        \"hp\": [10, 500],\n        \"speed\": [0.5, 3.0],\n        \"kind\": [\"slime\", \"goblin\", \"brute\", \"wraith\"],\n    },\n)\n\nspawn_wave(wave[\"count\"], wave[\"hp\"], wave[\"speed\"], wave[\"kind\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "waves",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-ins for the game -------------------------------------------------\n# The player's state, as the game would expose it.\nplayer = {\"level\": 7, \"hp\": 62, \"hp_max\": 80, \"weapon_power\": 14}\n\n# The wave the game is about to spawn, and the monsters it can draw from.\nwave = {\"number\": 3, \"max_monsters\": 12}\n\nmonster_pool = [\n    {\"name\": \"Rat\", \"hp\": 8, \"damage\": 2},\n    {\"name\": \"Goblin\", \"hp\": 20, \"damage\": 5},\n    {\"name\": \"Skeleton\", \"hp\": 35, \"damage\": 9},\n    {\"name\": \"Troll\", \"hp\": 90, \"damage\": 18},\n]\n\ndef spawn_wave(monsters, count):\n    # The game's own spawn function, called once per monster.\n    print(f\"Spawning {count} monsters: {[m['name'] for m in monsters]}\")\n\n# --- The AI call ------------------------------------------------------------\n# The situation is the player's level and shape; the answer is the wave:\n# which monsters, how many, and how hard they hit.\nplan = kl.decide(\n    \"WAVE_DIRECTOR\",\n    {\n        \"player_level\": player[\"level\"],\n        \"player_hp\": player[\"hp\"],\n        \"player_hp_max\": player[\"hp_max\"],\n        \"weapon_power\": player[\"weapon_power\"],\n        \"wave_number\": wave[\"number\"],\n        \"max_monsters\": wave[\"max_monsters\"],\n        \"available_monsters\": [m[\"name\"] for m in monster_pool],\n    },\n    {\n        \"monsters\": [\"Rat\"],          # names drawn from available_monsters\n        \"count\": [1, 12],             # how many to spawn\n        \"damage_multiplier\": [0.5, 2.0],\n        \"elite_chance\": [0.0, 1.0],\n    },\n    every=2.0,                        # refreshed in the background as the player changes\n)\n\n# --- Use the answer as it is ------------------------------------------------\nby_name = {m[\"name\"]: m for m in monster_pool}\nchosen = [by_name[name] for name in plan[\"monsters\"] if name in by_name]\n\nspawned = []\nfor i in range(plan[\"count\"]):\n    base = chosen[i % len(chosen)]\n    spawned.append({\n        \"name\": base[\"name\"],\n        \"hp\": base[\"hp\"],\n        \"damage\": max(1, round(base[\"damage\"] * plan[\"damage_multiplier\"])),\n        \"elite\": (i / max(1, plan[\"count\"])) < plan[\"elite_chance\"],\n    })\n\nspawn_wave(spawned, plan[\"count\"])\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "waves",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game -------------------------------------------------\nPLAYER = {\"level\": 7, \"hp\": 0.8, \"deaths_this_run\": 2, \"party_size\": 1}\n\ndef current_wave():\n    return {\"index\": 3, \"enemies\": 4, \"elite\": False}\n\ndef apply_wave(wave):\n    print(\"wave ->\", wave)\n\n# --- The call the game would make -----------------------------------------\n# The wave director is a system: decide() gives a validated shape every wave,\n# instant, refreshed in the background from the player's situation.\nwave = kl.decide(\n    \"WAVE_DIRECTOR\",\n    {\n        \"player_level\": PLAYER[\"level\"],\n        \"player_hp\": PLAYER[\"hp\"],\n        \"deaths_this_run\": PLAYER[\"deaths_this_run\"],\n        \"party_size\": PLAYER[\"party_size\"],\n        \"wave\": current_wave(),\n    },\n    {\n        \"enemy_count\": [1, 12],\n        \"enemy_level\": [1, 20],\n        \"elite\": [\"none\", \"one\", \"two\"],\n        \"spawn_interval\": [0.5, 4.0],\n        \"note\": \"text\",\n    },\n)\n\napply_wave(wave)\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "waves",
+   "recipe": true,
+   "sample": 1,
+   "code": "# --- stand-in for the game -------------------------------------------------\nimport math\n\ndef player_level():\n    return 7  # example\n\ndef player_stats():\n    return {\"hp\": 82, \"max_hp\": 100, \"dps\": 34.0, \"heals\": 2, \"deaths_last_wave\": 1}\n\ndef wave_number():\n    return 12  # example\n\ndef current_wave():\n    return {\"count\": 6, \"hp\": 40, \"damage\": 8.0, \"speed\": 1.0, \"elite_chance\": 0.05}\n\ndef spawn_wave(wave):\n    # the game's own spawner; wave is the dict decide() returned\n    print(\"spawning:\", wave)\n\n# --- difficulty adapted to the player's level ------------------------------\n# decide: a validated choice shaped by example, instant every frame,\n# refreshed in the background. The example IS the offline answer.\nWAVE_SHAPE = {\n    \"count\": [1, 30],\n    \"hp\": [10, 500],\n    \"damage\": [1.0, 40.0],\n    \"speed\": [0.6, 1.8],\n    \"elite_chance\": [0.0, 0.5],\n    \"note\": \"text\",\n}\n\ndef next_wave():\n    situation = {\n        \"player_level\": player_level(),\n        \"player_stats\": player_stats(),\n        \"wave_number\": wave_number(),\n        \"previous_wave\": current_wave(),\n    }\n    return kl.decide(\"WAVE_DIRECTOR\", situation, WAVE_SHAPE)\n\n# --- where the game would call it ------------------------------------------\nwave = next_wave()\nspawn_wave(wave)\n",
+   "calls": [
+    "decide"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "bridge",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-ins for the game ---\nwho = \"Ana\"\n\ndef built_what():\n    return \"bridge\"\n\ndef on_built(who, what):\n    print(f\"*built: {who} built a {what}*\")\n\n# --- the announcer ---\nkl.character(\n    \"VEGA\",\n    \"a short, excited announcer\",\n    lines={\"built\": [\"{who} built a {what}!\"]},\n    events={\"built\": [\"who\", \"what\"]},\n)\n\n# --- where the game would call it ---\nwhat = built_what()\non_built(who, what)\nprint(kl.say(\"VEGA\", \"built\", {\"who\": who, \"what\": what}))\n",
+   "calls": [
+    "character",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "bridge",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game -------------------------------------------------\nannouncer = kl.character(\n    \"VEGA\",\n    \"a short, excited announcer who comments on what the player just did\",\n    lines={\"bridge_built\": [\"{who} just built a {what}!\"]},\n    events={\"bridge_built\": [\"who\", \"what\"]},\n)\n\ndef build_bridge(player_name):\n    # the game's own construction logic would live here\n    return {\"who\": player_name, \"what\": \"bridge\"}\n\n# --- where the game would call it -----------------------------------------\nfacts = build_bridge(\"Ana\")\nline = kl.say(\"VEGA\", \"bridge_built\", facts)\nprint(line)  # -> \"Ana just built a bridge!\"\n",
+   "calls": [
+    "character",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "bridge",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nplayer = {\"name\": \"Ana\", \"gold\": 12}\n\ndef build(player, what):\n    \"\"\"The game's own build action; here it just records the result.\"\"\"\n    return {\"builder\": player[\"name\"], \"structure\": what}\n\n# --- the announcer: declared once, with its event lines --------------------\nkl.character(\n    \"VEGA\",\n    \"a short, excited announcer\",\n    lines={\"built\": [\"{who} built a {what}!\"]},\n    events={\"built\": [\"who\", \"what\"]},\n)\n\n# --- where the game would call it: the player just built a bridge ----------\nresult = build(player, \"bridge\")\nline = kl.say(\"VEGA\", \"built\", {\"who\": result[\"builder\"], \"what\": result[\"structure\"]})\nprint(line)\n",
+   "calls": [
+    "character",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "bridge",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nPLAYER = \"Ana\"\n\ndef bridge_was_built():\n    return {\"who\": PLAYER, \"what\": \"bridge\"}\n\n# --- the announcer: declared once ---\nkl.character(\n    \"VEGA\",\n    \"a short, excited announcer\",\n    lines={\"built\": [\"{who} built a {what}!\"]},\n    events={\"built\": [\"who\", \"what\"]},\n)\n\n# --- where the game would call it ---\nfacts = bridge_was_built()\nline = kl.say(\"VEGA\", \"built\", facts)\nprint(line)\n",
+   "calls": [
+    "character",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "streets",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game (example values, no engine) ---\nnew_districts = [\n    {\"name\": \"Les Hauts-Fourneaux\", \"mood\": \"ouvrier\", \"era\": \"industriel\"},\n    {\"name\": \"Rive-Douce\", \"mood\": \"paisible\", \"era\": \"jardin\"},\n]\n\ndef on_new_district(district):\n    # the game would register streets in its own map data\n    print(f\"{district['name']} -> {district['streets']}\")\n\n# --- Kinloom: street names for each new district ---\nfor district in new_districts:\n    district[\"streets\"] = kl.create(\n        \"des noms de rues pour un quartier de ville\",\n        {\"streets\": [\"nom de rue\"]},\n        context={\"quartier\": district[\"name\"], \"ambiance\": district[\"mood\"], \"epoque\": district[\"era\"]},\n        count=6,\n    )\n\n# where the game would run it\nfor district in new_districts:\n    on_new_district(district)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "streets",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game -------------------------------------------------\nDISTRICTS = [\n    {\"name\": \"Le Vieux-Port\", \"mood\": \"maritime et populaire\", \"era\": \"XVIIe siècle\"},\n    {\"name\": \"Les Hauts-Jardins\", \"mood\": \"bourgeois et fleuri\", \"era\": \"Belle Époque\"},\n    {\"name\": \"La Fabrique\", \"mood\": \"industriel et ouvrier\", \"era\": \"XIXe siècle\"},\n]\n\ndef new_district(district):\n    \"\"\"Le jeu appellerait ceci quand un quartier est généré.\"\"\"\n    print(f\"Nouveau quartier : {district['name']} ({district['mood']}, {district['era']})\")\n\n# --- Les appels Kinloom ----------------------------------------------------\n# Un nom de rue par nouveau quartier, avec son histoire et son ambiance.\nfor district in DISTRICTS:\n    streets = kl.create(\n        f\"des noms de rues pour un quartier de ville nommé {district['name']}\",\n        {\n            \"streets\": [\n                {\n                    \"name\": \"text\",\n                    \"story\": \"text\",\n                    \"vibe\": [\"calme\", \"animée\", \"sinistre\", \"chic\", \"populaire\"],\n                }\n            ]\n        },\n        context={\"quartier\": district[\"name\"], \"ambiance\": district[\"mood\"], \"epoque\": district[\"era\"]},\n        count=4,\n    )\n\n    new_district(district)\n    for street in streets:\n        print(f\"  {street['name']} — {street['vibe']} : {street['story']}\")\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "KeyError: 'name'",
+   "pass": false
+  },
+  {
+   "id": "streets",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game ---\nclass District:\n    def __init__(self, name, kind, mood):\n        self.name = name          # e.g. \"Old Harbor\"\n        self.kind = kind          # \"docks\", \"residential\", \"market\", \"industrial\", \"park\"\n        self.mood = mood          # \"bustling\", \"quiet\", \"decaying\", \"wealthy\"\n        self.streets = []         # filled in below\n\ndef new_districts():\n    return [\n        District(\"Old Harbor\", \"docks\", \"bustling\"),\n        District(\"Mira Hills\", \"residential\", \"wealthy\"),\n        District(\"The Kilns\", \"industrial\", \"decaying\"),\n        District(\"Lantern Row\", \"market\", \"bustling\"),\n    ]\n\n# --- Kinloom: street names for each new district ---\n# create: data of any shape; the example is the shape AND the offline answer.\ndef name_streets(district):\n    return kl.create(\n        \"street names for a district of a city\",\n        {\"streets\": [\"Anchor Lane\", \"Saltwind Row\", \"Crane Street\"]},\n        context={\"district\": district.name, \"kind\": district.kind, \"mood\": district.mood},\n    )[\"streets\"]\n\n# --- where the game would do it ---\nfor district in new_districts():\n    district.streets = name_streets(district)\n    print(district.name, \"->\", district.streets)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "streets",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\ndef new_districts():\n    # the game hands over the districts that were just built\n    return [\n        {\"name\": \"Old Harbour\", \"kind\": \"docks\",   \"mood\": \"salty, working-class\"},\n        {\"name\": \"Lantern Hill\", \"kind\": \"residential\", \"mood\": \"quiet, well-off\"},\n        {\"name\": \"Ashfield\",    \"kind\": \"industrial\",   \"mood\": \"grimy, loud\"},\n    ]\n\ndef register_streets(district, streets):\n    # the game stores them; here we just show them\n    print(district[\"name\"])\n    for s in streets:\n        print(\"   \", s[\"name\"], \"-\", s[\"flavour\"])\n\n# --- what the model writes: street names, one district at a time ---\nEXAMPLE = {\n    \"streets\": [\n        {\"name\": \"Anchor Row\", \"flavour\": \"named after the old anchor bolted to the corner wall\"}\n    ]\n}\n\nfor district in new_districts():\n    result = kl.create(\n        \"street names for a district of the city\",\n        EXAMPLE,\n        context={\"district\": district[\"name\"], \"kind\": district[\"kind\"], \"mood\": district[\"mood\"]},\n        count=6,\n    )\n    register_streets(district, result)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "KeyError: 'name'",
+   "pass": false
+  },
+  {
+   "id": "dog",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game ---\ntyped_text = \"cherche la balle\"   # what the player typed at the keyboard\n\ndef run(tool, args):\n    print(f\"ROVER -> {tool} {args}\")   # the game would do the real thing here\n\n# --- the dog ---\nkl.character(\"ROVER\", \"the player's dog\", tools={\n    \"sit\": {},\n    \"follow\": {},\n    \"fetch\": {\"item\": \"text\"},\n})\n\n# --- where the game would react, each time the player types ---\nfor tool, args in kl.act(\"ROVER\", {\"order\": typed_text}):\n    run(tool, args)\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dog",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\nkl = Kinloom()\n\n# --- game stand-in ---------------------------------------------------------\ntyped_text = \"cherche la balle\"       # what the player just typed\nplayer_pos, dog_pos = (10, 4), (12, 4)\nnearest_item = \"balle\"\n\ndef dog_sit():    print(\"Le chien s'assoit.\")\ndef dog_follow(): print(\"Le chien te suit.\")\ndef dog_fetch(item): print(f\"Le chien va chercher {item}.\")\n\n# --- the dog's orders: plain functions, run by Kinloom ---------------------\nkl.character(\n    \"REX\", \"le chien du joueur, obéissant et joyeux\",\n    tools={\"assis\": dog_sit, \"suis_moi\": dog_follow, \"cherche\": dog_fetch},\n)\n\n# --- where the game would, once per typed order ----------------------------\nfor tool, args in kl.act(\"REX\", {\"ordre\": typed_text,\n                                 \"position_joueur\": player_pos,\n                                 \"position_chien\": dog_pos,\n                                 \"objet_proche\": nearest_item}):\n    {\"assis\": dog_sit, \"suis_moi\": dog_follow, \"cherche\": dog_fetch}[tool](**args)\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dog",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game: the dog, the world, and what the player typed ---\ndog = {\"x\": 0, \"y\": 0, \"state\": \"idle\"}\nworld = {\"stick\": {\"x\": 5, \"y\": 0}, \"player\": {\"x\": 0, \"y\": 0}}\ntyped_text = \"cherche le bâton\"\n\ndef sit():\n    dog[\"state\"] = \"sitting\"\n\ndef follow():\n    dog[\"state\"] = \"following\"\n\ndef fetch(item):\n    dog[\"state\"] = f\"fetching {item}\"\n\ndef run(tool, args):\n    {\"sit\": sit, \"follow\": follow, \"fetch\": fetch}[tool](**args)\n\n# --- declare the dog once: who it is, and the game functions it may call ---\nkl.character(\n    \"ROVER\",\n    \"the player's dog: eager, loyal, understands short orders in French\",\n    tools={\"sit\": {}, \"follow\": {}, \"fetch\": {\"item\": \"stick\"}},\n)\n\n# --- where the game would call it, once per typed order ---\nfor tool, args in kl.act(\"ROVER\", {\"order\": typed_text}):\n    run(tool, args)\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "dog",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\ntyped_text = \"cherche la balle\"          # what the player typed\nworld = {\"nearby\": [\"balle\", \"os\", \"canard en plastique\"], \"player_x\": 12, \"dog_x\": 3}\n\ndef sit():\n    print(\"Le chien s'assoit.\")\n\ndef follow():\n    print(\"Le chien suit le joueur.\")\n\ndef fetch(item):\n    print(f\"Le chien part chercher : {item}\")\n\ndef run(tool, args):\n    {\"sit\": sit, \"follow\": follow, \"fetch\": fetch}[tool](**args)\n\n# --- the dog, declared once ------------------------------------------------\nkl.character(\n    \"ROVER\",\n    \"le chien du joueur, obéissant et enthousiaste\",\n    tools={\"sit\": {}, \"follow\": {}, \"fetch\": {\"item\": \"balle\"}},\n)\n\n# --- where the game would call it ------------------------------------------\nfor tool, args in kl.act(\"ROVER\", {\"order\": typed_text, \"around\": world[\"nearby\"]}):\n    run(tool, args)\n",
+   "calls": [
+    "act",
+    "character"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "witness",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- the game, stood in for with plain Python ---\nplayer = {\"name\": \"Ana\"}\n\ndef player_steals(item, place):\n    return {\"who\": player[\"name\"], \"what\": item, \"where\": place}\n\ndef guards_who_could_see(place):\n    return {\"DORAN\": \"the gate\", \"MILA\": \"the yard\", \"BRUNO\": \"the cellar\"}\n\ndef guard_on_duty(place, guards):\n    return [name for name, spot in guards.items() if spot == place]\n\n# --- Kinloom ---\ntheft = player_steals(\"bread\", \"the yard\")\n\nguards = guards_who_could_see(theft[\"where\"])\nseen_by = guard_on_duty(theft[\"where\"], guards)\n\nkl.event(\n    f\"the player stole {theft['what']} in {theft['where']}\",\n    by=\"PLAYER\",\n    seen_by=seen_by,\n)\n\nfor guard in guards:\n    if guard in seen_by:\n        kl.say(guard, \"witnessed_theft\", theft)\n    else:\n        kl.say(guard, \"heard_about_theft\", theft)\n\n# what each guard now believes, and how the others hear it\nfor guard in guards:\n    if kl.knows(guard, \"the player stole bread\"):\n        kl.opinion(guard, \"PLAYER\", -0.4)\n    else:\n        for other in guards:\n            if other != guard and kl.knows(other, \"the player stole bread\"):\n                kl.chat(guard, \"Did you hear what happened in the yard?\", {\"thief\": theft[\"who\"]}, speaker=other)\n                break\n",
+   "calls": [
+    "chat",
+    "event",
+    "knows",
+    "opinion",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "witness",
+   "recipe": false,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- Stand-in for the game (example values, no engine) ---\nGUARDS = [\"GARDE_EST\", \"GARDE_OUEST\"]\nPLAYER = \"JOUEUR\"\nWITNESSES = [\"GARDE_EST\", \"MARCHAND\"]  # who was around when it happened\n\n# Declare the guards once, in code: their voice and the lines they can say.\nfor name in GUARDS:\n    kl.character(\n        name,\n        \"un garde de la ville, méfiant, parle bref et factuel\",\n        lines={\n            \"vol_vu\": [\"{who} a volé, je l'ai vu de mes yeux.\"],\n            \"vol_rapporte\": [\"{who} a volé, {witness} l'a vu.\"],\n        },\n        events={\n            \"vol_vu\": [\"who\"],\n            \"vol_rapporte\": [\"who\", \"witness\"],\n        },\n    )\n\n# --- Where the game would do this ---\ndef player_stole_bread():\n    # The theft happened; tell Kinloom who saw it.\n    kl.event(\"le joueur a volé du pain\", by=PLAYER, seen_by=WITNESSES)\n\ndef guard_reacts(guard):\n    # Did this guard see it themselves? Otherwise: did anyone they know see it?\n    if kl.knows(guard, \"le joueur a volé du pain\"):\n        return kl.say(guard, \"vol_vu\", {\"who\": PLAYER})\n    for witness in WITNESSES:\n        if kl.knows(witness, \"le joueur a volé du pain\"):\n            return kl.say(guard, \"vol_rapporte\", {\"who\": PLAYER, \"witness\": witness})\n    return None\n\n# --- The calls, once, where the game would make them ---\nplayer_stole_bread()\nfor guard in GUARDS:\n    line = guard_reacts(guard)\n    if line is not None:\n        print(f\"{guard}: {line}\")\n",
+   "calls": [
+    "character",
+    "event",
+    "knows",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "witness",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nPLAYER = \"PLAYER\"\n\n# The guards, declared once. They speak on the \"theft_seen\" event.\nkl.character(\"GUARD_ANA\", \"a city guard, blunt and watchful\")\nkl.character(\"GUARD_BO\", \"a young city guard who repeats what he hears\")\nkl.character(\n    \"GUARD\",\n    \"a city guard who spreads word of crimes to the other guards\",\n    lines={\"theft_seen\": [\"Someone saw {who} steal {what}!\", \"Word is {who} stole {what}.\"]},\n    events={\"theft_seen\": [\"who\", \"what\"]},\n)\nGUARDS = [\"GUARD_ANA\", \"GUARD_BO\"]\n\n\ndef guards_near_player():\n    # the game decides who is close enough to see it\n    return [\"GUARD_ANA\"]\n\n\ndef player_steals(item):\n    return item\n\n\n# --- what the game would do at the moment of the theft ---------------------\ndef on_theft(item):\n    witnesses = guards_near_player()\n\n    # 1. record who saw what: witnesses are the ones standing there\n    kl.event(\n        f\"the player stole {item}\",\n        by=PLAYER,\n        seen_by=witnesses,\n        tag=\"theft\",\n        impact=-0.6,\n    )\n\n    # 2. witnesses tell the others: meeting spreads the memory\n    for w in witnesses:\n        for other in GUARDS:\n            if other != w:\n                kl.meet(w, other)\n\n    # 3. every guard who knows now says it out loud\n    for g in GUARDS:\n        if kl.knows(g, f\"the player stole {item}\"):\n            print(kl.say(\"GUARD\", \"theft_seen\", {\"who\": PLAYER, \"what\": item}))\n\n    return witnesses\n\n\n# --- the calls, once, where the game would make them -----------------------\nwitnesses = on_theft(player_steals(\"bread\"))\n\n# game logic can ask directly:\nprint(\"Ana saw it:\", kl.knows(\"GUARD_ANA\", \"the player stole bread\"))\nprint(\"Bo saw it:\", kl.knows(\"GUARD_BO\", \"the player stole bread\"))\nprint(\"Guards' opinion of the player:\", kl.reputation(PLAYER, \"GUARD\"))\n",
+   "calls": [
+    "character",
+    "event",
+    "knows",
+    "meet",
+    "reputation",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "witness",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python, no engine) ---\nGUARDS = [\"GARETH\", \"LYS\", \"OLD_MARC\"]\n\ndef guard_soul(name):\n    return f\"{name}, a guard of the town gate, suspicious of strangers, loyal to the other guards\"\n\nfor g in GUARDS:\n    kl.character(\n        g,\n        guard_soul(g),\n        lines={\n            \"heard_thief\": [\n                \"So the player was seen stealing — {witness} swears it.\",\n                \"Word travels: {witness} caught the player thieving.\",\n            ],\n            \"no_news\": [\"Nothing new on the streets tonight.\"],\n        },\n        events={\n            \"heard_thief\": [\"witness\", \"what\"],\n            \"no_news\": [],\n        },\n    )\n\n# --- what the game would do when a theft happens ---\ndef player_steals(what, seen_by):\n    kl.event(f\"the player stole {what}\", by=\"PLAYER\", seen_by=seen_by, tag=\"theft\", impact=0.8)\n\n# the guards share what they know with each other\ndef guards_talk():\n    for a in GUARDS:\n        for b in GUARDS:\n            if a != b:\n                kl.meet(a, b)\n\n# --- make the calls once, where the game would ---\nplayer_steals(\"bread\", seen_by=[\"BAKER\"])\nguards_talk()\n\nfor g in GUARDS:\n    if kl.knows(g, \"the player stole bread\"):\n        witness = \"BAKER\"\n        print(kl.say(g, \"heard_thief\", {\"witness\": witness, \"what\": \"bread\"}))\n    else:\n        print(kl.say(g, \"no_news\", {}))\n",
+   "calls": [
+    "character",
+    "event",
+    "knows",
+    "meet",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "choices",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game ---\nplayer_name = \"Ana\"\nreputation_at_court = 3          # -10..10\nhas_letter = True\nqueen_mood = \"wary\"\n\n# --- dialogue with the queen: three possible replies for the player ---\nqueen = kl.character(\n    \"QUEEN\",\n    \"the queen of the northern court: proud, watchful, speaks in short measured sentences\",\n    lines={\n        \"greeting\": [\n            \"So you are {who}. The court has been talking about you.\",\n            \"Approach, {who}. I have little time and much to weigh.\",\n        ],\n        \"reply\": [\"{line}\"],\n    },\n    events={\"greeting\": [\"who\"], \"reply\": [\"line\"]},\n)\n\nopening = kl.say(\"QUEEN\", \"greeting\", {\"who\": player_name})\n\nreplies = kl.create(\n    \"three possible answers the player could give to the queen's greeting, each fitting the player's standing at court\",\n    {\n        \"replies\": [\n            {\n                \"text\": \"text the player can say\",\n                \"tone\": [\"respectful\", \"bold\", \"cautious\", \"flattering\", \"defiant\"],\n                \"intent\": \"what the player is trying to get out of saying it\",\n            }\n        ]\n    },\n    context={\n        \"queen\": opening,\n        \"queen_mood\": queen_mood,\n        \"player\": player_name,\n        \"reputation_at_court\": reputation_at_court,\n        \"carries_a_letter\": has_letter,\n    },\n    count=3,\n)\n\n# --- the game would show these under the queen's line ---\nprint(opening)\nfor i, r in enumerate(replies, 1):\n    print(f\"{i}. [{r['tone']}] {r['text']}  ({r['intent']})\")\n",
+   "calls": [
+    "character",
+    "create",
+    "say"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "KeyError: 'tone'",
+   "pass": false
+  },
+  {
+   "id": "choices",
+   "recipe": false,
+   "sample": 1,
+   "code": "kl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nplayer = {\"name\": \"Ana\", \"gold\": 12, \"reputation\": \"soldat fidèle\"}\nqueen_state = {\"mood\": \"méfiante\", \"court\": \"en guerre contre le Nord\"}\nlast_event = \"Ana a sauvé la caravane de blé\"\n# ---------------------------------------------------------------------------\n\nreplies = kl.create(\n    \"trois réponses possibles du joueur à la reine\",\n    [\"text\", \"text\", \"text\"],\n    context={\n        \"reine\": \"la reine Isolde, froide et calculatrice\",\n        \"joueur\": player,\n        \"situation\": queen_state,\n        \"dernier_evenement\": last_event,\n    },\n)\n\nfor r in replies:\n    print(r)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "choices",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-ins for the game (plain Python, no engine) ---\nplayer_name = \"Ana\"\ngold = 12\nqueen_mood = \"impatient\"\ncourt_heard_about_the_letter = True\n\nkl.lore([\n    \"The realm is at war with the northern duchy.\",\n    \"The queen rules alone since the king's death.\",\n])\n\nkl.character(\n    \"QUEEN\",\n    soul=\"a sharp, tired queen who rules alone in wartime, weighing every word for what it costs her\",\n    offline=\"Speak plainly, then.\",\n)\n\n# --- where the game would call it ---\ncontext = {\n    \"player_name\": player_name,\n    \"gold\": gold,\n    \"queen_mood\": queen_mood,\n    \"letter_known\": court_heard_about_the_letter,\n}\n\noptions = kl.create(\n    \"three things the player could say to the queen at court\",\n    [{\"text\": \"My queen, I bring news from the north.\", \"tone\": [\"loyal\", \"bold\", \"sly\"]}],\n    context=context,\n)\n\nfor option in options:\n    print(option[\"text\"])\n\n# the player picks one; the queen answers in character\nreply = kl.chat(\"QUEEN\", options[1][\"text\"], {\"gold\": gold}, speaker=player_name)\nprint(reply)\n",
+   "calls": [
+    "character",
+    "chat",
+    "create",
+    "lore"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "IndexError: list index out of range",
+   "pass": false
+  },
+  {
+   "id": "choices",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\nplayer_name = \"Ana\"\ngold = 12\nqueen_mood = \"impatient\"          # what the game knows about the scene right now\nday = 3                           # the audience is on the third day of the siege\n\nkl.lore([\n    \"The realm is under siege; the queen holds the last walled city.\",\n    \"The player is an envoy who slipped through the siege lines.\",\n])\n\n# declared once, in code: who she is, and what she says with no key\nkl.character(\n    \"QUEEN\",\n    soul=\"Queen Isolde, cold and precise, tired of courtiers; she weighs every word for what it buys her\",\n    offline=\"Speak plainly, envoy. My patience is shorter than my walls.\",\n    invent=False,\n)\n\n# --- where the game would ask ----------------------------------------------\n# three things the player could say to her, shaped for a dialogue menu\noptions = kl.create(\n    \"three things the player could say to the queen during an audience\",\n    [{\"text\": \"Say something to the queen.\", \"tone\": [\"bold\", \"humble\", \"sly\"]}],\n    context={\"queen_mood\": queen_mood, \"day\": day, \"gold\": gold, \"speaker\": player_name},\n)\n\n# the player picks one; she answers in character\nanswer = kl.chat(\"QUEEN\", options[0][\"text\"], {\"gold\": gold, \"day\": day}, speaker=player_name)\n\n# --- what the game would do with them --------------------------------------\nfor option in options:\n    print(f\"[{option['tone']}] {option['text']}\")\nprint(f\"QUEEN: {answer}\")\nprint(kl.soul(\"QUEEN\")[\"mood\"][\"word\"])\n",
+   "calls": [
+    "character",
+    "chat",
+    "create",
+    "lore",
+    "soul"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "drawings",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-in for the game ---\ndrawings = [\n    {\"player\": \"Ana\", \"description\": \"un chat qui porte une couronne trop grande\"},\n    {\"player\": \"Bo\", \"description\": \"un bonhomme allumette qui danse la macarena\"},\n    {\"player\": \"Cy\", \"description\": \"une maison avec un soleil dans le coin\"},\n    {\"player\": \"Dee\", \"description\": \"un dragon qui éternue des paillettes\"},\n]\n\n# --- the call, once, where the game would ---\nranking = kl.create(\n    \"classe ces dessins du plus drôle au moins drôle\",\n    {\"order\": [{\"player\": \"Ana\", \"rank\": [1, 4], \"why\": \"text\"}]},\n    context={\"drawings\": drawings},\n)\n\nfor entry in ranking[\"order\"]:\n    print(entry[\"rank\"], entry[\"player\"], \"-\", entry[\"why\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "drawings",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- Stand-in for the game (plain Python) ---\ndrawings = [\n    {\"player\": \"Ana\", \"description\": \"un chat qui porte une couronne, dessiné avec les pieds\"},\n    {\"player\": \"Bo\", \"description\": \"une maison avec un soleil qui sourit\"},\n    {\"player\": \"Cy\", \"description\": \"un dragon en train de manger une pizza\"},\n]\n\n# --- Kinloom: rank the drawings from funniest to least funny ---\nranked = kl.create(\n    \"classer des dessins de joueurs du plus drôle au moins drôle à partir de leur description\",\n    [{\"player\": \"Ana\", \"rank\": [1, 3], \"why\": \"text\"}],\n    context={\"drawings\": drawings},\n)\n\nfor entry in sorted(ranked, key=lambda e: e[\"rank\"]):\n    print(entry[\"rank\"], entry[\"player\"], \"-\", entry[\"why\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "drawings",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game ---\ndrawings = [\n    {\"player\": \"Ana\", \"description\": \"un chat avec six pattes qui joue du piano\"},\n    {\"player\": \"Bo\", \"description\": \"un bonhomme bâton qui sourit\"},\n    {\"player\": \"Cy\", \"description\": \"une licorne qui vomit de l'arc-en-ciel sur un dragon triste\"},\n]\n\ndef show(ranking):\n    for i, entry in enumerate(ranking, 1):\n        print(i, entry[\"player\"], \"-\", entry[\"reason\"])\n\n# --- Kinloom ---\nranking = kl.create(\n    \"classe ces dessins du plus drôle au moins drôle, d'après leur description\",\n    [{\"player\": \"Ana\", \"rank\": [1, 3], \"reason\": \"text\"}],\n    context={\"drawings\": drawings},\n)\n\nshow(ranking)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "drawings",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game -------------------------------------------------\n# Each drawing: who drew it, and what the drawing shows.\ndrawings = [\n    {\"player\": \"Ana\",  \"description\": \"un chat à trois pattes qui porte un chapeau de pirate\"},\n    {\"player\": \"Bo\",   \"description\": \"un soleil avec un visage qui pleure des nouilles\"},\n    {\"player\": \"Cleo\", \"description\": \"un château fait de fromage fondu, avec un dragon myope\"},\n    {\"player\": \"Dan\",  \"description\": \"une maison, un arbre, un nuage\"},\n]\n\ndef announce(ranking):\n    # the game would show the podium / leaderboard here\n    for place, entry in enumerate(ranking, 1):\n        print(place, entry[\"player\"], \"—\", entry[\"reason\"])\n\n# --- the AI call, once, where the game would -------------------------------\nranking = kl.create(\n    \"classe ces dessins du plus drôle au moins drôle\",\n    [{\"player\": \"Ana\", \"reason\": \"le chat pirate à trois pattes, absurde et précis\"}],\n    context={\"drawings\": drawings},\n    count=len(drawings),\n)\n\nannounce(ranking)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "TypeError: list indices must be integers or slices, not str",
+   "pass": false
+  },
+  {
+   "id": "loot",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game: where the player is right now ---\nplace = \"a flooded cellar under the mill\"\ndepth = 3  # how deep underground, in floors\n\n# --- the call the game would make ---\ndescription = kl.create(\n    \"a sentence describing an object found on the ground, fitting the place\",\n    \"text\",\n    context={\"place\": place, \"depth\": depth},\n)\n\nprint(description)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "loot",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- the game, stood in for ---\nplace = \"cellar\"          # where the player is standing\ndepth = 3                 # how deep they are, in floors\n\n# --- the AI call ---\ndescription = kl.create(\n    \"an object found on the ground, described in one sentence, fitting the place\",\n    {\"text\": \"a sentence\"},\n    context={\"place\": place, \"depth\": depth},\n)\n\nprint(description[\"text\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "loot",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\n\ndef current_place():\n    return {\"name\": \"le vieux moulin\", \"biome\": \"ruines\", \"weather\": \"pluie\"}\n\ndef player_state():\n    return {\"level\": 4, \"gold\": 12}\n\n# --- where the game would call it ---\n\nplace = current_place()\nplayer = player_state()\n\nitem = kl.create(\n    \"un objet trouvé par terre, décrit en une phrase selon le lieu\",\n    {\"name\": \"Clé rouillée\", \"description\": \"Une clé rouillée gît dans la poussière, à demi enfouie sous les gravats.\",\n     \"value\": [1, 50]},\n    context={\"lieu\": place[\"name\"], \"biome\": place[\"biome\"], \"météo\": place[\"weather\"],\n             \"niveau_joueur\": player[\"level\"]},\n    instant=True,\n)\n\nprint(item[\"description\"])\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "loot",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\n# where the item is lying, and what the place is like\nlocation = {\n    \"name\": \"le vieux moulin\",\n    \"kind\": \"bâtiment en ruine\",\n    \"ground\": \"planches pourries et poussière de farine\",\n    \"weather\": \"pluie fine\",\n    \"time\": \"crépuscule\",\n}\n\n# what the player is doing when they spot it\nfind_context = {\n    \"player_level\": 4,\n    \"recent\": \"les loups ont attaqué le moulin\",\n    \"carrying\": [\"une lanterne éteinte\"],\n}\n\n# --- the call, once, where the game would ---\ndescription = kl.create(\n    \"la description d'un objet trouvé par terre, en une phrase, selon le lieu\",\n    \"Une petite clé de fer, rongée de rouille, repose entre deux planches du vieux moulin.\",\n    context={\"lieu\": location, \"trouvaille\": find_context},\n)\n\nprint(description)\n",
+   "calls": [
+    "create"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  }
+ ]
+}

@@ -1,0 +1,170 @@
+{
+  "label": "racer-v2-aider1",
+  "scenario": "live",
+  "source": "<workspace>\\games\\trials\\racer-v2-aider1",
+  "when": "20260927-200833",
+  "seconds": 120.0,
+  "commit": "133fefd",
+  "kinloom": {
+    "mode": "online",
+    "stats": {
+      "calls": 44,
+      "failures": 41,
+      "input_tokens": 1171,
+      "cached_tokens": 0,
+      "output_tokens": 2061,
+      "latency": 89.31600000197068,
+      "offline_answers": 37,
+      "by_kind": {
+        "lines": 20,
+        "create": 3,
+        "decide": 12,
+        "act": 9
+      },
+      "cost": null,
+      "avg_latency": 2.03
+    },
+    "characters": [
+      "NOVA",
+      "DIRECTOR",
+      "VEGA",
+      "THEO",
+      "BLAZE",
+      "MINT"
+    ]
+  },
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 113.6,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.066,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.46,
+        "lateral_sd": 1.52,
+        "samples": 470,
+        "speed_mean": 41.31,
+        "speed_sd": 13.32
+      },
+      "MINT": {
+        "boosting_share": 0.032,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.33,
+        "lateral_sd": 1.72,
+        "samples": 470,
+        "speed_mean": 41.31,
+        "speed_sd": 12.91
+      },
+      "NOVA": {
+        "boosting_share": 0.021,
+        "drifting_share": 0.0,
+        "lateral_mean": -1.28,
+        "lateral_sd": 1.43,
+        "samples": 470,
+        "speed_mean": 41.16,
+        "speed_sd": 12.42
+      },
+      "YOU": {
+        "boosting_share": 0.023,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.46,
+        "lateral_sd": 1.75,
+        "samples": 470,
+        "speed_mean": 41.12,
+        "speed_sd": 12.74
+      }
+    },
+    "frame_ms": {
+      "max": 47.37,
+      "p50": 8.68,
+      "p99": 23.94
+    },
+    "frames": 13633,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 13603,
+    "peak": {
+      "enemies": 0,
+      "lap": 4,
+      "nodes": 2000,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      },
+      {
+        "at": 70.0,
+        "question": "who is attacking me right now?"
+      }
+    ],
+    "samples": 470,
+    "scene_starts": 2,
+    "seconds": 120.0,
+    "texts": {
+      "3RD / 4": 3.5,
+      "4TH / 4": 0.5,
+      "BEST LAP  --:--.---": 0.5,
+      "CHALLENGE   PODIUM FROM LAST   -   finish on the podium": 4.6,
+      "CHALLENGE   WIN CLEAN   -   never touch a wall": 115.2,
+      "CHALLENGE   setting up the race...": 0.5,
+      "DIRECTOR: Today: Podium from last. Race hard.": 4.6,
+      "DIRECTOR: Today: Win clean. Race hard.": 115.2,
+      "FINAL LAP! BLAZE leads the way!": 74.2,
+      "Here comes YOU on a full tank!": 20.7,
+      "It's over! YOU, 4TH!": 109.0,
+      "LAP 1 / 3": 0.5,
+      "LAP 2 / 3": 39.3,
+      "LAP 3 / 3": 74.2,
+      "MINT:  Ah, you got me, MINT.": 3.5,
+      "MINT:  I'm through, YOU! Good fight!": 22.2,
+      "MINT:  Nice move, MINT! Teach me that one.": 50.4,
+      "PRESS ENTER OR CLICK TO RACE AGAIN": 111.5,
+      "THEO: 3.0 s of boost in the tank. Save it for the straight.": 49.4,
+      "THEO: 4.0 s of boost in the tank. Save it for the straight.": 58.5,
+      "THEO: Boost ready: full send on the long straight.": 67.6,
+      "THEO: Final lap. You're 4TH of 4. Bring it home.": 74.2,
+      "THEO: Wall contact, 2. Mind the rails.": 21.7,
+      "THEO: Wall contact, 3. Mind the rails.": 49.9,
+      "THEO: Wall contact, 4. Mind the rails.": 84.8,
+      "THEO: You clipped the wall. That's 1 today, keep it clean.": 4.0,
+      "YOU FINISHED 4TH": 111.5,
+      "YOU fires the boost!": 14.6
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 3,
+    "first": [
+      "ERROR: Condition \"!is_inside_tree()\" is true. Returning: Transform3D()",
+      "ERROR: Node not inside tree. Use look_at_from_position() instead."
+    ],
+    "probe_seen": true
+  },
+  "model": {
+    "requests": 47,
+    "kinds": {
+      "proxy": 47
+    },
+    "with_tools": 0,
+    "streamed": 0,
+    "calls_with_usage": 18,
+    "input_tokens": 7387,
+    "cached_input_tokens": 0,
+    "output_tokens": 12561,
+    "cost_usd": 0.017289,
+    "price_source": "api-docs.deepseek.com/quick_start/pricing (peak prices, as recorded in proof/README.md) (read 2026-09-26)",
+    "errors": 29
+  },
+  "verdict": "PASS"
+}

@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kinloom</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22%3E%3Ccircle cx=%228%22 cy=%228%22 r=%227%22 fill=%22%237c9cff%22/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #0f1117; --panel: #171a23; --line: #262b38; --text: #e6e8ef; --muted: #8b92a6;
+    --accent: #7c9cff; --ok: #4fd1a5; --warn: #f5b04c; --bad: #ff6b81; --say: #c89bff; --chat: #5ec8ff; --act: #ffb86b;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f7fb; --panel: #ffffff; --line: #e3e6ef; --text: #1b1f2a; --muted: #6a7185; --accent: #4a6cf7; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: center; padding: 14px 20px; border-bottom: 1px solid var(--line); }
+  h1 { font-size: 18px; margin: 0; letter-spacing: .5px; }
+  .badge { padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 12px; }
+  .online { background: color-mix(in srgb, var(--ok) 20%, transparent); color: var(--ok); }
+  .offline { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+  .stat { color: var(--muted); } .stat b { color: var(--text); font-variant-numeric: tabular-nums; }
+  main { display: grid; grid-template-columns: minmax(260px, 340px) 1fr; gap: 16px; padding: 16px 20px; }
+  @media (max-width: 800px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; min-width: 0; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 10px; }
+  .char { padding: 8px 0; border-bottom: 1px solid var(--line); } .char:last-child { border: 0; }
+  .char b { color: var(--accent); } .char small { color: var(--muted); display: block; }
+  #feed { height: calc(100vh - 170px); min-height: 300px; overflow: auto; font-size: 13px; }
+  .e { display: grid; grid-template-columns: 62px 70px 90px 1fr; gap: 8px; padding: 4px 2px; border-bottom: 1px dashed var(--line); }
+  .e .t { color: var(--muted); font-variant-numeric: tabular-nums; } .e .k { font-weight: 600; } .e .n { color: var(--accent); overflow: hidden; text-overflow: ellipsis; }
+  .k-say { color: var(--say); } .k-chat { color: var(--chat); } .k-act, .k-decide { color: var(--act); } .k-refused, .k-error, .k-budget { color: var(--bad); }
+  .k-call, .k-bank { color: var(--muted); } .k-learn, .k-mind { color: var(--ok); } .k-meet, .k-impact, .k-event { color: var(--chat); }
+  .mind { padding: 8px 0; border-bottom: 1px solid var(--line); } .mind:last-child { border: 0; }
+  .mind b { color: var(--ok); } .mind small { color: var(--muted); display: block; font-variant-numeric: tabular-nums; }
+  .rules { font: 12px/1.4 ui-monospace, Consolas, monospace; color: var(--text); margin-top: 4px; }
+  svg.spark { width: 100%; height: 34px; display: block; margin-top: 4px; }
+  .feel { font-size: 12px; } .feel .pos { color: var(--ok); } .feel .neg { color: var(--bad); }
+  label { display: block; color: var(--muted); font-size: 12px; margin: 8px 0 3px; }
+  input, textarea { width: 100%; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; font: inherit; }
+  button { margin-top: 10px; background: var(--accent); color: white; border: 0; border-radius: 6px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--accent); border: 1px solid var(--accent); }
+  #out { margin-top: 10px; padding: 10px; border-radius: 6px; background: var(--bg); min-height: 40px; white-space: pre-wrap; }
+  .empty { color: var(--muted); font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kinloom</h1>
+  <span id="mode" class="badge offline">connecting…</span>
+  <span class="stat">model <b id="model">–</b></span>
+  <span class="stat">calls <b id="calls">0</b></span>
+  <span class="stat">tokens <b id="tokens">0</b></span>
+  <span class="stat">avg latency <b id="latency">–</b></span>
+  <span class="stat">cost <b id="cost">–</b></span>
+  <span class="stat">offline answers <b id="offline">0</b></span>
+  <a id="talklink" href="/talk" style="margin-left:auto;color:var(--accent);font-weight:600;text-decoration:none">Talk to a character →</a>
+</header>
+<main>
+  <div style="display:grid; gap:16px; align-content:start">
+    <section>
+      <h2>Characters</h2>
+      <div id="chars"><div class="empty">No character declared yet.</div></div>
+    </section>
+    <section>
+      <h2>Minds</h2>
+      <div id="minds"><div class="empty">No mind declared yet (kl.mind: utility AI for crowds, learning from rewards).</div></div>
+    </section>
+    <section>
+      <h2>Try a character</h2>
+      <label>Name</label><input id="tname" value="VEGA">
+      <label>Personality</label><input id="tpers" value="an over-excited race commentator, max 8 words">
+      <label>Event (for a line)</label><input id="tevent" value="overtake">
+      <label>Facts (JSON)</label><input id="tfacts" value='{"who": "BLAZE", "whom": "NOVA", "gap": 0.4}'>
+      <button id="say">Say a line</button>
+      <label>Message (for a conversation)</label><input id="tmsg" value="Who is attacking me?">
+      <button id="chat" class="ghost">Chat</button>
+      <div id="out" class="empty">The answer appears here.</div>
+    </section>
+  </div>
+  <section>
+    <h2>Live</h2>
+    <div id="feed"><div class="empty">Waiting for the game…</div></div>
+  </section>
+</main>
+<script>
+const token = new URLSearchParams(location.hash.slice(1)).get("token") || "";
+const headers = { "Content-Type": "application/json" };
+if (token) headers["Authorization"] = "Bearer " + token;
+const $ = (id) => document.getElementById(id);
+if (token) $("talklink").href = "/talk#token=" + encodeURIComponent(token);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+async function refresh() {
+  try {
+    const s = await (await fetch("/v1/status", { headers })).json();
+    $("mode").textContent = s.mode === "online" ? "online · " + s.provider : "offline";
+    $("mode").className = "badge " + (s.mode === "online" ? "online" : "offline");
+    $("model").textContent = s.model || "none";
+    $("calls").textContent = s.stats.calls;
+    $("tokens").textContent = (s.stats.input_tokens + s.stats.output_tokens).toLocaleString();
+    $("latency").textContent = s.stats.calls ? s.stats.avg_latency.toFixed(2) + " s" : "–";
+    $("cost").textContent = s.stats.cost == null ? "set prices" : "$" + s.stats.cost.toFixed(4);
+    $("offline").textContent = s.stats.offline_answers;
+    $("chars").innerHTML = s.characters.length ? s.characters.map((c) =>
+      `<div class="char"><b>${esc(c.name)}</b> ${esc(c.personality)}` +
+      (c.tools.length ? `<small>tools: ${esc(c.tools.join(", "))}</small>` : "") +
+      (c.events.length ? `<small>events: ${esc(c.events.join(", "))}</small>` : "") +
+      (c.group ? `<small>group: ${esc(c.group)}</small>` : "") + feelings(c.opinions) + `</div>`).join("")
+      : '<div class="empty">No character declared yet.</div>';
+    const minds = (s.minds || []).filter(Boolean);
+    $("minds").innerHTML = minds.length ? minds.map(mindHtml).join("") : $("minds").innerHTML;
+  } catch (e) { $("mode").textContent = "not reachable"; $("mode").className = "badge offline"; }
+}
+
+function feelings(o) {
+  const items = Object.entries(o || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).slice(0, 4);
+  return items.length ? `<small class="feel">feels: ${items.map(([k, v]) =>
+    `<span class="${v >= 0 ? "pos" : "neg"}">${esc(k)} ${v >= 0 ? "+" : ""}${v.toFixed(2)}</span>`).join(", ")}</small>` : "";
+}
+
+function spark(values) {
+  if (!values || values.length < 2) return "";
+  const lo = Math.min(...values), hi = Math.max(...values), span = hi - lo || 1;
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 100},${30 - ((v - lo) / span) * 26}`).join(" ");
+  return `<svg class="spark" viewBox="0 0 100 32" preserveAspectRatio="none"><polyline fill="none" stroke="currentColor" ` +
+    `stroke-width="1.5" vector-effect="non-scaling-stroke" points="${pts}"/></svg>`;
+}
+
+function mindHtml(m) {
+  const scored = m.variants.filter((v) => v.mean != null);
+  const best = scored.length ? scored.reduce((a, b) => (b.mean > a.mean ? b : a)) : m.variants[0];
+  const rules = Object.entries(best.rules).filter(([, r]) => r.score > 0)
+    .map(([a, r]) => `${esc(a)} ${r.score.toFixed(2)}: ${esc(r.when.join(" and ") || "always")}`).join("<br>");
+  const means = m.variants.map((v) => (v.mean == null ? "–" : v.mean.toFixed(2))).join(" · ");
+  return `<div class="mind"><b>${esc(m.name)}</b> generation ${m.generation}` +
+    `<small>mean reward per ${esc(m.per || "decision")} by variant: ${means}</small>` +
+    `<span style="color:var(--ok)">${spark(m.curve)}</span><div class="rules">${rules}</div></div>`;
+}
+
+function add(e) {
+  const feed = $("feed");
+  if (feed.firstChild && feed.firstChild.classList && feed.firstChild.classList.contains("empty")) feed.innerHTML = "";
+  const row = document.createElement("div");
+  row.className = "e";
+  const t = new Date(e.time * 1000).toLocaleTimeString();
+  row.innerHTML = `<span class="t">${t}</span><span class="k k-${esc(e.kind)}">${esc(e.kind)}</span><span class="n">${esc(e.name)}</span><span>${esc(e.text)}</span>`;
+  feed.prepend(row);
+  while (feed.childNodes.length > 400) feed.removeChild(feed.lastChild);
+}
+
+const source = new EventSource("/v1/stream" + (token ? "?token=" + encodeURIComponent(token) : ""));
+source.onmessage = (m) => { try { add(JSON.parse(m.data)); } catch (_) {} };
+
+async function post(verb, body) {
+  const r = await fetch("/v1/" + verb, { method: "POST", headers, body: JSON.stringify(Object.assign({ session: "dashboard" }, body)) });
+  return r.json();
+}
+async function declare() { await post("character", { name: $("tname").value, personality: $("tpers").value }); }
+$("say").onclick = async () => {
+  $("out").textContent = "…"; $("out").className = "";
+  let facts = {}; try { facts = JSON.parse($("tfacts").value || "{}"); } catch (_) {}
+  await declare();
+  const r = await post("say", { name: $("tname").value, event: $("tevent").value, facts, fresh: true });
+  $("out").textContent = r.text || r.error || "(nothing: offline and no lines given)";
+};
+$("chat").onclick = async () => {
+  $("out").textContent = "…"; $("out").className = "";
+  let facts = {}; try { facts = JSON.parse($("tfacts").value || "{}"); } catch (_) {}
+  await declare();
+  const r = await post("chat", { name: $("tname").value, message: $("tmsg").value, facts });
+  $("out").textContent = r.text || r.error || "(nothing: offline and no offline reply given)";
+};
+refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>

@@ -1,0 +1,10 @@
+declare errors: 0
+bad declare errors: true
+effect set truck_2.aggression 0.9 from role:rex
+said by truck_2: Catch me if you can.
+reply: Catch me if you can.
+generated: true Thunder
+saved: true
+loaded
+remove missing: false
+unknown method error: -32601

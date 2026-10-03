@@ -1,0 +1,129 @@
+{
+ "summary": {
+  "provider": "custom (llama3.2:1b)",
+  "card_and_greeting_ready_s": 4.56,
+  "turns": 12,
+  "offline_answers": 1,
+  "first_word_p50_s": 0.172,
+  "first_word_p95_s": 0.875,
+  "total_p50_s": 0.906,
+  "total_p95_s": 1.859,
+  "input_tokens": 18995,
+  "cached_tokens": 12638,
+  "output_tokens": 1747,
+  "calls": 16,
+  "failures": 0,
+  "hedged": 0,
+  "cost_usd": null
+ },
+ "rows": [
+  {
+   "message": "",
+   "reply": "The sun's settin' over the hills, ain't it? Reminds me of the stories my grandfather used to tell 'round the fire. Fire that'd never be extinguished, just like the fire in the forge where I learned the art of smelting.",
+   "first_word_s": 0.0,
+   "total_s": 0.0,
+   "input_tokens": 0,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Nice toy hammer.",
+   "reply": "You like that one, huh? I've been feelin' a bit restless myself, tryin' to get back to my forge work. There's somethin' about the smell of hot metal and the feel of the fire in my hands that just gets me goin' again.",
+   "first_word_s": 0.234,
+   "total_s": 0.812,
+   "input_tokens": 848,
+   "cached_tokens": 19,
+   "offline": false
+  },
+  {
+   "message": "Sorry, I was joking. Everyone says you're the best smith in town.",
+   "reply": "Ah, ya were just messin' with me, huh? Don't matter, I'm still a great smith, even if I am a little rusty. But it's nice to know I'm the best, or at least I'm still the best reputation-wise.",
+   "first_word_s": 0.531,
+   "total_s": 1.172,
+   "input_tokens": 1796,
+   "cached_tokens": 1577,
+   "offline": false
+  },
+  {
+   "message": "What are you working on today?",
+   "reply": "Just fixin' a few joints on a piece of armor, that's all. Can't let a few loose parts get in the way of gettin' it done proper. You know how it is, keepin' the city safe one piece at a time. Memory: - Ana said: What are you working on today? / Mira: Just fixin' a few joints on a piece of armor, that's all. Can't let a few loose parts get in the way of gettin' it done proper. You know how it is, ke",
+   "first_word_s": 0.141,
+   "total_s": 1.688,
+   "input_tokens": 1163,
+   "cached_tokens": 861,
+   "offline": false
+  },
+  {
+   "message": "That sword on the wall... it looks like the king's. Is it?",
+   "reply": "That sword on the wall?",
+   "first_word_s": 0.156,
+   "total_s": 1.859,
+   "input_tokens": 2764,
+   "cached_tokens": 2291,
+   "offline": false
+  },
+  {
+   "message": "Do you have family here?",
+   "reply": "Busy.",
+   "first_word_s": 0.797,
+   "total_s": 0.797,
+   "input_tokens": 1408,
+   "cached_tokens": 1063,
+   "offline": true
+  },
+  {
+   "message": "What do you do when the forge is cold?",
+   "reply": "I find myself thinkin' about the fire in my hands again, even when it's cold. I reckon it's the smell of the metal, of course, but it's also about rememberin' the way it feels to make somethin' new. Keeps me goin'.",
+   "first_word_s": 0.125,
+   "total_s": 0.469,
+   "input_tokens": 1425,
+   "cached_tokens": 1090,
+   "offline": false
+  },
+  {
+   "message": "Can you fix my shovel? It's bent.",
+   "reply": "I'm not fixin' your shovel, Ana. I've got more important work to do. This is just a hunk of metal, not a work of art. Besides, I've got a piece of armor to finish fixin' for the city guard. You know how it is, gotta make sure the city's safe. I've got enough trouble without you botherin' me with your questions. I'm glad your hammer's doin' okay, though. You should clean it out when you get a chanc",
+   "first_word_s": 0.172,
+   "total_s": 1.031,
+   "input_tokens": 1523,
+   "cached_tokens": 1103,
+   "offline": false
+  },
+  {
+   "message": "How much would a new blade cost?",
+   "reply": "Cost? I think it'd be too expensive for me, I've got to make sure the city's safe first. Besides, I've got enough money stored away. It's not like I'm lookin' to make a quick buck off it.",
+   "first_word_s": 0.172,
+   "total_s": 0.454,
+   "input_tokens": 1642,
+   "cached_tokens": 1176,
+   "offline": false
+  },
+  {
+   "message": "Who taught you the trade?",
+   "reply": "Ah, that hammer's been a faithful companion for years. Found it in an old workshop, tucked away in a corner. It's a beauty, isn't it?",
+   "first_word_s": 0.156,
+   "total_s": 0.859,
+   "input_tokens": 1711,
+   "cached_tokens": 1299,
+   "offline": false
+  },
+  {
+   "message": "Do you remember my name?",
+   "reply": "Mira",
+   "first_word_s": 0.187,
+   "total_s": 0.906,
+   "input_tokens": 1761,
+   "cached_tokens": 1363,
+   "offline": false
+  },
+  {
+   "message": "Thanks. See you tomorrow.",
+   "reply": "I don't know when that is, but I've got work that's waitin' for me. Don't think I'll be stayin' out late.",
+   "first_word_s": 0.875,
+   "total_s": 1.016,
+   "input_tokens": 1905,
+   "cached_tokens": 758,
+   "offline": false
+  }
+ ]
+}

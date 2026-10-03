@@ -1,0 +1,160 @@
+{
+  "label": "racer-k1",
+  "scenario": "nokey",
+  "source": "<workspace>\\games\\trials\\racer-k1",
+  "when": "20260927-180549",
+  "seconds": 90.0,
+  "commit": "11619d2",
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 116.2,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.142,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.64,
+        "lateral_sd": 2.84,
+        "samples": 353,
+        "speed_mean": 43.79,
+        "speed_sd": 12.88
+      },
+      "MINT": {
+        "boosting_share": 0.102,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.01,
+        "lateral_sd": 2.45,
+        "samples": 353,
+        "speed_mean": 44.02,
+        "speed_sd": 13.22
+      },
+      "NOVA": {
+        "boosting_share": 0.025,
+        "drifting_share": 0.0,
+        "lateral_mean": -1.59,
+        "lateral_sd": 1.76,
+        "samples": 353,
+        "speed_mean": 41.94,
+        "speed_sd": 11.88
+      },
+      "YOU": {
+        "boosting_share": 0.074,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.53,
+        "lateral_sd": 1.93,
+        "samples": 353,
+        "speed_mean": 44.43,
+        "speed_sd": 13.59
+      }
+    },
+    "frame_ms": {
+      "max": 34.75,
+      "p50": 8.54,
+      "p99": 19.67
+    },
+    "frames": 10462,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 10447,
+    "peak": {
+      "enemies": 0,
+      "lap": 3,
+      "nodes": 1985,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      },
+      {
+        "at": 70.0,
+        "question": "who is attacking me right now?"
+      }
+    ],
+    "samples": 353,
+    "scene_starts": 1,
+    "seconds": 90.0,
+    "texts": {
+      "\"Oh wow, I'm ahead!\"": 77.9,
+      "\"That's it. You're mine!\"": 22.3,
+      "1ST / 4": 57.1,
+      "2ND / 4": 15.2,
+      "3RD / 4": 3.6,
+      "4TH / 4": 0.6,
+      "ATTACK > BLAZE  NITRO 0": 82.9,
+      "ATTACK > MINT  NITRO 0": 77.4,
+      "ATTACK > YOU  NITRO 0": 57.6,
+      "ATTACK > YOU  NITRO 1": 76.9,
+      "ATTACK > YOU  NITRO 2": 72.8,
+      "ATTACK > YOU  NITRO 3": 3.6,
+      "AUTOPILOT HOLDS THE CAR WHILE YOU TALK": 70.3,
+      "BEST LAP  --:--.---": 0.6,
+      "BLAZE  That's it. You're mine!": 22.3,
+      "CHALLENGE  PODIUM OR BUST: Finish in the top three.": 0.6,
+      "CHALLENGE: PODIUM OR BUST: Finish in the top three.": 0.6,
+      "CONSERVE  NITRO 3": 15.7,
+      "DEFEND > BLAZE  NITRO 0": 84.0,
+      "DEFEND > BLAZE  NITRO 1": 77.4,
+      "DEFEND > NOVA  NITRO 2": 3.6,
+      "DEFEND > NOVA  NITRO 3": 15.7,
+      "DEFEND > YOU  NITRO 0": 58.1,
+      "DEFEND > YOU  NITRO 1": 22.8,
+      "DEFEND > YOU  NITRO 2": 15.7,
+      "DEFEND > YOU  NITRO 3": 3.6,
+      "GAMBLE  NITRO 3": 59.6,
+      "LAP 1 / 3": 0.6,
+      "LAP 2 / 3": 38.9,
+      "LAP 3 / 3": 72.3,
+      "MINT  Oh wow, I'm ahead!": 77.9,
+      "PUSH  NITRO 0": 58.6,
+      "PUSH  NITRO 1": 24.3,
+      "PUSH  NITRO 2": 4.6,
+      "PUSH  NITRO 3": 0.6,
+      "T  TEAM RADIO": 0.6,
+      "THEO  0.5 s to BLAZE. Get in the tow and go.": 15.7,
+      "THEO  BLAZE is 1.6 s ahead. MINT is 0.4 s behind.": 25.3,
+      "THEO  BLAZE is right on your gearbox, alongside. Cover the inside.": 57.6,
+      "THEO  Final lap, P2. BLAZE is the one ahead. Everything you've got.": 72.3,
+      "THEO  Heads up: BLAZE has switched to attack on you, alongside.": 22.8,
+      "THEO  Heads up: MINT has switched to attack on you, 0.3 s behind.": 42.9,
+      "THEO  Heads up: MINT has switched to attack on you, 0.9 s behind.": 65.7,
+      "THEO  Heads up: MINT has switched to attack on you, alongside.": 3.6,
+      "THEO  MINT is right on your gearbox, 0.1 s. Cover the inside.": 11.7,
+      "THEO  MINT is right on your gearbox, 0.4 s. Cover the inside.": 34.9,
+      "THEO  On you: BLAZE blocking (0.4 s up the road), MINT attacking (0.8 s back). MINT is 0.8 s behind.": 70.8,
+      "VEGA:  And MINT is mugged! YOU through!": 82.9,
+      "VEGA:  BLAZE finds the wall, sparks everywhere!": 32.8,
+      "VEGA:  BLAZE hits the nitro!": 57.6,
+      "VEGA:  BLAZE leans on MINT, that will leave a mark!": 89.5,
+      "VEGA:  MINT left the door open and YOU walked in!": 5.1,
+      "VEGA:  Nitro from MINT, 1 left!": 76.9,
+      "VEGA:  One lap to go and BLAZE is in charge!": 71.8,
+      "VEGA:  Ooh, MINT punts YOU!": 74.8,
+      "VEGA:  The grid is set, the Violet Hour is glowing. Here we go!": 0.6,
+      "VEGA:  Whoosh! BLAZE goes to the button!": 3.6,
+      "VEGA:  YOU into BLAZE! Paint trade!": 22.3,
+      "VEGA:  YOU slices past NOVA!": 15.7,
+      "VEGA:  YOU takes P2 from BLAZE!": 81.4,
+      "YOU  how far is the leader?": 25.3,
+      "YOU  who is attacking me right now?": 70.8,
+      "who is attacking me right no": 70.3
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": null,
+  "verdict": "PASS"
+}

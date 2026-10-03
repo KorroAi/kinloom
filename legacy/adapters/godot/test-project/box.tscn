@@ -1,0 +1,3 @@
+[gd_scene format=3]
+
+[node name="Box" type="Node2D"]

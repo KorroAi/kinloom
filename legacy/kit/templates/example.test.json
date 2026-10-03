@@ -1,0 +1,8 @@
+{
+  "description": "The host greets the player through the screen (scripted model: no tokens spent).",
+  "script": {
+    "role:host": ["{\"actions\":[{\"tool\":\"invoke\",\"args\":{\"thing\":\"screen\",\"function\":\"show_message\",\"args\":{\"text\":\"Welcome!\"}}}]}"]
+  },
+  "steps": [ { "time": 0, "event": { "type": "player_joined" } } ],
+  "expect": [ { "effect": { "kind": "invoke", "thing": "screen", "member": "show_message" } } ]
+}

@@ -1,0 +1,148 @@
+{
+ "date": "2026-09-30",
+ "summary": {
+  "voices": [
+   [
+    "Microsoft Hortense Desktop",
+    "fr",
+    "female"
+   ],
+   [
+    "Microsoft Zira Desktop",
+    "en",
+    "female"
+   ]
+  ],
+  "recognizer": "fr",
+  "worker_start_s": 0.58,
+  "speak_s_median": 0.079,
+  "speak_s_max": 0.125,
+  "listen_s_median": 0.554,
+  "words_heard_mean": 0.884,
+  "exact": 5,
+  "heard_lines": 10
+ },
+ "rows": [
+  {
+   "lang": "fr",
+   "said": "Apporte-moi trois bûches avant la tombée de la nuit.",
+   "speak_s": 0.125,
+   "error": null,
+   "audio_s": 3.56,
+   "heard": "Apportent mois trois bûches avant la tombée de la nuit",
+   "listen_s": 0.562,
+   "words": 0.8
+  },
+  {
+   "lang": "fr",
+   "said": "Je veux acheter la lanterne, combien coûte-t-elle ?",
+   "speak_s": 0.109,
+   "error": null,
+   "audio_s": 4.07,
+   "heard": "Je veux acheter la lanterne combien côté elle",
+   "listen_s": 0.594,
+   "words": 0.778
+  },
+  {
+   "lang": "fr",
+   "said": "Ouvre la porte du nord, les gardes sont partis.",
+   "speak_s": 0.063,
+   "error": null,
+   "audio_s": 3.67,
+   "heard": "Ouvre la porte du nord à l'égard de son parti",
+   "listen_s": 0.5,
+   "words": 0.556
+  },
+  {
+   "lang": "fr",
+   "said": "Est-ce que tu as vu le voleur passer par ici ?",
+   "speak_s": 0.062,
+   "error": null,
+   "audio_s": 3.33,
+   "heard": "Est-ce que tu as vu le voleurs passé par ici",
+   "listen_s": 0.438,
+   "words": 0.818
+  },
+  {
+   "lang": "fr",
+   "said": "Le forgeron m'a dit que tu connaissais le chemin.",
+   "speak_s": 0.109,
+   "error": null,
+   "audio_s": 3.41,
+   "heard": "Le forgeron m'a dit que tu connaissais le chemin",
+   "listen_s": 0.688,
+   "words": 1.0
+  },
+  {
+   "lang": "fr",
+   "said": "Donne-moi ton épée et je te laisse partir.",
+   "speak_s": 0.078,
+   "error": null,
+   "audio_s": 3.43,
+   "heard": "Donne-moi ton était et je te laisse partir",
+   "listen_s": 0.843,
+   "words": 0.889
+  },
+  {
+   "lang": "fr",
+   "said": "Nous partirons à l'aube vers la montagne.",
+   "speak_s": 0.079,
+   "error": null,
+   "audio_s": 3.05,
+   "heard": "Nous partirons à l'aube vers la montagne",
+   "listen_s": 0.531,
+   "words": 1.0
+  },
+  {
+   "lang": "fr",
+   "said": "Je n'ai pas d'argent mais je peux travailler pour toi.",
+   "speak_s": 0.078,
+   "error": null,
+   "audio_s": 3.43,
+   "heard": "Je n'ai pas d'argent mais je peux travailler pour toi",
+   "listen_s": 0.484,
+   "words": 1.0
+  },
+  {
+   "lang": "fr",
+   "said": "Qui a éteint le feu cette nuit ?",
+   "speak_s": 0.078,
+   "error": null,
+   "audio_s": 2.5,
+   "heard": "Qui a éteint le feu cette nuit",
+   "listen_s": 0.547,
+   "words": 1.0
+  },
+  {
+   "lang": "fr",
+   "said": "Merci pour ton aide, je reviendrai demain.",
+   "speak_s": 0.078,
+   "error": null,
+   "audio_s": 3.5,
+   "heard": "Merci pour ton aide je reviendrai demain",
+   "listen_s": 0.672,
+   "words": 1.0
+  },
+  {
+   "lang": "en",
+   "said": "Bring me three logs before night falls.",
+   "speak_s": 0.094,
+   "error": null,
+   "audio_s": 3.02
+  },
+  {
+   "lang": "en",
+   "said": "How much for the lantern on the wall?",
+   "speak_s": 0.125,
+   "error": null,
+   "audio_s": 2.55
+  },
+  {
+   "lang": "en",
+   "said": "The guards left the north gate open.",
+   "speak_s": 0.094,
+   "error": null,
+   "audio_s": 2.64
+  }
+ ]
+}

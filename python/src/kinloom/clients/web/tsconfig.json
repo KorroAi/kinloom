@@ -1,0 +1,14 @@
+{
+  "compilerOptions": {
+    "strict": true,
+    "target": "es2021",
+    "module": "es2022",
+    "lib": ["es2022", "dom"],
+    "types": [],
+    "declaration": true,
+    "removeComments": false,
+    "newLine": "lf",
+    "outDir": "."
+  },
+  "files": ["kinloom.ts"]
+}

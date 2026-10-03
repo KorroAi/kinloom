@@ -1,0 +1,336 @@
+--- a/town/town_scene.gd
++++ b/town/town_scene.gd
+@@ -12,6 +12,14 @@
+ var mood := Mood.DAY: set = set_mood
+ 
+ var turn_on_lights: bool = false
++
++# Kinloom: the dispatcher sets the mood by name; lines from the radio and the co-driver show on screen.
++const MOOD_NAMES := ["sunrise", "day", "sunset", "night"]
++var mood_name: String:
++	get: return MOOD_NAMES[mood]
++	set(value): if value in MOOD_NAMES: mood = MOOD_NAMES.find(value) as Mood
++var radio: Label
++var radio_input: LineEdit
+ var ambient_sound: Array = [
+ 	preload("res://town/sound/mood_sunrise.ogg"),
+ 	preload("res://town/sound/mood_day.ogg"),
+@@ -38,6 +46,26 @@
+ 
+ 
+ func _ready() -> void:
++	Kinloom.Bind("town", self)
++	radio = Label.new()
++	radio.name = "Radio"
++	radio.position = Vector2(24, 96)
++	radio.add_theme_font_size_override(&"font_size", 26)
++	radio.add_theme_constant_override(&"outline_size", 8)
++	radio.add_theme_color_override(&"font_outline_color", Color.BLACK)
++	add_child(radio)
++	Kinloom.Said.connect(func(role, _thing, text, _to): radio.text = "%s: %s" % [role.capitalize(), text])
++	radio.text = "Press T to radio the dispatcher."
++	radio_input = LineEdit.new()
++	radio_input.placeholder_text = "Radio the dispatcher (Enter to send, Esc to cancel)"
++	radio_input.position = Vector2(24, 140)
++	radio_input.size = Vector2(620, 44)
++	radio_input.process_mode = Node.PROCESS_MODE_ALWAYS
++	radio_input.hide()
++	radio_input.text_submitted.connect(_on_radio_submitted)
++	radio_input.gui_input.connect(func(event): if event.is_action_pressed(&"ui_cancel"): _close_radio())
++	add_child(radio_input)
++
+ 	# Ensure headlights are toggled on automatically according to the initial mood.
+ 	# The scene tree is not available at first, so we have to set the mood a second time
+ 	# in deferred mode, which will call the setter again.
+@@ -61,6 +89,13 @@
+ 
+ 
+ func _input(input_event: InputEvent) -> void:
++	if input_event is InputEventKey and input_event.pressed and not input_event.echo and input_event.keycode == KEY_T and not radio_input.visible:
++		radio_input.text = ""
++		radio_input.show()
++		radio_input.grab_focus.call_deferred()
++		get_tree().paused = true
++		get_viewport().set_input_as_handled()
++		return
+ 	if input_event.is_action_pressed(&"cycle_mood"):
+ 		mood = wrapi(mood + 1, 0, Mood.size()) as Mood
+ 		$AmbientSound.play()
+@@ -120,3 +155,20 @@
+ 				not turn_on_lights and car.headlights_active
+ 		):
+ 			get_tree().call_group(&"car", &"toggle_headlights")
++
++
++func _on_radio_submitted(text: String) -> void:
++	_close_radio()
++	if text.strip_edges() != "":
++		radio.text = "You: " + text
++		Kinloom.Ask("dispatcher", text, "driver")
++
++
++func _close_radio() -> void:
++	radio_input.hide()
++	radio_input.release_focus()
++	# Unpause two frames later: the menu polls is_action_just_pressed("back") (Esc) and must not see this key.
++	await get_tree().process_frame
++	await get_tree().process_frame
++	get_tree().paused = false
++
+--- a/vehicles/vehicle.gd
++++ b/vehicles/vehicle.gd
+@@ -18,9 +18,15 @@
+ @onready var desired_engine_pitch: float = $EngineSound.pitch_scale
+ 
+ 
++# Kinloom: what the dispatcher and the co-driver read (see kinloom/game.json).
++var speed: float:
++	get: return linear_velocity.length()
++
++
+ func _ready() -> void:
+ 	assert(turbometer)
+ 	assert(turbo_animator)
++	Kinloom.Bind("truck", self)
+ 
+ 
+ func _physics_process(delta: float) -> void:
+@@ -36,6 +42,7 @@
+ 		# Sudden velocity change, likely due to a collision. Play an impact sound to give audible feedback,
+ 		# and vibrate for haptic feedback.
+ 		$ImpactSound.play()
++		Kinloom.EmitEvent("impact", {"speed_change": absf(linear_velocity.length() - previous_speed)})
+ 		Input.vibrate_handheld(100)
+ 		for joypad in Input.get_connected_joypads():
+ 			Input.start_joy_vibration(joypad, 0.0, 0.5, 0.1)
+--- /dev/null
++++ b/kinloom.json
+@@ -0,0 +1,23 @@
++{
++  "manifest": "kinloom",
++  "provider": {
++    "kind": "deepseek",
++    "keyEnv": "DEEPSEEK_API_KEY",
++    "fast": "deepseek-flash",
++    "deep": "deepseek-flash"
++  },
++  "prices": {
++    "input": 0.3,
++    "cachedInput": 0.006,
++    "output": 1.2,
++    "source": "api-docs.deepseek.com/quick_start/pricing, deepseek-flash peak prices as read on 2026-09-26 (from this repo's play-valley.cmd)"
++  },
++  "language": "English",
++  "budget": {
++    "maxCallsPerMinute": 30,
++    "maxCostPerHour": null
++  },
++  "media": {},
++  "servePort": 7717,
++  "debugPort": 7718
++}
+\ No newline at end of file
+--- /dev/null
++++ b/kinloom/game.json
+@@ -0,0 +1,48 @@
++{
++  "description": "Truck Town: a radio dispatcher the player can talk to, and a co-driver riding in the truck.",
++  "types": {
++    "Town": {
++      "description": "The town: its light and ambience.",
++      "params": { "mood_name": { "type": "enum", "options": ["sunrise", "day", "sunset", "night"], "default": "day", "description": "time of day and lighting" } }
++    },
++    "Truck": {
++      "description": "The player's vehicle.",
++      "properties": {
++        "speed": { "type": "number", "unit": "m/s" },
++        "headlights_active": "boolean",
++        "turbo_active": "boolean"
++      },
++      "params": { "engine_force_value": { "type": "number", "min": 20, "max": 80, "default": 40, "description": "engine power" } },
++      "functions": { "toggle_headlights": { "description": "Switch the headlights on or off.", "cooldown": 2 } }
++    }
++  },
++  "things": [
++    { "id": "town", "type": "Town" },
++    { "id": "truck", "type": "Truck", "name": "the truck" }
++  ],
++  "events": {
++    "impact": { "description": "The truck hit something (sudden speed change).", "importance": 0.6 }
++  },
++  "roles": [
++    {
++      "id": "dispatcher",
++      "mission": "You are the town's radio dispatcher, calm and a bit cheeky. The driver talks to you over the radio. Do what they ask when you can (time of day, engine power, headlights) and answer in one short radio line.",
++      "sees": ["thing:town", "thing:truck"],
++      "can": ["set:town.mood_name", "set:truck.engine_force_value", "invoke:truck.toggle_headlights", "say"],
++      "wake": [ { "on": "ask" } ],
++      "memory": { "scope": "role", "persist": false, "max": 20 },
++      "fallback": { "say": ["Radio's down. Try again later, driver."] }
++    },
++    {
++      "id": "codriver",
++      "mission": "You are the co-driver: a nervous but funny mechanic riding shotgun. React to crashes and reckless driving with one short line (max 60 characters). Turn the headlights on if it gets dark and they are off.",
++      "inhabits": "truck",
++      "sees": ["thing:self", "thing:town", "event:impact"],
++      "can": ["say", "invoke:self.toggle_headlights", "remember"],
++      "wake": [ { "on": "event:impact", "where": "event.speed_change > 3" }, { "every": 45 } ],
++      "minInterval": 8,
++      "budget": { "callsPerMinute": 4 },
++      "fallback": { "say": ["Easy!", "My coffee!", "Was that a mailbox?"] }
++    }
++  ]
++}
+--- /dev/null
++++ b/kinloom/tests/check-script.json
+@@ -0,0 +1,5 @@
++{
++  "role:dispatcher": ["{\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"town\",\"param\":\"mood_name\",\"value\":\"night\"}},{\"tool\":\"set_param\",\"args\":{\"thing\":\"truck\",\"param\":\"engine_force_value\",\"value\":70}},{\"tool\":\"say\",\"args\":{\"text\":\"Night it is. Floor it.\"}}]}"],
++  "role:codriver": ["{\"actions\":[{\"tool\":\"say\",\"args\":{\"text\":\"Watch the lamp post!\"}}]}"],
++  "*": ["{\"actions\":[]}", "{\"actions\":[]}", "{\"actions\":[]}", "{\"actions\":[]}", "{\"actions\":[]}"]
++}
+--- /dev/null
++++ b/kinloom/tests/check.gd
+@@ -0,0 +1,47 @@
++extends Node
++# Headless proof in the real town: the driver radios the dispatcher, the truck hits something, and we check the world.
++# KINLOOM_CHECK_MODE: "scripted" (canned answers), "nokey" (fallbacks only), "live" (the configured model).
++var mode := OS.get_environment("KINLOOM_CHECK_MODE")
++var town: Node3D
++var truck: Node
++var frames := 0
++var asked := 0
++var reply := ""
++var lines := []
++
++func _ready():
++	var car: Node3D = preload("res://vehicles/tow_truck.tscn").instantiate()
++	car.name = "car"
++	town = preload("res://town/town_scene.tscn").instantiate()
++	town.setup(car, func(): pass, false)
++	add_child(town)
++	truck = car.get_child(0)
++	Kinloom.Replied.connect(func(role, text): if role == "dispatcher": reply = text)
++	Kinloom.Said.connect(func(role, _thing, text, _to): lines.append("%s: %s" % [role, text]))
++
++func _process(_delta):
++	frames += 1
++	if frames == 60:
++		Kinloom.Ask("dispatcher", "Dispatch, make it night and give me way more power.", "driver")
++		Kinloom.EmitEvent("impact", {"speed_change": 6.5})
++		asked = Time.get_ticks_msec()
++	if asked == 0: return
++	var waited := Time.get_ticks_msec() - asked
++	var done := reply != "" and lines.any(func(l): return l.begins_with("codriver"))
++	if (done and waited > 1500) or waited > (40000 if mode == "live" else 6000): finish()
++
++func finish():
++	print("KINLOOM_CHECK mode=", mode, " mood=", town.mood_name, " engine=", truck.engine_force_value, " reply='", reply, "'")
++	print("KINLOOM_CHECK lines=", lines, " radio='", town.radio.text, "'")
++	print("KINLOOM_CHECK stats=", Kinloom.StatsJson())
++	var ok := false
++	if mode == "scripted":
++		ok = town.mood_name == "night" and is_equal_approx(truck.engine_force_value, 70.0) and reply == "Night it is. Floor it." and lines.has("codriver: Watch the lamp post!")
++	elif mode == "nokey":
++		ok = reply == "Radio's down. Try again later, driver." and lines.any(func(l): return l.begins_with("codriver"))
++	else:
++		ok = reply != "" and (town.mood_name == "night" or truck.engine_force_value > 40.0)
++		for line in Kinloom.JournalText(60).split("\n"):
++			if line.contains(" refused ") or line.contains("repairing") or line.contains(" thought "): print("KINLOOM_CHECK journal ", line)
++	print("KINLOOM_CHECK ", "PASS" if ok else "FAIL")
++	get_tree().quit(0 if ok else 1)
+--- /dev/null
++++ b/kinloom/tests/check.gd.uid
+@@ -0,0 +1 @@
++uid://d3g7v2lek5xhm
+--- /dev/null
++++ b/kinloom/tests/check.tscn
+@@ -0,0 +1,6 @@
++[gd_scene load_steps=2 format=3]
++
++[ext_resource type="Script" path="res://kinloom/tests/check.gd" id="1"]
++
++[node name="Check" type="Node"]
++script = ExtResource("1")
+--- /dev/null
++++ b/kinloom/tests/radio.test.json
+@@ -0,0 +1,15 @@
++{
++  "description": "The driver asks for night and more power; the dispatcher does it within the allowed range and answers.",
++  "script": {
++    "role:dispatcher": ["{\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"town\",\"param\":\"mood_name\",\"value\":\"night\"}},{\"tool\":\"set_param\",\"args\":{\"thing\":\"truck\",\"param\":\"engine_force_value\",\"value\":500}},{\"tool\":\"say\",\"args\":{\"text\":\"Night it is.\"}}]}",
++                        "{\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"truck\",\"param\":\"engine_force_value\",\"value\":80}}]}"],
++    "*": ["{\"actions\":[]}"]
++  },
++  "steps": [ { "time": 1, "ask": { "role": "dispatcher", "input": "Night, and max power!", "from": "driver" } } ],
++  "expect": [
++    { "effect": { "kind": "set", "thing": "town", "member": "mood_name" } },
++    { "refused": "engine_force_value must be" },
++    { "effect": { "kind": "set", "thing": "truck", "member": "engine_force_value" } },
++    { "reply": "Night it is." }
++  ]
++}
+--- /dev/null
++++ b/kinloom/tests/radio_keys.gd
+@@ -0,0 +1,49 @@
++extends Node
++# Check of the radio keys in the real menu flow (needs a window: the menu waits for a rendered frame).
++# T opens the radio, Esc closes it, and we must still be in town, unpaused.
++var step := 0
++var since := 0
++
++func key(code: Key) -> void:
++	for pressed in [true, false]:
++		var e := InputEventKey.new()
++		e.keycode = code
++		e.physical_keycode = code
++		e.pressed = pressed
++		Input.parse_input_event(e)
++
++func town() -> Node:
++	return $CarSelect.town if is_instance_valid($CarSelect.town) else null
++
++func _ready():
++	process_mode = Node.PROCESS_MODE_ALWAYS
++	$CarSelect.process_mode = Node.PROCESS_MODE_PAUSABLE # as in the real game (main scene under the root)
++	$CarSelect._on_tow_truck_pressed.call_deferred()
++
++func wait(ms: int) -> bool:
++	return Time.get_ticks_msec() - since > ms
++
++func next():
++	step += 1
++	since = Time.get_ticks_msec()
++
++func _process(_delta):
++	match step:
++		0:
++			if town() != null and town().is_inside_tree(): next()
++		1:
++			if wait(2000):
++				key(KEY_T)
++				next()
++		2:
++			if wait(500):
++				print("KINLOOM_RADIO open=", town().radio_input.visible, " paused=", get_tree().paused)
++				key(KEY_ESCAPE)
++				next()
++		3:
++			if wait(1000):
++				var t := town()
++				var ok: bool = t != null and not t.radio_input.visible and not get_tree().paused and not $CarSelect.visible
++				print("KINLOOM_RADIO still_in_town=", t != null, " menu_visible=", $CarSelect.visible, " paused=", get_tree().paused)
++				print("KINLOOM_RADIO ", "PASS" if ok else "FAIL")
++				get_tree().quit(0 if ok else 1)
+--- /dev/null
++++ b/kinloom/tests/radio_keys.tscn
+@@ -0,0 +1,9 @@
++[gd_scene load_steps=3 format=3]
++
++[ext_resource type="PackedScene" path="res://car_select/car_select.tscn" id="1"]
++[ext_resource type="Script" path="res://kinloom/tests/radio_keys.gd" id="2"]
++
++[node name="Root" type="Node"]
++script = ExtResource("2")
++
++[node name="CarSelect" parent="." instance=ExtResource("1")]

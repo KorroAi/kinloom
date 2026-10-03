@@ -1,0 +1,160 @@
+planets    recipe=True  PASS  calls=create 
+weather    recipe=False fail  calls=decide UnboundLocalError: cannot access local variable 'day' where it is not associated with a va
+planets    recipe=True  PASS  calls=create 
+weather    recipe=False PASS  calls=decide 
+traffic    recipe=False PASS  calls=character,decide 
+planets    recipe=False PASS  calls=create 
+traffic    recipe=True  PASS  calls=decide 
+traffic    recipe=False PASS  calls=decide 
+newspaper  recipe=False PASS  calls=create 
+newspaper  recipe=False PASS  calls=character,create 
+newspaper  recipe=True  PASS  calls=character,create 
+traffic    recipe=True  PASS  calls=decide 
+crowd      recipe=False fail  calls=mind,think ValueError: sense 'flee': give a range [lo, hi], true/false, or a list of options
+newspaper  recipe=True  PASS  calls=create 
+crowd      recipe=False fail  calls=mind,think ValueError: senses: give an object like {"hp": [0, 1], "armed": true, "mood": ["calm", "an
+hint       recipe=False PASS  calls=character,create,say 
+hint       recipe=False PASS  calls=create 
+crowd      recipe=True  PASS  calls=mind,reward,think 
+crowd      recipe=True  PASS  calls=mind,reward,think 
+cards      recipe=False PASS  calls=create 
+hint       recipe=True  PASS  calls=character,chat,decide,say 
+hint       recipe=True  PASS  calls=character,create,say 
+cards      recipe=False PASS  calls=create 
+cards      recipe=True  PASS  calls=create 
+commands   recipe=False PASS  calls=act,character 
+commands   recipe=False fail  calls=character 
+cards      recipe=True  PASS  calls=create 
+commands   recipe=True  PASS  calls=act,character,event 
+commands   recipe=True  PASS  calls=act,character,event 
+market     recipe=False PASS  calls=create 
+market     recipe=False PASS  calls=decide 
+market     recipe=True  PASS  calls=character,decide 
+market     recipe=True  PASS  calls=character,decide 
+goalkeeper recipe=False PASS  calls=character,decide,say 
+goalkeeper recipe=False PASS  calls=decide 
+trivia     recipe=False PASS  calls=create 
+goalkeeper recipe=True  PASS  calls=character,decide 
+goalkeeper recipe=True  PASS  calls=decide 
+trivia     recipe=False PASS  calls=create 
+recap      recipe=False PASS  calls=create 
+trivia     recipe=True  fail  calls=character,chat,create,say EOFError: EOF when reading a line
+trivia     recipe=True  fail  calls=create ValueError: substring not found
+recap      recipe=False PASS  calls=create 
+translate  recipe=False fail  calls=character,create NameError: name 'deliver_to_player' is not defined
+recap      recipe=True  PASS  calls=create 
+recap      recipe=True  PASS  calls=create 
+scares     recipe=False fail  calls=decide NameError: name 'play_scare' is not defined
+translate  recipe=False PASS  calls=create 
+translate  recipe=True  PASS  calls=character,chat 
+scares     recipe=False PASS  calls=decide 
+translate  recipe=True  PASS  calls=character,chat 
+scares     recipe=True  PASS  calls=character,decide 
+dungeon    recipe=False PASS  calls=create 
+scares     recipe=True  PASS  calls=character,decide 
+dungeon    recipe=True  PASS  calls=create 
+dungeon    recipe=True  PASS  calls=create 
+dungeon    recipe=False PASS  calls=create 
+names      recipe=False PASS  calls=create 
+names      recipe=False PASS  calls=create 
+cardai     recipe=False PASS  calls=act,character 
+names      recipe=True  PASS  calls=character,decide 
+cardai     recipe=False PASS  calls=act,character,decide 
+names      recipe=True  fail  calls=character,chat,say 
+epitaph    recipe=False PASS  calls=create 
+epitaph    recipe=False PASS  calls=character,create 
+music      recipe=False fail  calls=decide NameError: name 'play_music_layer' is not defined
+epitaph    recipe=True  PASS  calls=create 
+cardai     recipe=True  PASS  calls=character,decide 
+epitaph    recipe=True  PASS  calls=create 
+music      recipe=False fail  calls=decide NameError: name 'play' is not defined
+music      recipe=True  fail  calls=act,character 
+music      recipe=True  fail  calls=act,character 
+shop       recipe=False PASS  calls=act,character,chat 
+shop       recipe=False PASS  calls=character,chat 
+shop       recipe=True  fail  calls=character,chat,decide,lore,soul ModuleNotFoundError: No module named 'pygame'
+potion     recipe=False PASS  calls=create 
+potion     recipe=False PASS  calls=create 
+shop       recipe=True  fail  calls=character,lore ModuleNotFoundError: No module named 'pygame'
+potion     recipe=True  PASS  calls=create 
+jobs       recipe=False PASS  calls=decide 
+jobs       recipe=False PASS  calls=decide 
+waves      recipe=False PASS  calls=decide 
+waves      recipe=False PASS  calls=decide 
+potion     recipe=True  PASS  calls=create 
+waves      recipe=True  PASS  calls=decide 
+cardai     recipe=True  PASS  calls=character,decide 
+bridge     recipe=False PASS  calls=character,say 
+bridge     recipe=False PASS  calls=character,say 
+bridge     recipe=True  PASS  calls=character,say 
+bridge     recipe=True  PASS  calls=character,say 
+streets    recipe=False PASS  calls=create 
+streets    recipe=False fail  calls=create KeyError: 'name'
+waves      recipe=True  PASS  calls=decide 
+jobs       recipe=True  PASS  calls=decide 
+dog        recipe=False PASS  calls=act,character 
+dog        recipe=False PASS  calls=act,character 
+dog        recipe=True  PASS  calls=act,character 
+dog        recipe=True  PASS  calls=act,character 
+witness    recipe=False PASS  calls=character,event,knows,say 
+witness    recipe=False PASS  calls=chat,event,knows,opinion,say 
+streets    recipe=True  PASS  calls=create 
+weather    recipe=True  fail  calls= IndentationError: unexpected indent
+streets    recipe=True  fail  calls=create KeyError: 'name'
+choices    recipe=False fail  calls=character,create,say KeyError: 'tone'
+witness    recipe=True  PASS  calls=character,event,knows,meet,say 
+witness    recipe=True  PASS  calls=character,event,knows,meet,reputation,say 
+choices    recipe=False PASS  calls=create 
+drawings   recipe=False PASS  calls=create 
+choices    recipe=True  fail  calls=character,chat,create,lore IndexError: list index out of range
+drawings   recipe=False PASS  calls=create 
+choices    recipe=True  PASS  calls=character,chat,create,lore,soul 
+drawings   recipe=True  PASS  calls=create 
+drawings   recipe=True  fail  calls=create TypeError: list indices must be integers or slices, not str
+loot       recipe=False PASS  calls=create 
+loot       recipe=True  PASS  calls=create 
+loot       recipe=False PASS  calls=create 
+loot       recipe=True  PASS  calls=create 
+planets    recipe=False PASS  calls=create 
+jobs       recipe=True  fail  calls= 
+weather    recipe=True  fail  calls= no answer after the deadline
+{
+ "AGENTS.md only": {
+  "answers": 60,
+  "pass": 0.833,
+  "right_call": 0.983,
+  "clean": 1.0,
+  "runs_offline": 0.85,
+  "runs_hostile": 0.85,
+  "failed_requests": [
+   "choices",
+   "commands",
+   "crowd",
+   "music",
+   "scares",
+   "streets",
+   "translate",
+   "weather"
+  ]
+ },
+ "with recipe": {
+  "answers": 59,
+  "pass": 0.797,
+  "right_call": 0.898,
+  "clean": 1.0,
+  "runs_offline": 0.864,
+  "runs_hostile": 0.864,
+  "failed_requests": [
+   "choices",
+   "drawings",
+   "jobs",
+   "music",
+   "names",
+   "shop",
+   "streets",
+   "trivia",
+   "weather"
+  ]
+ }
+}
+cost $0.0731, <workspace>\kinloom\proof\universal\results-after.json

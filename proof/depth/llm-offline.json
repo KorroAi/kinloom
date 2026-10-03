@@ -1,0 +1,727 @@
+{
+  "summary": {
+    "mode": "offline",
+    "model": null,
+    "minutes": 30,
+    "last5_per_seed": [
+      0.645,
+      0.638,
+      0.665
+    ],
+    "last5_mean": 0.649,
+    "learning_steps": [
+      90,
+      99,
+      110
+    ],
+    "by_model": [
+      0,
+      0,
+      0
+    ],
+    "calls": 0,
+    "failures": 0,
+    "cost_usd": 0,
+    "price_source": null
+  },
+  "runs": [
+    {
+      "seed": 0,
+      "rows": [
+        {
+          "minute": 1,
+          "fights": 202,
+          "win": 0.09405940594059406,
+          "generation": 4
+        },
+        {
+          "minute": 2,
+          "fights": 231,
+          "win": 0.11688311688311688,
+          "generation": 8
+        },
+        {
+          "minute": 3,
+          "fights": 196,
+          "win": 0.10204081632653061,
+          "generation": 10
+        },
+        {
+          "minute": 4,
+          "fights": 187,
+          "win": 0.0962566844919786,
+          "generation": 13
+        },
+        {
+          "minute": 5,
+          "fights": 189,
+          "win": 0.10582010582010581,
+          "generation": 16
+        },
+        {
+          "minute": 6,
+          "fights": 200,
+          "win": 0.13,
+          "generation": 19
+        },
+        {
+          "minute": 7,
+          "fights": 184,
+          "win": 0.15217391304347827,
+          "generation": 21
+        },
+        {
+          "minute": 8,
+          "fights": 170,
+          "win": 0.07647058823529412,
+          "generation": 23
+        },
+        {
+          "minute": 9,
+          "fights": 193,
+          "win": 0.13471502590673576,
+          "generation": 26
+        },
+        {
+          "minute": 10,
+          "fights": 178,
+          "win": 0.056179775280898875,
+          "generation": 29
+        },
+        {
+          "minute": 11,
+          "fights": 174,
+          "win": 0.10344827586206896,
+          "generation": 32
+        },
+        {
+          "minute": 12,
+          "fights": 199,
+          "win": 0.11557788944723618,
+          "generation": 36
+        },
+        {
+          "minute": 13,
+          "fights": 219,
+          "win": 0.1232876712328767,
+          "generation": 39
+        },
+        {
+          "minute": 14,
+          "fights": 208,
+          "win": 0.07692307692307693,
+          "generation": 43
+        },
+        {
+          "minute": 15,
+          "fights": 197,
+          "win": 0.07614213197969544,
+          "generation": 45
+        },
+        {
+          "minute": 16,
+          "fights": 181,
+          "win": 0.11049723756906077,
+          "generation": 47
+        },
+        {
+          "minute": 17,
+          "fights": 165,
+          "win": 0.13333333333333333,
+          "generation": 50
+        },
+        {
+          "minute": 18,
+          "fights": 164,
+          "win": 0.13414634146341464,
+          "generation": 53
+        },
+        {
+          "minute": 19,
+          "fights": 171,
+          "win": 0.13450292397660818,
+          "generation": 57
+        },
+        {
+          "minute": 20,
+          "fights": 172,
+          "win": 0.11627906976744186,
+          "generation": 60
+        },
+        {
+          "minute": 21,
+          "fights": 172,
+          "win": 0.09302325581395349,
+          "generation": 62
+        },
+        {
+          "minute": 22,
+          "fights": 158,
+          "win": 0.14556962025316456,
+          "generation": 65
+        },
+        {
+          "minute": 23,
+          "fights": 168,
+          "win": 0.19047619047619047,
+          "generation": 68
+        },
+        {
+          "minute": 24,
+          "fights": 182,
+          "win": 0.23076923076923078,
+          "generation": 71
+        },
+        {
+          "minute": 25,
+          "fights": 183,
+          "win": 0.47540983606557374,
+          "generation": 74
+        },
+        {
+          "minute": 26,
+          "fights": 211,
+          "win": 0.5781990521327014,
+          "generation": 78
+        },
+        {
+          "minute": 27,
+          "fights": 202,
+          "win": 0.6089108910891089,
+          "generation": 81
+        },
+        {
+          "minute": 28,
+          "fights": 187,
+          "win": 0.7165775401069518,
+          "generation": 84
+        },
+        {
+          "minute": 29,
+          "fights": 167,
+          "win": 0.6586826347305389,
+          "generation": 87
+        },
+        {
+          "minute": 30,
+          "fights": 165,
+          "win": 0.6606060606060606,
+          "generation": 90
+        }
+      ],
+      "last5": 0.6445952357330723,
+      "learning_steps": 90,
+      "by_model": 0,
+      "calls": 0,
+      "failures": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": null,
+      "seconds": 21,
+      "best_rules": {
+        "shoot": {
+          "score": 3.0,
+          "when": [
+            "dist below 18.674",
+            "ammo above 5"
+          ],
+          "args": {}
+        },
+        "reload": {
+          "score": 1.0,
+          "when": [
+            "ammo below 1"
+          ],
+          "args": {}
+        },
+        "advance": {
+          "score": 1.889,
+          "when": [
+            "hp above 0.76"
+          ],
+          "args": {}
+        },
+        "take_cover": {
+          "score": 1.383,
+          "when": [
+            "dist low",
+            "hp below 0.4",
+            "not enemy_reloading"
+          ],
+          "args": {}
+        },
+        "retreat": {
+          "score": 0.677,
+          "when": [
+            "ammo below 1"
+          ],
+          "args": {}
+        }
+      }
+    },
+    {
+      "seed": 1,
+      "rows": [
+        {
+          "minute": 1,
+          "fights": 198,
+          "win": 0.12121212121212122,
+          "generation": 4
+        },
+        {
+          "minute": 2,
+          "fights": 206,
+          "win": 0.10679611650485436,
+          "generation": 6
+        },
+        {
+          "minute": 3,
+          "fights": 223,
+          "win": 0.12556053811659193,
+          "generation": 10
+        },
+        {
+          "minute": 4,
+          "fights": 206,
+          "win": 0.09223300970873786,
+          "generation": 13
+        },
+        {
+          "minute": 5,
+          "fights": 209,
+          "win": 0.10526315789473684,
+          "generation": 15
+        },
+        {
+          "minute": 6,
+          "fights": 228,
+          "win": 0.13596491228070176,
+          "generation": 19
+        },
+        {
+          "minute": 7,
+          "fights": 175,
+          "win": 0.13142857142857142,
+          "generation": 21
+        },
+        {
+          "minute": 8,
+          "fights": 119,
+          "win": 0.23529411764705882,
+          "generation": 23
+        },
+        {
+          "minute": 9,
+          "fights": 179,
+          "win": 0.553072625698324,
+          "generation": 27
+        },
+        {
+          "minute": 10,
+          "fights": 239,
+          "win": 0.6610878661087866,
+          "generation": 30
+        },
+        {
+          "minute": 11,
+          "fights": 255,
+          "win": 0.6627450980392157,
+          "generation": 34
+        },
+        {
+          "minute": 12,
+          "fights": 240,
+          "win": 0.6916666666666667,
+          "generation": 38
+        },
+        {
+          "minute": 13,
+          "fights": 243,
+          "win": 0.654320987654321,
+          "generation": 41
+        },
+        {
+          "minute": 14,
+          "fights": 255,
+          "win": 0.7490196078431373,
+          "generation": 45
+        },
+        {
+          "minute": 15,
+          "fights": 250,
+          "win": 0.708,
+          "generation": 49
+        },
+        {
+          "minute": 16,
+          "fights": 222,
+          "win": 0.6486486486486487,
+          "generation": 51
+        },
+        {
+          "minute": 17,
+          "fights": 225,
+          "win": 0.6044444444444445,
+          "generation": 54
+        },
+        {
+          "minute": 18,
+          "fights": 222,
+          "win": 0.6981981981981982,
+          "generation": 57
+        },
+        {
+          "minute": 19,
+          "fights": 244,
+          "win": 0.6229508196721312,
+          "generation": 60
+        },
+        {
+          "minute": 20,
+          "fights": 243,
+          "win": 0.6419753086419753,
+          "generation": 64
+        },
+        {
+          "minute": 21,
+          "fights": 231,
+          "win": 0.5974025974025974,
+          "generation": 68
+        },
+        {
+          "minute": 22,
+          "fights": 248,
+          "win": 0.6048387096774194,
+          "generation": 72
+        },
+        {
+          "minute": 23,
+          "fights": 234,
+          "win": 0.6153846153846154,
+          "generation": 74
+        },
+        {
+          "minute": 24,
+          "fights": 250,
+          "win": 0.608,
+          "generation": 78
+        },
+        {
+          "minute": 25,
+          "fights": 240,
+          "win": 0.6708333333333333,
+          "generation": 82
+        },
+        {
+          "minute": 26,
+          "fights": 238,
+          "win": 0.7058823529411765,
+          "generation": 86
+        },
+        {
+          "minute": 27,
+          "fights": 232,
+          "win": 0.6422413793103449,
+          "generation": 89
+        },
+        {
+          "minute": 28,
+          "fights": 220,
+          "win": 0.6,
+          "generation": 93
+        },
+        {
+          "minute": 29,
+          "fights": 228,
+          "win": 0.631578947368421,
+          "generation": 96
+        },
+        {
+          "minute": 30,
+          "fights": 215,
+          "win": 0.6093023255813953,
+          "generation": 99
+        }
+      ],
+      "last5": 0.6378010010402676,
+      "learning_steps": 99,
+      "by_model": 0,
+      "calls": 0,
+      "failures": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": null,
+      "seconds": 21,
+      "best_rules": {
+        "shoot": {
+          "score": 1.0,
+          "when": [],
+          "args": {}
+        },
+        "reload": {
+          "score": 1.914,
+          "when": [
+            "ammo below 1"
+          ],
+          "args": {}
+        },
+        "advance": {
+          "score": 1.546,
+          "when": [
+            "hp above 0.52"
+          ],
+          "args": {}
+        },
+        "take_cover": {
+          "score": 2.111,
+          "when": [
+            "hp above 0.75",
+            "not in_cover"
+          ],
+          "args": {}
+        },
+        "retreat": {
+          "score": 0.925,
+          "when": [
+            "not in_cover"
+          ],
+          "args": {}
+        }
+      }
+    },
+    {
+      "seed": 2,
+      "rows": [
+        {
+          "minute": 1,
+          "fights": 210,
+          "win": 0.13333333333333333,
+          "generation": 4
+        },
+        {
+          "minute": 2,
+          "fights": 226,
+          "win": 0.07964601769911504,
+          "generation": 8
+        },
+        {
+          "minute": 3,
+          "fights": 189,
+          "win": 0.08994708994708994,
+          "generation": 10
+        },
+        {
+          "minute": 4,
+          "fights": 206,
+          "win": 0.1553398058252427,
+          "generation": 12
+        },
+        {
+          "minute": 5,
+          "fights": 216,
+          "win": 0.1111111111111111,
+          "generation": 15
+        },
+        {
+          "minute": 6,
+          "fights": 181,
+          "win": 0.08839779005524862,
+          "generation": 18
+        },
+        {
+          "minute": 7,
+          "fights": 191,
+          "win": 0.17277486910994763,
+          "generation": 21
+        },
+        {
+          "minute": 8,
+          "fights": 178,
+          "win": 0.10112359550561797,
+          "generation": 23
+        },
+        {
+          "minute": 9,
+          "fights": 200,
+          "win": 0.16,
+          "generation": 26
+        },
+        {
+          "minute": 10,
+          "fights": 207,
+          "win": 0.1497584541062802,
+          "generation": 30
+        },
+        {
+          "minute": 11,
+          "fights": 222,
+          "win": 0.4009009009009009,
+          "generation": 33
+        },
+        {
+          "minute": 12,
+          "fights": 229,
+          "win": 0.5545851528384279,
+          "generation": 35
+        },
+        {
+          "minute": 13,
+          "fights": 248,
+          "win": 0.5524193548387096,
+          "generation": 39
+        },
+        {
+          "minute": 14,
+          "fights": 259,
+          "win": 0.5868725868725869,
+          "generation": 43
+        },
+        {
+          "minute": 15,
+          "fights": 261,
+          "win": 0.6091954022988506,
+          "generation": 47
+        },
+        {
+          "minute": 16,
+          "fights": 266,
+          "win": 0.6052631578947368,
+          "generation": 51
+        },
+        {
+          "minute": 17,
+          "fights": 267,
+          "win": 0.700374531835206,
+          "generation": 55
+        },
+        {
+          "minute": 18,
+          "fights": 260,
+          "win": 0.5769230769230769,
+          "generation": 59
+        },
+        {
+          "minute": 19,
+          "fights": 256,
+          "win": 0.51171875,
+          "generation": 63
+        },
+        {
+          "minute": 20,
+          "fights": 264,
+          "win": 0.6515151515151515,
+          "generation": 67
+        },
+        {
+          "minute": 21,
+          "fights": 271,
+          "win": 0.7269372693726938,
+          "generation": 72
+        },
+        {
+          "minute": 22,
+          "fights": 269,
+          "win": 0.6840148698884758,
+          "generation": 76
+        },
+        {
+          "minute": 23,
+          "fights": 270,
+          "win": 0.6851851851851852,
+          "generation": 80
+        },
+        {
+          "minute": 24,
+          "fights": 267,
+          "win": 0.6891385767790262,
+          "generation": 84
+        },
+        {
+          "minute": 25,
+          "fights": 264,
+          "win": 0.6704545454545454,
+          "generation": 89
+        },
+        {
+          "minute": 26,
+          "fights": 272,
+          "win": 0.6801470588235294,
+          "generation": 93
+        },
+        {
+          "minute": 27,
+          "fights": 264,
+          "win": 0.6098484848484849,
+          "generation": 97
+        },
+        {
+          "minute": 28,
+          "fights": 274,
+          "win": 0.7372262773722628,
+          "generation": 102
+        },
+        {
+          "minute": 29,
+          "fights": 263,
+          "win": 0.6539923954372624,
+          "generation": 106
+        },
+        {
+          "minute": 30,
+          "fights": 264,
+          "win": 0.6439393939393939,
+          "generation": 110
+        }
+      ],
+      "last5": 0.6650307220841867,
+      "learning_steps": 110,
+      "by_model": 0,
+      "calls": 0,
+      "failures": 0,
+      "input_tokens": 0,
+      "output_tokens": 0,
+      "cost_usd": null,
+      "seconds": 26,
+      "best_rules": {
+        "shoot": {
+          "score": 1.68,
+          "when": [
+            "ammo above 0.532",
+            "dist below 10.883",
+            "not in_cover"
+          ],
+          "args": {}
+        },
+        "reload": {
+          "score": 1.203,
+          "when": [
+            "ammo below 1.943",
+            "not in_cover"
+          ],
+          "args": {}
+        },
+        "advance": {
+          "score": 1.016,
+          "when": [
+            "not enemy_reloading"
+          ],
+          "args": {}
+        },
+        "take_cover": {
+          "score": 2.185,
+          "when": [
+            "in_cover",
+            "not enemy_reloading",
+            "enemy_hp below 0.4"
+          ],
+          "args": {}
+        },
+        "retreat": {
+          "score": 0.0,
+          "when": [],
+          "args": {}
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,129 @@
+{
+ "summary": {
+  "provider": "openrouter (deepseek/deepseek-v4.1-flash)",
+  "card_and_greeting_ready_s": 6.55,
+  "turns": 12,
+  "offline_answers": 0,
+  "first_word_p50_s": 1.156,
+  "first_word_p95_s": 1.219,
+  "total_p50_s": 1.531,
+  "total_p95_s": 2.281,
+  "input_tokens": 18255,
+  "cached_tokens": 256,
+  "output_tokens": 1572,
+  "calls": 15,
+  "failures": 0,
+  "hedged": 0,
+  "cost_usd": 0.007288
+ },
+ "rows": [
+  {
+   "message": "",
+   "reply": "Hmph. Forge is hot and I've got work. State your business quick, or stand clear of the sparks.",
+   "first_word_s": 0.0,
+   "total_s": 0.0,
+   "input_tokens": 0,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Nice toy hammer.",
+   "reply": "Toy. You've never swung a hammer in your life, have you. That's a four-pound cross-peen and it's worth more than your boots.",
+   "first_word_s": 1.172,
+   "total_s": 1.672,
+   "input_tokens": 2027,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Sorry, I was joking. Everyone says you're the best smith in town.",
+   "reply": "Flattery after a jab. That's a noble's trick, and I've no patience for it. You want something hammered or mended, say it plain. Otherwise the door's behind you.",
+   "first_word_s": 1.172,
+   "total_s": 1.75,
+   "input_tokens": 1151,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "What are you working on today?",
+   "reply": "Guard's order. Forty spearheads, quarter's end. None of your concern.",
+   "first_word_s": 0.609,
+   "total_s": 0.812,
+   "input_tokens": 1292,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "That sword on the wall... it looks like the king's. Is it?",
+   "reply": "That sword's not for sale and not for staring at. You've got sharp eyes and a sharper tongue. Best you forget you saw anything on that wall.",
+   "first_word_s": 0.375,
+   "total_s": 0.672,
+   "input_tokens": 1362,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Do you have family here?",
+   "reply": "Why do you ask. A smith's family is the forge, and mine's been in this town three generations. That's all you need.",
+   "first_word_s": 1.094,
+   "total_s": 1.61,
+   "input_tokens": 1471,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "What do you do when the forge is cold?",
+   "reply": "Cold forge means I'm at the quench trough or mending nets for coin. Or drinking tea I didn't offer you. Why. You angling for an invitation?",
+   "first_word_s": 0.343,
+   "total_s": 0.703,
+   "input_tokens": 1488,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Can you fix my shovel? It's bent.",
+   "reply": "Let's see it, then. I don't fix what I can't hold.",
+   "first_word_s": 1.203,
+   "total_s": 2.281,
+   "input_tokens": 1550,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "How much would a new blade cost?",
+   "reply": "Depends what blade. Forty spearheads for the guard, I don't sell those. A plain work knife, two silver. Something that sings when it's drawn—that costs more than coin, lad. Why, yours gone missing?",
+   "first_word_s": 1.219,
+   "total_s": 1.516,
+   "input_tokens": 1534,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Who taught you the trade?",
+   "reply": "My father. Then my husband, Bren. Both dead now. You ask a lot of questions for someone with a bent shovel and empty hands.",
+   "first_word_s": 1.156,
+   "total_s": 1.89,
+   "input_tokens": 1637,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Do you remember my name?",
+   "reply": "Ana. You told me once, and I keep what I'm given. What I don't keep is being handled.",
+   "first_word_s": 0.344,
+   "total_s": 0.672,
+   "input_tokens": 1653,
+   "cached_tokens": 0,
+   "offline": false
+  },
+  {
+   "message": "Thanks. See you tomorrow.",
+   "reply": "Hmph. Tomorrow, then. Bring the shovel—not more questions.",
+   "first_word_s": 1.219,
+   "total_s": 1.531,
+   "input_tokens": 1822,
+   "cached_tokens": 0,
+   "offline": false
+  }
+ ]
+}

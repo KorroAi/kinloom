@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Kinloom.Core\Kinloom.Core.csproj" />
+    <ProjectReference Include="..\Kinloom.Scenarios\Kinloom.Scenarios.csproj" />
+    <ProjectReference Include="..\Kinloom.Brain\Kinloom.Brain.csproj" />
+    <Using Include="Kinloom.Scenarios" />
+    <None Include="..\..\viewer\template.html" Link="viewer\template.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

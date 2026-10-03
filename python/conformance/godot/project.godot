@@ -1,0 +1,6 @@
+config_version=5
+
+[application]
+
+config/name="Kinloom Godot Conformance"
+run/main_scene="res://test.tscn"

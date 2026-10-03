@@ -1,0 +1,5 @@
+{
+  "manifest": "kinloom",
+  "provider": { "kind": "scripted", "script": "kinloom/tests/script.json" },
+  "debugPort": 7798
+}

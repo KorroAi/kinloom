@@ -1,0 +1,21 @@
+{
+  "name": "medieval",
+  "deeds": [
+    { "kind": "draw_weapon", "valence": -0.3, "threat": 0.8, "radius": 12, "isCrime": false },
+    { "kind": "steal", "valence": -0.8, "threat": 0.1, "radius": 8, "isCrime": true, "transfersItem": true },
+    { "kind": "help", "valence": 0.7, "threat": 0, "radius": 6, "isCrime": false },
+    { "kind": "pay", "valence": 0.6, "threat": 0, "radius": 4, "isCrime": false }
+  ],
+  "barks": {
+    "flee": ["Run!", "A blade! Help!", "Not again..."],
+    "confront": ["You there! Stop.", "Explain yourself.", "Put that away."],
+    "report": ["Guard! Thief!", "I saw everything!"],
+    "scold": ["Shame on you.", "Unbelievable."],
+    "grateful": ["Thank you, friend!", "Bless you."],
+    "approve": ["Kind of you.", "Good soul."],
+    "recognize": ["That's the one.", "I know your face."],
+    "refuse": ["Not you. Out.", "We don't serve your kind."],
+    "overcharge": ["Price went up. For you.", "Pay or leave."],
+    "serve": ["Here you go.", "Fair trade."]
+  }
+}

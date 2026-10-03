@@ -1,0 +1,7 @@
+{
+  "role:rex": [
+    { "actions": [ { "tool": "set_param", "args": { "thing": "self", "param": "aggression", "value": 0.9 } } ] },
+    { "actions": [ { "tool": "say", "args": { "text": "Catch me if you can." } } ] }
+  ],
+  "generator:name": [ { "value": { "name": "Thunder" } } ]
+}

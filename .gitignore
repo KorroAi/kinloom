@@ -1,0 +1,25 @@
+bin/
+obj/
+out/
+*.user
+.vs/
+.superpowers/
+__pycache__/
+.vercel
+.env*
+dist/
+.playwright-mcp/
+proof/games/
+target/
+.kinloom/
+*.egg-info/
+.pytest_cache/
+python/conformance/rust/Cargo.lock
+python/build/
+
+# Internal notes (kept locally, not published)
+/CLAUDE.md
+/docs/CLAUDE_historique.md
+/docs/superpowers/
+/docs/naming/
+/.work/

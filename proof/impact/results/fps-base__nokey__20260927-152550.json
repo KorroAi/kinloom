@@ -1,0 +1,47 @@
+{
+  "label": "fps-base",
+  "scenario": "nokey",
+  "source": "<workspace>\\games\\fps",
+  "when": "20260927-152550",
+  "seconds": 40.0,
+  "commit": "b2356b2",
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 113.7,
+    "frame_ms": {
+      "max": 17.83,
+      "p50": 12.72,
+      "p99": 16.65
+    },
+    "frames": 4547,
+    "game": "Chroma Arena",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 4532,
+    "peak": {
+      "enemies": 5,
+      "lap": 0,
+      "nodes": 538,
+      "score": 7500,
+      "wave": 4
+    },
+    "samples": 157,
+    "scene_starts": 1,
+    "seconds": 40.0,
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": null,
+  "verdict": "PASS"
+}

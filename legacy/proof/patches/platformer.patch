@@ -1,0 +1,430 @@
+--- a/enemy/enemy.gd
++++ b/enemy/enemy.gd
+@@ -6,7 +6,9 @@
+ 	DEAD,
+ }
+ 
+-const WALK_SPEED = 22.0
++# Kinloom: the pack mind steers walk_speed (see kinloom/game.json).
++var walk_speed := 22.0
++var alive := true
+ 
+ var _state := State.WALKING
+ 
+@@ -17,14 +19,22 @@
+ @onready var animation_player := $AnimationPlayer as AnimationPlayer
+ 
+ 
++func _ready() -> void:
++	Kinloom.Spawned(kinloom_id(), "Enemy", self)
++
++
++func kinloom_id() -> String:
++	return "robot_" + String(name).to_lower()
++
++
+ func _physics_process(delta: float) -> void:
+ 	if _state == State.WALKING and velocity.is_zero_approx():
+-		velocity.x = WALK_SPEED
++		velocity.x = walk_speed
+ 	velocity += get_gravity() * delta
+ 	if not floor_detector_left.is_colliding():
+-		velocity.x = WALK_SPEED
++		velocity.x = walk_speed
+ 	elif not floor_detector_right.is_colliding():
+-		velocity.x = -WALK_SPEED
++		velocity.x = -walk_speed
+ 
+ 	if is_on_wall():
+ 		velocity.x = -velocity.x
+@@ -42,6 +52,9 @@
+ 
+ 
+ func destroy() -> void:
++	if alive:
++		Kinloom.EmitEvent("enemy_destroyed", {"robot": kinloom_id()})
++	alive = false
+ 	_state = State.DEAD
+ 	velocity = Vector2.ZERO
+ 
+--- a/game.gd
++++ b/game.gd
+@@ -5,6 +5,14 @@
+ @onready var _pause_menu := $InterfaceLayer/PauseMenu as PauseMenu
+ 
+ 
++func _ready() -> void:
++	# Kinloom: the coach's hint line.
++	var hint := preload("res://gui/coach_hint.gd").new()
++	hint.name = "CoachHint"
++	$InterfaceLayer.add_child(hint)
++	Kinloom.Bind("coach", hint)
++
++
+ func _unhandled_input(input_event: InputEvent) -> void:
+ 	if input_event.is_action_pressed(&"toggle_fullscreen"):
+ 		var mode := DisplayServer.window_get_mode()
+--- /dev/null
++++ b/gui/coach_hint.gd
+@@ -0,0 +1,16 @@
++extends Label
++## Kinloom coach hint line: shows a short hint for a few seconds.
++
++func _ready() -> void:
++	position = Vector2(24, 64)
++	add_theme_font_size_override(&"font_size", 28)
++	add_theme_color_override(&"font_outline_color", Color.BLACK)
++	add_theme_constant_override(&"outline_size", 8)
++	hide()
++
++
++func show_hint(hint_text: String) -> void:
++	text = hint_text
++	show()
++	await get_tree().create_timer(6.0).timeout
++	hide()
+--- a/player/player.gd
++++ b/player/player.gd
+@@ -23,8 +23,21 @@
+ @onready var camera := $Camera as Camera2D
+ var _double_jump_charged: bool = false
+ 
++# Kinloom: what the coach reads (see kinloom/game.json).
++var coins := 0
++var seconds_since_coin := 0.0
++
++
++func _ready() -> void:
++	Kinloom.Bind("player", self)
++	coin_collected.connect(func():
++		coins += 1
++		seconds_since_coin = 0.0
++		Kinloom.EmitEvent("coin_collected", {"coins": coins}))
++
+ 
+ func _physics_process(delta: float) -> void:
++	seconds_since_coin += delta
+ 	if is_on_floor():
+ 		_double_jump_charged = true
+ 	if Input.is_action_just_pressed("jump" + action_suffix):
+--- /dev/null
++++ b/kinloom.json
+@@ -0,0 +1,23 @@
++{
++  "manifest": "kinloom",
++  "provider": {
++    "kind": "deepseek",
++    "keyEnv": "DEEPSEEK_API_KEY",
++    "fast": "deepseek-flash",
++    "deep": "deepseek-flash"
++  },
++  "prices": {
++    "input": 0.3,
++    "cachedInput": 0.006,
++    "output": 1.2,
++    "source": "api-docs.deepseek.com/quick_start/pricing, deepseek-flash peak prices as read on 2026-09-26 (from this repo's play-valley.cmd)"
++  },
++  "language": "English",
++  "budget": {
++    "maxCallsPerMinute": 30,
++    "maxCostPerHour": null
++  },
++  "media": {},
++  "servePort": 7717,
++  "debugPort": 7718
++}
+\ No newline at end of file
+--- /dev/null
++++ b/kinloom/game.json
+@@ -0,0 +1,153 @@
++{
++  "description": "Platformer 2D: a pack mind that steers every robot, and a coach that notices when the player is stuck.",
++  "types": {
++    "Enemy": {
++      "description": "A walking robot enemy. Touching it hurts; bullets destroy it.",
++      "properties": {
++        "position": "vec2",
++        "alive": "boolean"
++      },
++      "params": {
++        "walk_speed": {
++          "type": "number",
++          "min": 10,
++          "max": 120,
++          "default": 22,
++          "unit": "px/s"
++        }
++      }
++    },
++    "Player": {
++      "description": "The player's robot.",
++      "properties": {
++        "position": "vec2",
++        "coins": "integer",
++        "seconds_since_coin": {
++          "type": "number",
++          "unit": "s"
++        }
++      }
++    },
++    "Coach": {
++      "description": "A hint line at the top of the screen.",
++      "functions": {
++        "show_hint": {
++          "args": {
++            "text": {
++              "type": "string",
++              "max": 80
++            }
++          },
++          "cooldown": 8
++        }
++      }
++    },
++    "Coin": {
++      "description": "A coin the coach may place as a reward or a breadcrumb.",
++      "creatable": {
++        "args": {
++          "position": "vec2"
++        },
++        "max": 3
++      },
++      "engine": {
++        "godot": {
++          "scene": "res://level/coin.tscn",
++          "parent": "/root/Game/Level/Coins"
++        }
++      }
++    }
++  },
++  "things": [
++    {
++      "id": "player",
++      "type": "Player",
++      "name": "the player"
++    },
++    {
++      "id": "coach",
++      "type": "Coach"
++    }
++  ],
++  "events": {
++    "coin_collected": {
++      "description": "The player picked up a coin.",
++      "importance": 0.3
++    },
++    "enemy_destroyed": {
++      "description": "The player destroyed a robot.",
++      "importance": 0.6
++    }
++  },
++  "roles": [
++    {
++      "id": "pack",
++      "mission": "You are the mind of the robot pack. Make the robots feel like a coordinated group: slow ones lure, fast ones pressure, and when a robot falls the others react. Keep it beatable; vary speeds between robots and over time.",
++      "sees": [
++        "type:Enemy",
++        "thing:player",
++        "event:enemy_destroyed"
++      ],
++      "can": [
++        "set:Enemy.walk_speed",
++        "behavior:Enemy"
++      ],
++      "wake": [
++        {
++          "on": "event:enemy_destroyed"
++        },
++        {
++          "every": 20
++        }
++      ],
++      "budget": {
++        "callsPerMinute": 4
++      }
++    },
++    {
++      "id": "coach",
++      "mission": "You are a warm, brief coach. When the player seems stuck, give one concrete hint (max 70 characters) and, if it helps, place a coin near where they should go next. Never spoil more than needed.",
++      "sees": [
++        "thing:player",
++        "event:coin_collected"
++      ],
++      "can": [
++        "invoke:coach.show_hint",
++        "create:Coin",
++        "destroy:own",
++        "remember"
++      ],
++      "wake": [
++        {
++          "when": "player.seconds_since_coin > 25"
++        }
++      ],
++      "budget": {
++        "callsPerMinute": 3
++      },
++      "fallback": {
++        "behavior": "coach_basic"
++      }
++    }
++  ],
++  "behaviors": [
++    {
++      "id": "coach_basic",
++      "owner": "coach",
++      "rules": [
++        {
++          "when": "player.seconds_since_coin > 25",
++          "cooldown": 30,
++          "do": [
++            {
++              "invoke": "self.show_hint",
++              "args": {
++                "text": "'Coins often hide above the platforms. Try a double jump.'"
++              }
++            }
++          ]
++        }
++      ]
++    }
++  ]
++}
+\ No newline at end of file
+--- /dev/null
++++ b/kinloom/tests/check-script.json
+@@ -0,0 +1,40 @@
++{
++  "role:pack": [
++    "{\"actions\":[{\"tool\":\"set_param\",\"args\":{\"thing\":\"robot_enemy3\",\"param\":\"walk_speed\",\"value\":60}},{\"tool\":\"set_param\",\"args\":{\"thing\":\"robot_enemy4\",\"param\":\"walk_speed\",\"value\":45}}]}"
++  ],
++  "role:coach": [
++    "{\"actions\":[{\"tool\":\"invoke\",\"args\":{\"thing\":\"coach\",\"function\":\"show_hint\",\"args\":{\"text\":\"Try the ledge above the start.\"}}},{\"tool\":\"create\",\"args\":{\"type\":\"Coin\",\"args\":{\"position\":[120,300]}}}]}"
++  ],
++  "*": [
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}",
++    "{\"actions\":[]}"
++  ]
++}
+\ No newline at end of file
+--- /dev/null
++++ b/kinloom/tests/check.gd
+@@ -0,0 +1,51 @@
++extends Node
++# Headless proof inside the real game: makes the player look stuck, destroys a robot, and checks what Kinloom changed.
++# KINLOOM_CHECK_MODE: "scripted" (canned answers), "nokey" (fallbacks only), "live" (the configured model).
++var mode := OS.get_environment("KINLOOM_CHECK_MODE")
++var frames := 0
++var started := 0
++var coins_before := 0
++
++func game() -> Node: return get_parent()
++
++func _process(_delta):
++	frames += 1
++	if frames == 30:
++		coins_before = count_coins()
++		game().get_node("Level/Player").seconds_since_coin = 30.0
++		game().get_node("Level/Enemies/Enemy2").destroy()
++		started = Time.get_ticks_msec()
++	if started == 0: return
++	var waited := Time.get_ticks_msec() - started
++	var hint: Label = game().get_node_or_null("InterfaceLayer/CoachHint")
++	var hinted := hint != null and hint.visible and hint.text != ""
++	if mode == "live":
++		if (hinted and waited > 6000) or waited > 40000: finish()
++	elif frames > 300 and waited > 2000:
++		finish()
++
++func count_coins() -> int:
++	var n := 0
++	for node in game().get_node("Level/Coins").find_children("*", "Coin", true, false): n += 1
++	return n
++
++func finish():
++	var speeds := {}
++	for enemy in game().get_node("Level/Enemies").get_children(): speeds[String(enemy.name)] = enemy.walk_speed
++	var hint: Label = game().get_node_or_null("InterfaceLayer/CoachHint")
++	var hint_text: String = hint.text if hint != null else ""
++	var coins_added := count_coins() - coins_before
++	print("KINLOOM_CHECK mode=", mode, " speeds=", speeds, " coins_added=", coins_added, " hint='", hint_text, "'")
++	print("KINLOOM_CHECK stats=", Kinloom.StatsJson())
++	if mode == "live":
++		for line in Kinloom.JournalText(80).split("\n"):
++			if line.contains(" refused ") or line.contains(" thought ") or line.contains("repairing"): print("KINLOOM_CHECK journal ", line)
++	var ok := false
++	if mode == "scripted":
++		ok = is_equal_approx(speeds.get("Enemy3", 0.0), 60.0) and coins_added == 1 and hint_text == "Try the ledge above the start."
++	elif mode == "nokey":
++		ok = hint_text.contains("double jump")
++	else:
++		ok = hint_text != "" or speeds.values().any(func(s): return not is_equal_approx(s, 22.0))
++	print("KINLOOM_CHECK ", "PASS" if ok else "FAIL")
++	get_tree().quit(0 if ok else 1)
+--- /dev/null
++++ b/kinloom/tests/check.gd.uid
+@@ -0,0 +1 @@
++uid://bpjut7o1l3uok
+--- /dev/null
++++ b/kinloom/tests/check.tscn
+@@ -0,0 +1,9 @@
++[gd_scene load_steps=3 format=3]
++
++[ext_resource type="PackedScene" path="res://game_singleplayer.tscn" id="1"]
++[ext_resource type="Script" path="res://kinloom/tests/check.gd" id="2"]
++
++[node name="Game" instance=ExtResource("1")]
++
++[node name="Check" type="Node" parent="."]
++script = ExtResource("2")
+--- /dev/null
++++ b/kinloom/tests/coach-nomodel.test.json
+@@ -0,0 +1,5 @@
++{
++  "description": "Without a model, the coach's basic hint appears when the player is stuck.",
++  "steps": [ { "time": 1, "update": { "thing": "player", "props": { "seconds_since_coin": 31 } } }, { "wait": 2 } ],
++  "expect": [ { "effect": { "kind": "invoke", "member": "show_hint" } }, { "fallback": true } ]
++}
+--- /dev/null
++++ b/kinloom/tests/coach.test.json
+@@ -0,0 +1,12 @@
++{
++  "description": "A stuck player gets a hint and a breadcrumb coin; without a model the basic hint still shows.",
++  "script": {
++    "role:coach": ["{\"actions\":[{\"tool\":\"invoke\",\"args\":{\"thing\":\"coach\",\"function\":\"show_hint\",\"args\":{\"text\":\"Look up.\"}}},{\"tool\":\"create\",\"args\":{\"type\":\"Coin\",\"args\":{\"position\":[10,20]}}}]}"],
++    "*": ["{\"actions\":[]}"]
++  },
++  "steps": [ { "time": 1, "update": { "thing": "player", "props": { "seconds_since_coin": 31, "coins": 2 } } } ],
++  "expect": [
++    { "effect": { "kind": "invoke", "thing": "coach", "member": "show_hint" } },
++    { "effect": { "kind": "create", "member": "Coin" } }
++  ]
++}

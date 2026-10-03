@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Blind Test</title>
+<style>
+  :root { --bg: #f6f7fb; --panel: #fff; --line: #e3e6ef; --text: #1b1f2a; --muted: #6a7185; --accent: #4a6cf7;
+          --npc: #eef0f6; --ok: #1f9d74; }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --bg: #0f1117; --panel: #171a23; --line: #262b38; --text: #e6e8ef; --muted: #8b92a6;
+                                      --accent: #7c9cff; --npc: #232839; --ok: #4fd1a5; }
+  }
+  :root[data-theme="dark"] { --bg: #0f1117; --panel: #171a23; --line: #262b38; --text: #e6e8ef; --muted: #8b92a6;
+                             --accent: #7c9cff; --npc: #232839; --ok: #4fd1a5; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1100px; margin: 0 auto; padding: 24px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 6px; } p.lead { color: var(--muted); margin: 0 0 24px; }
+  .scene { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 20px; }
+  .scene h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); margin: 0 0 12px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 760px) { .cols { grid-template-columns: 1fr; } }
+  .col { border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .col h3 { margin: 0 0 8px; font-size: 14px; }
+  .line { margin: 6px 0; } .line b { font-weight: 600; }
+  .line.npc span { background: var(--npc); padding: 3px 8px; border-radius: 8px; display: inline-block; }
+  .vote { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; align-items: center; }
+  .vote label { display: flex; gap: 6px; align-items: center; cursor: pointer; }
+  .vote input[type=text] { flex: 1; min-width: 200px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 8px;
+                           background: var(--bg); color: var(--text); font: inherit; }
+  button { background: var(--accent); color: #fff; border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-weight: 600; cursor: pointer; }
+  button:disabled { opacity: .45; cursor: default; }
+  .reveal { color: var(--ok); font-weight: 600; margin-top: 8px; display: none; }
+  #summary { display: none; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-top: 20px; }
+  pre { white-space: pre-wrap; font-size: 12px; background: var(--bg); padding: 10px; border-radius: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Which one feels like a real person?</h1>
+  <p class="lead">Each scene is the same conversation twice, with two different ways of running the character. Read both,
+    pick the one that feels more like a real person (or "can't tell"), then reveal.</p>
+  <div id="scenes"></div>
+  <button id="reveal" disabled>Reveal which is which</button>
+  <div id="summary"></div>
+</main>
+<script>
+const PAIRS = /*PAIRS*/[];
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const votes = {};
+
+function convo(lines, npc) {
+  return lines.map((l) => `<div class="line${l.who === npc ? " npc" : ""}"><b>${esc(l.who)}:</b> <span>${esc(l.text)}</span></div>`).join("");
+}
+$("scenes").innerHTML = PAIRS.map((p, i) => `
+  <section class="scene">
+    <h2>Scene ${i + 1}: ${esc(p.character)}</h2>
+    <div class="cols">
+      <div class="col"><h3>Left</h3>${convo(p.left[1], p.character)}</div>
+      <div class="col"><h3>Right</h3>${convo(p.right[1], p.character)}</div>
+    </div>
+    <div class="vote">
+      <label><input type="radio" name="v${i}" value="left"> Left</label>
+      <label><input type="radio" name="v${i}" value="right"> Right</label>
+      <label><input type="radio" name="v${i}" value="none"> Can't tell</label>
+      <input type="text" id="n${i}" placeholder="Why? (optional)">
+    </div>
+    <div class="reveal" id="r${i}"></div>
+  </section>`).join("");
+
+document.addEventListener("change", (e) => {
+  const m = /^v(\d+)$/.exec(e.target.name || "");
+  if (m) votes[m[1]] = e.target.value;
+  $("reveal").disabled = Object.keys(votes).length < PAIRS.length;
+});
+
+$("reveal").onclick = () => {
+  let souls = 0, naive = 0, none = 0;
+  const rows = PAIRS.map((p, i) => {
+    const left = atob(p.left[0]), right = atob(p.right[0]);
+    const v = votes[i];
+    const picked = v === "left" ? left : v === "right" ? right : "can't tell";
+    if (picked === "souls") souls++; else if (picked === "naive") naive++; else none++;
+    const el = $("r" + i);
+    el.style.display = "block";
+    el.textContent = "Left: " + (left === "souls" ? "Kinloom souls" : "naive prompt") + " · Right: " +
+      (right === "souls" ? "Kinloom souls" : "naive prompt") + " · your pick: " +
+      (picked === "souls" ? "Kinloom souls" : picked === "naive" ? "naive prompt" : "can't tell");
+    return { scene: i + 1, character: p.character, picked, note: $("n" + i).value };
+  });
+  const result = { souls, naive, cant_tell: none, rows };
+  $("summary").style.display = "block";
+  $("summary").innerHTML = `<b>Kinloom souls: ${souls} · naive prompt: ${naive} · can't tell: ${none}</b>
+    <p>Copy this and send it back:</p><pre>${esc(JSON.stringify(result, null, 1))}</pre>`;
+  $("reveal").disabled = true;
+  document.querySelectorAll("input[type=radio]").forEach((r) => (r.disabled = true));
+};
+</script>
+</body>
+</html>

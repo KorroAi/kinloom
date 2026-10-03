@@ -1,0 +1,179 @@
+{
+  "label": "racer-b2",
+  "scenario": "slow",
+  "source": "<workspace>\\games\\trials\\racer-b2",
+  "when": "20260927-182942",
+  "seconds": 90.0,
+  "commit": "6bbf9ab",
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 116.3,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.142,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.67,
+        "lateral_sd": 2.44,
+        "samples": 353,
+        "speed_mean": 40.27,
+        "speed_sd": 21.2
+      },
+      "MINT": {
+        "boosting_share": 0.125,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.96,
+        "lateral_sd": 2.56,
+        "samples": 353,
+        "speed_mean": 39.97,
+        "speed_sd": 21.18
+      },
+      "NOVA": {
+        "boosting_share": 0.11,
+        "drifting_share": 0.0,
+        "lateral_mean": -1.7,
+        "lateral_sd": 2.61,
+        "samples": 353,
+        "speed_mean": 40.36,
+        "speed_sd": 21.37
+      },
+      "YOU": {
+        "boosting_share": 0.159,
+        "drifting_share": 0.0,
+        "lateral_mean": -1.23,
+        "lateral_sd": 2.21,
+        "samples": 353,
+        "speed_mean": 40.99,
+        "speed_sd": 22.81
+      }
+    },
+    "frame_ms": {
+      "max": 47.41,
+      "p50": 8.33,
+      "p99": 21.69
+    },
+    "frames": 10469,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 10454,
+    "peak": {
+      "enemies": 0,
+      "lap": 3,
+      "nodes": 1998,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      },
+      {
+        "at": 70.0,
+        "question": "who is attacking me right now?"
+      }
+    ],
+    "samples": 353,
+    "scene_starts": 1,
+    "seconds": 90.0,
+    "texts": {
+      "\"I'll be right behind you. Literally.\"": 6.5,
+      "\"I've read your data. Not impressed yet.\"": 6.5,
+      "\"New blood! Try to keep up.\"": 6.5,
+      "1ST / 4": 19.1,
+      "2ND / 4": 18.1,
+      "3RD / 4": 15.6,
+      "4TH / 4": 12.6,
+      "BEST LAP  --:--.---": 12.6,
+      "BLAZE   Coming through!": 36.8,
+      "BLAZE   Hey! That's mine!": 19.6,
+      "BLAZE   New blood! Try to keep up.": 12.6,
+      "BLAZE   PAYBACK TIME!": 83.8,
+      "BLAZE  The Brawler     pace 95%     mood: curious     Burn nitro early, attack anything in reach.": 6.5,
+      "BLAZE finds the wall. Sparks everywhere!": 45.4,
+      "BLAZE lights the nitro!": 48.0,
+      "BLAZE makes it stick on MINT!": 41.4,
+      "BLAZE makes it stick on NOVA!": 26.2,
+      "BLAZE to the front of the pack!": 81.3,
+      "Big hit on NOVA! They'll remember that.": 18.6,
+      "Brave from MINT, BLAZE is demoted!": 39.3,
+      "CHALLENGE  SUNSET DEBUT": 12.6,
+      "CHALLENGE:  FINISH IN THE TOP 3": 6.5,
+      "Contact! BLAZE into NOVA!": 32.2,
+      "Contact! MINT into BLAZE!": 52.0,
+      "ENGINEER   BLAZE closing, 0.1 s, no nitro left.": 59.1,
+      "ENGINEER   BLAZE in the wall! Gap now 0.5 s. Go!": 43.4,
+      "ENGINEER   BLAZE is mirroring you. Switch sides late.": 81.8,
+      "ENGINEER   BLAZE is right on you, 0.3 s. Defend.": 20.1,
+      "ENGINEER   Final lap. P3. MINT ahead, 0.9 s. Leader BLAZE at 0.8 s. NOVA behind, 0.1 s. Nitro left: NOVA 2, MINT 1.": 84.9,
+      "ENGINEER   Keep going.": 31.7,
+      "ENGINEER   Lap 1: 0:33.084. P3. MINT ahead, 0.8 s. Leader BLAZE at 0.7 s. NOVA behind, 0.4 s.": 53.5,
+      "ENGINEER   Lost it, P2. BLAZE is 0.1 s ahead.": 41.9,
+      "ENGINEER   MINT in the wall! Gap now 0.4 s. Go!": 43.4,
+      "ENGINEER   MINT in the wall! Gap now 0.5 s. Go!": 74.8,
+      "ENGINEER   MINT is right on you, 0.1 s. Defend.": 36.8,
+      "ENGINEER   NOVA is sitting on 2 nitro. Expect a big final lap.": 49.5,
+      "ENGINEER   Radio check. Challenge: Sunset Debut. Finish in the top 3.": 12.6,
+      "ENGINEER  . . .": 25.7,
+      "Finish in the top 3  (P1)": 19.1,
+      "Finish in the top 3  (P2)": 18.1,
+      "Finish in the top 3  (P3)": 15.6,
+      "Finish in the top 3  (P4)": 12.6,
+      "First night on the water. Show me what you've got.": 6.5,
+      "Flames from MINT!": 50.0,
+      "LAP 1 / 3": 12.6,
+      "LAP 2 / 3": 48.5,
+      "LAP 3 / 3": 79.8,
+      "MINT   I'll be right behind you. Literally.": 12.6,
+      "MINT  The Opportunist     pace 93%     mood: curious     Tuck into slipstreams, strike late.": 6.5,
+      "MINT can't hold off BLAZE!": 54.5,
+      "MINT gets you! Hit back!": 75.3,
+      "MINT shoves BLAZE aside!": 37.3,
+      "MINT slams into you!": 16.6,
+      "MINT steals your spot!": 43.4,
+      "NOVA   Full attack mode.": 52.0,
+      "NOVA   I've read your data. Not impressed yet.": 12.6,
+      "NOVA   Opening noted. Taking it.": 80.3,
+      "NOVA  The Tactician     pace 98%     mood: curious     Hold every nitro for the final lap, block the racing line.": 6.5,
+      "NOVA can't hold off BLAZE!": 34.3,
+      "NOVA shoves BLAZE aside!": 89.4,
+      "NOVA \u2022 \u2022": 49.0,
+      "New leader: BLAZE!": 73.3,
+      "One lap to go, MINT holds the lead!": 79.3,
+      "Studying your last races and setting up the grid...": 0.5,
+      "T  TALK TO YOUR ENGINEER": 12.6,
+      "TONIGHT'S SKY:  AURORA CLASSIC": 6.5,
+      "YOU   how far is the leader?": 25.7,
+      "YOU   who is attacking me right now?": 70.7,
+      "You blow past NOVA!": 20.6,
+      "You bully MINT out of the way!": 83.3,
+      "You make MINT look parked!": 85.4,
+      "You send BLAZE spinning wide!": 87.4,
+      "You're in front! Hold on!": 22.6,
+      "how far is the": 25.1,
+      "who is attacking me r": 70.2
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": {
+    "requests": 6,
+    "kinds": {
+      "slow": 6
+    },
+    "with_tools": 0,
+    "streamed": 0
+  },
+  "verdict": "PASS"
+}

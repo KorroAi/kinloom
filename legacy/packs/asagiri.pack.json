@@ -1,0 +1,50 @@
+{
+  "name": "asagiri",
+  "deeds": [
+    { "kind": "steal", "valence": -0.8, "threat": 0.1, "radius": 8, "isCrime": true, "transfersItem": true },
+    { "kind": "attack", "valence": -0.9, "threat": 0.9, "radius": 10, "isCrime": true },
+    { "kind": "kill", "valence": -1.0, "threat": 1.0, "radius": 14, "isCrime": true },
+    { "kind": "defend", "valence": 0.6, "threat": 0, "radius": 10 },
+    { "kind": "draw_weapon", "valence": -0.3, "threat": 0.8, "radius": 10 },
+    { "kind": "insult", "valence": -0.4, "threat": 0.1, "radius": 6 },
+    { "kind": "help", "valence": 0.7, "threat": 0, "radius": 6 },
+    { "kind": "give", "valence": 0.5, "threat": 0, "radius": 5 },
+    { "kind": "pay", "valence": 0.6, "threat": 0, "radius": 4 }
+  ],
+  "barks": {
+    "flee": ["Run!", "Bandits!", "Not me, please!"],
+    "confront": ["Halt, in the name of the headman!", "Drop it. Now.", "Explain yourself."],
+    "report": ["Guards! A thief!", "Captain, I saw everything!"],
+    "scold": ["Shameful.", "Have you no honour?"],
+    "grateful": ["Thank you, truly.", "You are kind."],
+    "approve": ["Well done.", "A good heart."],
+    "recognize": ["I know your face.", "You again."],
+    "refuse": ["Not you. Go.", "Your coin is no good here."],
+    "overcharge": ["Price went up. For you.", "Pay double or leave."],
+    "serve": ["Here you are.", "A fair trade."],
+    "greet": ["Good morning.", "Fine weather, isn't it?", "Did you hear the news?"],
+    "dialogue_hostile": ["Leave. Now.", "I have nothing to say to you."],
+    "dialogue_cold": ["What do you want?", "Be quick."],
+    "dialogue_neutral": ["Yes, traveller?", "Welcome to Asagiri."],
+    "dialogue_warm": ["Ah, my friend!", "Good to see you again."]
+  },
+  "localizedBarks": {
+    "fr": {
+      "flee": ["Fuyez !", "Des bandits !", "Pas moi, pitié !"],
+      "confront": ["Halte, au nom du chef du village !", "Pose ça. Tout de suite.", "Explique-toi."],
+      "report": ["Gardes ! Au voleur !", "Capitaine, j'ai tout vu !"],
+      "scold": ["Honteux.", "Tu n'as donc aucun honneur ?"],
+      "grateful": ["Merci, vraiment.", "Quelle bonté."],
+      "approve": ["Bien joué.", "Un grand cœur."],
+      "recognize": ["Je connais ce visage.", "Encore toi."],
+      "refuse": ["Pas toi. Dehors.", "Ton argent ne vaut rien ici."],
+      "overcharge": ["Le prix a monté. Pour toi.", "C'est le double, ou tu t'en vas."],
+      "serve": ["Voilà.", "Marché conclu."],
+      "greet": ["Bonjour.", "Belle journée, n'est-ce pas ?", "Tu connais la nouvelle ?"],
+      "dialogue_hostile": ["Va-t'en. Maintenant.", "Je n'ai rien à te dire."],
+      "dialogue_cold": ["Qu'est-ce que tu veux ?", "Fais vite."],
+      "dialogue_neutral": ["Oui, voyageur ?", "Bienvenue à Asagiri."],
+      "dialogue_warm": ["Ah, mon ami !", "Content de te revoir."]
+    }
+  }
+}

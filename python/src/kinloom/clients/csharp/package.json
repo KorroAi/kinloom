@@ -1,0 +1,17 @@
+{
+  "name": "com.kinloom.sdk",
+  "version": "1.0.0",
+  "displayName": "Kinloom",
+  "description": "Kinloom SDK for Unity: AI that decides, writes, acts and talks in your game, calling the model itself or a relay, and answering offline with your own lines and examples.",
+  "unity": "2021.3",
+  "license": "MIT",
+  "keywords": [
+    "ai",
+    "llm",
+    "npc",
+    "dialogue"
+  ],
+  "author": {
+    "name": "Kinloom"
+  }
+}

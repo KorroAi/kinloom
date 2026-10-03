@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kinloom Inspector</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3 1v14M8 1v14M13 1v14' stroke='%233a4fa3' stroke-width='2'/%3E%3Cpath d='M1 5h14M1 11h14' stroke='%23b8901b' stroke-width='2'/%3E%3C/svg%3E">
+<style>
+  :root {
+    --bg: #eef1f5; --panel: #f8f9fb; --ink: #1d2440; --muted: #5c6482; --line: #d5dae6;
+    --indigo: #3a4fa3; --weld: #b8901b; --woad: #2e7d7a; --cochineal: #a3245b; --walnut: #6b4f3a; --lichen: #6f7d2c;
+    --refused-bg: #f7e6ee; --focus: #3a4fa3;
+    --ui: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, "Helvetica Neue", sans-serif;
+    --log: "Cascadia Mono", ui-monospace, "SF Mono", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #141a2d; --panel: #1b2238; --ink: #e3e7f3; --muted: #97a0bd; --line: #2c3552;
+      --indigo: #8fa2f0; --weld: #e0bd4f; --woad: #5fc0ba; --cochineal: #f07aa7; --walnut: #c9a27f; --lichen: #b8c85e;
+      --refused-bg: #3a1f2e; --focus: #8fa2f0;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 15px/1.45 var(--ui); display: grid; grid-template-rows: auto 1fr; }
+  button, textarea, input { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 28px; padding: 14px 20px 12px; border-bottom: 1px solid var(--line); }
+  header h1 { font-size: 19px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+  header h1 span { font-weight: 400; color: var(--muted); }
+  .status { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+  .status i { width: 9px; height: 9px; border-radius: 50%; background: var(--cochineal); display: inline-block; }
+  .status.live i { background: var(--woad); }
+  .figures { display: flex; flex-wrap: wrap; gap: 4px 22px; margin-left: auto; color: var(--muted); }
+  .figures b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  main { display: grid; grid-template-columns: minmax(250px, 1fr) minmax(360px, 2.2fr) minmax(250px, 1.2fr); min-height: 0; }
+  section { min-height: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+  section:last-child { border-right: 0; }
+  section > h2 { font-size: 14px; font-weight: 600; margin: 0; padding: 14px 18px 8px; color: var(--muted); }
+  .scroll { overflow: auto; padding: 0 18px 18px; flex: 1; }
+
+  /* Roles: each one is a thread with its own dye */
+  .role { padding: 12px 0 14px; border-top: 1px solid var(--line); }
+  .role:first-child { border-top: 0; }
+  .role .head { display: flex; align-items: center; gap: 10px; }
+  .role .swatch { width: 4px; align-self: stretch; border-radius: 2px; min-height: 22px; }
+  .role .name { font-weight: 600; }
+  .role .meta { color: var(--muted); font-size: 13px; }
+  .role textarea { width: 100%; min-height: 76px; margin-top: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); resize: vertical; line-height: 1.4; }
+  .role .actions { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
+  .role button { border: 1px solid var(--line); background: var(--panel); border-radius: 6px; padding: 4px 12px; cursor: pointer; }
+  .role button:hover { border-color: var(--indigo); }
+  .role .saved { color: var(--woad); font-size: 13px; }
+  .role details { margin-top: 6px; color: var(--muted); font-size: 13px; }
+  .role details li { margin: 2px 0; }
+
+  /* Timeline: the weave */
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 18px 10px; }
+  .filters button { border: 1px solid var(--line); background: transparent; border-radius: 999px; padding: 3px 12px; cursor: pointer; color: var(--muted); }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  #timeline { position: relative; }
+  .entry { display: grid; grid-template-columns: var(--lanes, 60px) 64px 1fr; gap: 0 10px; align-items: start; padding: 5px 0; }
+  .entry .lanes { position: relative; height: 100%; min-height: 22px; }
+  .entry .lanes span { position: absolute; top: -5px; bottom: -5px; width: 2px; border-radius: 1px; opacity: 0.35; }
+  .entry .lanes b { position: absolute; top: 5px; width: 10px; height: 10px; border-radius: 50%; margin-left: -4px; }
+  .entry time { color: var(--muted); font: 12.5px/1.6 var(--log); font-variant-numeric: tabular-nums; text-align: right; }
+  .entry .what { min-width: 0; overflow-wrap: anywhere; }
+  .entry .who { font-weight: 600; margin-right: 6px; }
+  .entry .kind { color: var(--muted); margin-right: 6px; }
+  .entry.refused .what, .entry.dropped .what, .entry.error .what { background: var(--refused-bg); border-radius: 4px; padding: 0 6px; }
+  .entry.say .text, .entry.reply .text { font-style: italic; }
+  .entry.thought .text { color: var(--muted); }
+  .empty { color: var(--muted); padding: 24px 0; max-width: 46ch; }
+
+  /* World */
+  .thing { padding: 9px 0; border-top: 1px solid var(--line); }
+  .thing:first-child { border-top: 0; }
+  .thing .id { font-weight: 600; }
+  .thing .type { color: var(--muted); margin-left: 6px; font-size: 13px; }
+  .thing .state { font: 12.5px/1.5 var(--log); color: var(--muted); overflow-wrap: anywhere; margin-top: 2px; }
+  .thing .state em { font-style: normal; color: var(--ink); }
+  .thing .flag { color: var(--cochineal); font-size: 12px; margin-left: 6px; }
+  h3 { font-size: 13px; font-weight: 600; color: var(--muted); margin: 18px 0 4px; }
+  .behavior { font-size: 13px; padding: 3px 0; }
+
+  @media (max-width: 980px) {
+    body { height: auto; }
+    main { grid-template-columns: 1fr; }
+    section { border-right: 0; border-bottom: 1px solid var(--line); max-height: none; }
+    .scroll { overflow: visible; }
+    .figures { margin-left: 0; }
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .entry.fresh .lanes b { animation: land 700ms ease-out; }
+    @keyframes land { from { transform: scale(2.2); opacity: 0.2; } to { transform: scale(1); opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Kinloom <span>inspector</span></h1>
+  <div class="status" id="status" role="status"><i></i><span>Connecting…</span></div>
+  <div class="figures" id="figures" aria-live="polite"></div>
+</header>
+<main>
+  <section aria-labelledby="roles-title">
+    <h2 id="roles-title">Roles</h2>
+    <div class="scroll" id="roles"><p class="empty">No roles yet. Declare them in kinloom/*.json.</p></div>
+  </section>
+  <section aria-labelledby="timeline-title">
+    <h2 id="timeline-title">What happened</h2>
+    <div class="filters" id="filters" role="group" aria-label="Show"></div>
+    <div class="scroll"><div id="timeline"><p class="empty">Waiting for the game. Start it with Kinloom enabled, or run <code>kinloom serve</code> and connect it.</p></div></div>
+  </section>
+  <section aria-labelledby="world-title">
+    <h2 id="world-title">World</h2>
+    <div class="scroll" id="world"></div>
+  </section>
+</main>
+<script>
+(() => {
+  const dyes = ["--indigo", "--woad", "--weld", "--walnut", "--lichen", "--cochineal"];
+  const $ = id => document.getElementById(id);
+  const css = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const lanes = new Map(); // source → lane index
+  let entries = [], snapshot = null, ws = null, nextId = 1, filter = "all";
+  const pending = new Map();
+
+  const filters = {
+    all: { label: "Everything", kinds: null, hide: ["resolved", "call", "reply"] },
+    decisions: { label: "Decisions", kinds: ["effect", "resolved", "behavior", "generated", "media"] },
+    refusals: { label: "Refusals", kinds: ["refused", "dropped", "error", "fallback"] },
+    speech: { label: "Speech", kinds: ["say", "reply", "thought"] },
+    events: { label: "Game events", kinds: ["event"] },
+  };
+  for (const [key, f] of Object.entries(filters)) {
+    const b = document.createElement("button");
+    b.textContent = f.label; b.dataset.key = key; b.setAttribute("aria-pressed", key === filter);
+    b.onclick = () => { filter = key; for (const x of $("filters").children) x.setAttribute("aria-pressed", x.dataset.key === key); drawTimeline(); };
+    $("filters").append(b);
+  }
+
+  function laneOf(source) {
+    const key = source.startsWith("role:") || source.startsWith("behavior:") || source.startsWith("generator:") ? source : "game";
+    if (!lanes.has(key)) lanes.set(key, lanes.size);
+    return lanes.get(key);
+  }
+  const colorOf = source => css(dyes[laneOf(source) % dyes.length]);
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const kindWords = { event: "event", effect: "asks the game to", resolved: "done:", refused: "refused:", dropped: "dropped:", call: "", reply: "said", say: "said", thought: "thinks", memory: "remembers", behavior: "", fallback: "fell back:", error: "problem:", generated: "generated", media: "", note: "" };
+
+  function send(method, params) {
+    if (!ws || ws.readyState !== 1) return Promise.reject(new Error("not connected"));
+    const id = nextId++;
+    ws.send(JSON.stringify({ jsonrpc: "2.0", id, method, params: params || {} }));
+    return new Promise((resolve, reject) => pending.set(id, { resolve, reject }));
+  }
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/debug`);
+    ws.onopen = () => { setStatus(true, "Connected"); refresh(); };
+    ws.onclose = () => { setStatus(false, "Connection lost. Retrying every 2 s."); setTimeout(connect, 2000); };
+    ws.onmessage = msg => {
+      const m = JSON.parse(msg.data);
+      if (m.id && pending.has(m.id)) { const p = pending.get(m.id); pending.delete(m.id); m.error ? p.reject(new Error(m.error.message)) : p.resolve(m.result); return; }
+      if (m.method === "journal") addEntry(m.params, true);
+      if (m.method === "waiting") setStatus(false, "Connected. Waiting for a game to connect to kinloom serve.");
+    };
+  }
+
+  function setStatus(live, text) {
+    $("status").classList.toggle("live", live);
+    $("status").querySelector("span").textContent = text;
+  }
+
+  async function refresh() {
+    try {
+      snapshot = await send("snapshot");
+      if (entries.length === 0) { for (const e of snapshot.journal) addEntry(e, false); }
+      drawFigures(); drawRoles(); drawWorld();
+    } catch { /* retried below */ }
+  }
+  setInterval(refresh, 2000);
+
+  function drawFigures() {
+    const s = snapshot.stats;
+    const cost = s.cost == null ? "no prices declared" : Number(s.cost).toFixed(4);
+    $("figures").innerHTML = `<span>game time <b>${Number(snapshot.time).toFixed(1)} s</b></span><span>model calls <b>${s.calls}</b></span>`
+      + `<span>refusals <b>${s.refusals}</b></span><span>fallbacks <b>${s.fallbacks}</b></span><span>tokens <b>${s.inputTokens + s.outputTokens}</b></span><span>cost <b>${cost}</b></span>`;
+  }
+
+  function drawRoles() {
+    const box = $("roles");
+    if (snapshot.roles.length === 0) { box.innerHTML = '<p class="empty">No roles yet. Declare them in kinloom/*.json.</p>'; return; }
+    const editing = document.activeElement && document.activeElement.tagName === "TEXTAREA";
+    if (editing) return; // never overwrite what someone is typing
+    box.innerHTML = "";
+    for (const r of snapshot.roles) {
+      const calls = snapshot.stats.callsBySource["role:" + r.id] || 0;
+      const div = document.createElement("div");
+      div.className = "role";
+      div.innerHTML = `<div class="head"><span class="swatch" style="background:${colorOf("role:" + r.id)}"></span>
+          <div><div class="name">${esc(r.id)}</div><div class="meta">${r.inhabits ? "inhabits " + esc(r.inhabits) + ", " : ""}${esc(r.tier)} model, ${calls} call${calls === 1 ? "" : "s"}</div></div></div>
+        <label class="meta" for="m-${esc(r.id)}" style="display:block;margin-top:8px">Mission</label>
+        <textarea id="m-${esc(r.id)}">${esc(r.mission)}</textarea>
+        <div class="actions"><button type="button">Apply mission</button><span class="saved" aria-live="polite"></span></div>
+        <details><summary>Allowed to</summary><ul>${r.can.map(c => `<li>${esc(c)}</li>`).join("")}</ul></details>
+        ${r.memories.length ? `<details><summary>Memories (${r.memories.length})</summary><ul>${r.memories.slice(-12).map(m => `<li>${esc(m)}</li>`).join("")}</ul></details>` : ""}`;
+      const button = div.querySelector("button"), note = div.querySelector(".saved"), area = div.querySelector("textarea");
+      button.onclick = async () => {
+        try { await send("setMission", { role: r.id, mission: area.value }); note.textContent = "Mission applied"; }
+        catch (e) { note.textContent = "Not applied: " + e.message; }
+        setTimeout(() => note.textContent = "", 2500);
+      };
+      box.append(div);
+    }
+  }
+
+  function drawWorld() {
+    const box = $("world");
+    const things = snapshot.things.filter(t => t.id !== "world" || Object.keys(t.properties).length || Object.keys(t.params).length);
+    const show = v => typeof v === "number" ? (Number.isInteger(v) ? v : +v.toFixed(4)) : typeof v === "object" ? JSON.stringify(v, (k, x) => typeof x === "number" && !Number.isInteger(x) ? +x.toFixed(4) : x) : v;
+    const fmt = o => Object.entries(o).map(([k, v]) => `${esc(k)}=<em>${esc(show(v))}</em>`).join(", ");
+    let html = things.map(t => `<div class="thing"><span class="id">${esc(t.name && t.name !== t.id ? t.name : t.id)}</span><span class="type">${esc(t.type)}${t.name && t.name !== t.id ? ", " + esc(t.id) : ""}</span>${t.bound || !snapshot.requireBind ? "" : '<span class="flag">not bound</span>'}${t.createdBy ? `<span class="type">made by ${esc(t.createdBy)}</span>` : ""}
+      ${Object.keys(t.properties).length ? `<div class="state">${fmt(t.properties)}</div>` : ""}${Object.keys(t.params).length ? `<div class="state">steerable: ${fmt(t.params)}</div>` : ""}</div>`).join("");
+    if (snapshot.behaviors.length) html += `<h3>Instant behaviors</h3>` + snapshot.behaviors.map(b => `<div class="behavior">${esc(b.id)} on ${esc(b.owner)} <span class="type">by ${esc(b.source)}</span></div>`).join("");
+    if (snapshot.generators.length) html += `<h3>Generators</h3><div class="behavior">${snapshot.generators.map(esc).join(", ")}</div>`;
+    if (snapshot.media.length) html += `<h3>Media tools</h3><div class="behavior">${snapshot.media.map(esc).join(", ")}</div>`;
+    box.innerHTML = html || '<p class="empty">No things declared yet.</p>';
+  }
+
+  function addEntry(e, fresh) {
+    if (entries.some(x => x.seq === e.seq)) return;
+    entries.push({ ...e, fresh });
+    if (entries.length > 1200) entries = entries.slice(-1000);
+    drawTimeline();
+  }
+
+  function drawTimeline() {
+    const kinds = filters[filter].kinds;
+    const hide = filters[filter].hide || [];
+    const shown = entries.filter(e => (!kinds || kinds.includes(e.kind)) && !hide.includes(e.kind)).slice(-400);
+    const box = $("timeline");
+    if (shown.length === 0) { box.innerHTML = `<p class="empty">${entries.length ? "Nothing of this kind yet." : "Waiting for the game. Start it with Kinloom enabled, or run <code>kinloom serve</code> and connect it."}</p>`; return; }
+    const count = Math.max(lanes.size, 1), width = Math.min(12 + count * 14, 120);
+    box.style.setProperty("--lanes", width + "px");
+    const scroller = box.parentElement, atBottom = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < 40;
+    box.innerHTML = shown.map(e => {
+      const lane = laneOf(e.source), x = 6 + lane * 14;
+      const threads = [...lanes.values()].map(i => `<span style="left:${6 + i * 14}px;background:${css(dyes[i % dyes.length])}"></span>`).join("");
+      const who = e.source === "game" || e.source === "session" ? (e.kind === "event" ? "game" : "") : e.source.replace(/^role:/, "");
+      return `<div class="entry ${esc(e.kind)}${e.fresh ? " fresh" : ""}"><div class="lanes">${threads}<b style="left:${x}px;background:${colorOf(e.source)}"></b></div>
+        <time>${Number(e.time).toFixed(1)}</time><div class="what">${who ? `<span class="who">${esc(who)}</span>` : ""}<span class="kind">${esc(kindWords[e.kind] ?? e.kind)}</span><span class="text">${esc(e.text)}</span></div></div>`;
+    }).join("");
+    for (const e of shown) e.fresh = false;
+    if (atBottom) scroller.scrollTop = scroller.scrollHeight;
+  }
+
+  connect();
+})();
+</script>
+</body>
+</html>

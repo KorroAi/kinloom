@@ -1,0 +1,16 @@
+{
+    "name": "Kinloom.Unity",
+    "rootNamespace": "Kinloom",
+    "references": [
+        "Kinloom"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

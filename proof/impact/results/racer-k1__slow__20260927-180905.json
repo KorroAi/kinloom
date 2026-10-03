@@ -1,0 +1,129 @@
+{
+  "label": "racer-k1",
+  "scenario": "slow",
+  "source": "<workspace>\\games\\trials\\racer-k1",
+  "when": "20260927-180905",
+  "seconds": 90.0,
+  "commit": "11619d2",
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 116.7,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.079,
+        "drifting_share": 0.0,
+        "lateral_mean": 1.89,
+        "lateral_sd": 2.11,
+        "samples": 353,
+        "speed_mean": 39.09,
+        "speed_sd": 17.1
+      },
+      "MINT": {
+        "boosting_share": 0.051,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.12,
+        "lateral_sd": 2.1,
+        "samples": 353,
+        "speed_mean": 39.15,
+        "speed_sd": 17.45
+      },
+      "NOVA": {
+        "boosting_share": 0.037,
+        "drifting_share": 0.0,
+        "lateral_mean": -2.75,
+        "lateral_sd": 1.67,
+        "samples": 353,
+        "speed_mean": 39.45,
+        "speed_sd": 17.19
+      },
+      "YOU": {
+        "boosting_share": 0.051,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.79,
+        "lateral_sd": 1.94,
+        "samples": 353,
+        "speed_mean": 39.37,
+        "speed_sd": 17.61
+      }
+    },
+    "frame_ms": {
+      "max": 43.05,
+      "p50": 8.33,
+      "p99": 20.51
+    },
+    "frames": 10501,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 10486,
+    "peak": {
+      "enemies": 0,
+      "lap": 3,
+      "nodes": 1953,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      },
+      {
+        "at": 70.0,
+        "question": "who is attacking me right now?"
+      }
+    ],
+    "samples": 353,
+    "scene_starts": 1,
+    "seconds": 90.0,
+    "texts": {
+      "1ST / 4": 24.4,
+      "2ND / 4": 23.8,
+      "3RD / 4": 11.2,
+      "4TH / 4": 0.6,
+      "BEST LAP  --:--.---": 0.6,
+      "BLAZE  Keep going.": 14.2,
+      "CHALLENGE  PODIUM OR BUST: Finish in the top three.": 8.2,
+      "CHALLENGE: PODIUM OR BUST: Finish in the top three.": 8.2,
+      "LAP 1 / 3": 0.6,
+      "LAP 2 / 3": 46.6,
+      "LAP 3 / 3": 80.0,
+      "MINT  Keep going.": 14.2,
+      "NOVA  Keep going.": 14.2,
+      "PUSH  NITRO 3": 0.6,
+      "T  TEAM RADIO": 0.6,
+      "THEO  Keep going.": 14.2,
+      "THEO IS ON THE RADIO...": 25.4,
+      "VEGA:  Contact! BLAZE and YOU bang wheels!": 44.6,
+      "VEGA:  Contact! YOU and NOVA bang wheels!": 27.4,
+      "VEGA:  Keep going.": 14.2,
+      "VEGA:  Ooh, BLAZE punts YOU!": 78.5,
+      "VEGA:  The grid is set, the Violet Hour is glowing. Here we go!": 12.2,
+      "YOU  how far is the leader?": 25.4,
+      "YOU  who is attacking me right now?": 70.4,
+      "setting the stage...": 0.6
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": {
+    "requests": 52,
+    "kinds": {
+      "slow": 52
+    },
+    "with_tools": 50,
+    "streamed": 0
+  },
+  "verdict": "PASS"
+}

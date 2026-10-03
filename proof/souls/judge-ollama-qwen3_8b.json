@@ -1,0 +1,158 @@
+{
+ "judge": "custom (qwen3:8b)",
+ "votes": {
+  "souls": 3,
+  "naive": 3,
+  "unclear": 0
+ },
+ "mean_scores": {
+  "souls": 8.0,
+  "naive": 8.22
+ },
+ "rows": [
+  {
+   "scene": "A",
+   "order": [
+    "souls",
+    "naive"
+   ],
+   "pick": "naive",
+   "why": "Y  \nY's dialogue shows more depth, memory, and emotional weight\u2014Mira's past loss and her hardened attitude make her feel like a real person with history and inner conflict."
+  },
+  {
+   "scene": "A",
+   "order": [
+    "naive",
+    "souls"
+   ],
+   "pick": "souls",
+   "why": "Y  \nY's dialogue shows more depth, personal history, and emotional weight, giving Mira a distinct voice and inner life."
+  },
+  {
+   "scene": "B",
+   "order": [
+    "souls",
+    "naive"
+   ],
+   "pick": "naive",
+   "why": "Y  \nY's dialogue feels more like a real person with memory, inner life, and emotional depth, using repetition and personal history to create a distinct voice."
+  },
+  {
+   "scene": "B",
+   "order": [
+    "naive",
+    "souls"
+   ],
+   "pick": "souls",
+   "why": "Y  \nY's dialogue feels more like a real person with memory, inner life, and distinct voice, using layered metaphors and reacting to Ana's presence with nuance."
+  },
+  {
+   "scene": "D",
+   "order": [
+    "souls",
+    "naive"
+   ],
+   "pick": "naive",
+   "why": "Y  \nJuno in Y shows more personality, memory, and inner conflict through her dialogue, with distinct speech patterns and emotional depth."
+  },
+  {
+   "scene": "D",
+   "order": [
+    "naive",
+    "souls"
+   ],
+   "pick": "souls",
+   "why": "Y  \nJuno in Y shows more personality, memory of past interactions, and a distinct voice with sarcasm and confidence, making her feel more like a real person."
+  },
+  {
+   "scene": "A",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "naive",
+   "score": 9
+  },
+  {
+   "scene": "D",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "D",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "D",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "D",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "D",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "D",
+   "scored": "naive",
+   "score": 9
+  }
+ ]
+}

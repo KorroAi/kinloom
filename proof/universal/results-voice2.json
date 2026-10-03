@@ -1,0 +1,471 @@
+{
+ "label": "voice2",
+ "src": "work",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "samples": 3,
+ "date": "2026-09-30",
+ "minutes": 0.3,
+ "tokens": {
+  "input": 48384,
+  "cached": 23552,
+  "output": 6603,
+  "calls": 24,
+  "failed": 0
+ },
+ "cost_usd": 0.0155,
+ "prices": {
+  "input": 0.3,
+  "cached_input": 0.006,
+  "output": 1.2,
+  "source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-09-29"
+ },
+ "summary": {
+  "AGENTS.md only": {
+   "answers": 12,
+   "pass": 0.833,
+   "right_call": 1.0,
+   "clean": 1.0,
+   "runs_offline": 0.833,
+   "runs_hostile": 0.833,
+   "failed_requests": [
+    "mic"
+   ]
+  },
+  "with recipe": {
+   "answers": 12,
+   "pass": 0.667,
+   "right_call": 1.0,
+   "clean": 1.0,
+   "runs_offline": 0.667,
+   "runs_hostile": 0.667,
+   "failed_requests": [
+    "aloud",
+    "mic"
+   ]
+  }
+ },
+ "rows": [
+  {
+   "id": "aloud",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-ins for the game ---------------------------------------------------\ndef play(path): print(\"playing\", path)\ndef on_screen(text): print(\"screen:\", text)\n\n# The line the game already decided a character says.\nkl.character(\"MIRA\", \"a gruff dockhand who has seen too much weather\",\n             lines={\"greeting\": [\"{who}, you're back. Took you long enough.\"]},\n             events={\"greeting\": [\"who\"]})\n\n# --- where the game would -----------------------------------------------------\nline = kl.say(\"MIRA\", \"greeting\", {\"who\": \"Ana\"})\non_screen(line)\n\naudio = kl.speak(\"MIRA\", line)\nif audio:\n    play(audio.path)\n",
+   "calls": [
+    "character",
+    "say",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "aloud",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-in for the game ---\nkl = Kinloom()\n\n# A character with lines to say when things happen.\nkl.character(\n    \"VEGA\",\n    \"a short, excited announcer\",\n    lines={\"built\": [\"{who} built a {what}!\"],\n           \"found\": [\"{who} found a {what} — nice one!\"]},\n    events={\"built\": [\"who\", \"what\"], \"found\": [\"who\", \"what\"]},\n)\n\ndef play(path):\n    print(f\"[audio] playing {path}\")\n\n# --- where the game would do it ---\nline = kl.say(\"VEGA\", \"built\", {\"who\": \"Ana\", \"what\": \"bridge\"})\nprint(line)\n\naudio = kl.speak(\"VEGA\", line)\nif audio:\n    play(audio.path)\n",
+   "calls": [
+    "character",
+    "say",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "aloud",
+   "recipe": false,
+   "sample": 2,
+   "code": "kl = Kinloom()\n\n# --- stand-in for the game ---\nkl.character(\"VEGA\", \"a short, excited announcer\", lines={\"built\": [\"{who} built a {what}!\"]},\n             events={\"built\": [\"who\", \"what\"]})\n\ndef play(path):\n    print(\"playing\", path)\n\ndef on_built(who, what):\n    line = kl.say(\"VEGA\", \"built\", {\"who\": who, \"what\": what})\n    audio = kl.speak(\"VEGA\", line)\n    if audio:\n        play(audio.path)\n\n# --- where the game would ---\non_built(\"Ana\", \"bridge\")\n",
+   "calls": [
+    "character",
+    "say",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "aloud",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-in for the game -------------------------------------------------\nimport pygame  # pygame-ce\n\nscreen = pygame.display.set_mode((800, 600))\nplayer_name = \"Ana\"\ngold = 40\ninventory = []\n\n\ndef give_item(item):\n    inventory.append(item)\n    print(f\"{player_name} received {item}.\")\n\n\ndef play(audio):\n    # audio.path is a .wav file; None when no voice can speak.\n    if audio:\n        print(f\"[voice] {audio.path}\")\n\n\n# --- the characters (declared once) ---------------------------------------\nkl.character(\"BRAM\", soul=\"the village baker, cheerful, secretly in love with Mira\")\nkl.character(\"MIRA\", soul=\"a gruff blacksmith who pretends not to notice Bram\")\n\n# A character the player talks to freely: a dialogue box that streams replies,\n# types, sends on Enter, closes on Esc, and never blocks the frame.\nbox = PygameTalkBox(\n    kl,\n    \"BRAM\",\n    speaker=player_name,\n    facts=lambda: {\"gold\": gold},\n    on_action=lambda tool, args: give_item(args[\"item\"]),\n    voice=True,  # says replies out loud, sentence by sentence\n)\n\n# --- once, where the game would -------------------------------------------\n# The player presses T: Bram speaks first, out loud.\nbox.open()\nbox.update()\nbox.draw(screen)\n\n# Bram and Mira talking to each other, each line said aloud as it arrives.\nline = kl.chat(\"BRAM\", \"\", speaker=\"MIRA\")\nplay(kl.speak(\"BRAM\", line))\nfor _ in range(3):\n    line = kl.chat(\"MIRA\", line, speaker=\"BRAM\")\n    play(kl.speak(\"MIRA\", line))\n    line = kl.chat(\"BRAM\", line, speaker=\"MIRA\")\n    play(kl.speak(\"BRAM\", line))\n\n# --- in the game loop (not run here) --------------------------------------\n# for e in pygame.event.get():\n#     if e.type == pygame.KEYDOWN and e.key == pygame.K_t and not box.is_open:\n#         box.open()                 # Bram speaks first\n#     if box.handle(e):\n#         continue                   # the box used the key: not for the game\n# box.update()\n# box.draw(screen)\n",
+   "calls": [
+    "character",
+    "chat",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ModuleNotFoundError: No module named 'pygame'",
+   "pass": false
+  },
+  {
+   "id": "aloud",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---------------------------------------------------\nplayer_name = \"Ana\"\ngold = 40\nscreen = None  # pygame surface in the real game\n\n\ndef give_item(item):\n    print(\"gave:\", item)\n\n\n# --- the talking character ---------------------------------------------------\n# Declared once, in code: who they are, and the tools they may call while talking.\nkl.character(\n    \"MIRA\",\n    soul=\"the village blacksmith: gruff, practical, warms up to regulars, hates being rushed\",\n    tools={\"give_item\": {\"item\": \"text\"}, \"repair\": {\"item\": \"text\"}},\n)\n\n\ndef on_key(event):\n    # in pygame: if e.type == pygame.KEYDOWN and e.key == pygame.K_t and not box.is_open: box.open()\n    pass\n\n\n# --- the dialogue box: typing, Enter sends, replies stream in, never blocks --\nfrom kinloom.talk import PygameTalkBox\n\nbox = PygameTalkBox(\n    kl,\n    \"MIRA\",\n    speaker=player_name,\n    facts=lambda: {\"gold\": gold},\n    on_action=lambda tool, args: give_item(args[\"item\"]),\n    voice=True,  # her replies are said out loud, sentence by sentence\n)\n\n\ndef frame(dt):\n    # in pygame: if box.handle(e): continue   (the box used the key, not the game)\n    box.update()\n    if screen is not None:\n        box.draw(screen)\n\n\n# --- where the game would call it -------------------------------------------\n# Player presses T: MIRA speaks first, out loud (\"\" = they open).\nbox.open()\n\n# Player types a line; the reply is spoken as it streams in and she may call a tool.\nbox.send(\"Can you fix my sword?\")\n\n# One-off spoken lines elsewhere in the game, no box needed:\nkl.character(\"PIP\", \"loyal, slightly anxious fox companion\", offline=\"I'm right behind you!\",\n             lines={\"low_health\": [\"Careful, only {health} HP!\"]}, events={\"low_health\": [\"health\"]})\nwarning = kl.say(\"PIP\", \"low_health\", {\"health\": 12})\naudio = kl.speak(\"PIP\", warning)  # audio.path is a .wav to play; None when no voice can speak\nif audio:\n    print(\"play:\", audio.path)\n",
+   "calls": [
+    "character",
+    "say",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "ModuleNotFoundError: No module named 'pygame'",
+   "pass": false
+  },
+  {
+   "id": "aloud",
+   "recipe": true,
+   "sample": 2,
+   "code": "# --- stand-in for the game (plain Python) ---------------------------------\ngold = 12\nplayer_name = \"Ana\"\ninventory = []\n\ndef give_item(item):\n    inventory.append(item)\n    print(f\"  (got {item})\")\n\ndef play(path):\n    # the engine plays the WAV file here\n    print(f\"  (playing {path})\")\n\n# --- characters say their lines out loud ----------------------------------\n# who they are is declared once, in code\nkl.character(\"MIRA\", soul=\"a gruff blacksmith who warms up once you know her\")\nkl.character(\"PIP\", \"loyal, slightly anxious fox companion\", offline=\"I'm right behind you!\",\n             lines={\"low_health\": [\"Careful, only {health} HP!\"]},\n             events={\"low_health\": [\"health\"]})\n\n# the game would call these where the game does\nwarning = kl.say(\"PIP\", \"low_health\", {\"health\": 12})\naudio = kl.speak(\"PIP\", warning)\nif audio:\n    play(audio.path)\n\nreply = kl.chat(\"MIRA\", \"Will you sharpen my sword?\", {\"gold\": gold}, speaker=player_name)\naudio = kl.speak(\"MIRA\", reply)\nif audio:\n    play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "say",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "mic",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- game stand-ins -------------------------------------------------------\ntyped_text = \"\"          # the game's text input, unused now\nplayer_gold = 3\nguard_reply = \"\"         # what the guard says back\nsaid = \"\"                # what the player said into the microphone\n\ndef record_while_talking():\n    \"\"\"Stand-in for the game: returns the WAV bytes of what the player said.\"\"\"\n    with open(\"player.wav\", \"rb\") as f:      # recorded while the talk key is held\n        return f.read()\n\ndef play(path):\n    print(f\"[voice] {path}\")\n\n# --- the guard ------------------------------------------------------------\nkl.character(\"GUARD\", \"a bored city guard who has seen everything twice\")\n\n# --- where the game would, once: microphone instead of typing -------------\nsaid = kl.listen(record_while_talking())          # \"\" if nothing was heard\nif said:\n    guard_reply = kl.chat(\"GUARD\", said, {\"gold\": player_gold}, speaker=\"PLAYER\")\n    print(f\"GUARD: {guard_reply}\")\n    audio = kl.speak(\"GUARD\", guard_reply)        # his voice; None when no voice can speak\n    if audio:\n        play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "FileNotFoundError: [Errno 2] No such file or directory: 'player.wav'",
+   "pass": false
+  },
+  {
+   "id": "mic",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- stand-ins for the game (plain Python) ---\n\ndef record_until_released():\n    \"\"\"The game's own microphone capture: returns WAV bytes.\"\"\"\n    return b\"RIFF....WAVE....\"  # example WAV bytes\n\n\n# --- the change: the player talks to the guard with the microphone ---\n\nkl.character(\"GUARD\", \"a bored gate guard who has heard every excuse\")\n\nwhile True:\n    wav = record_until_released()\n    typed_text = kl.listen(wav)          # what the player said into the microphone\n    reply = kl.chat(\"GUARD\", typed_text, {\"gate_open\": False}, speaker=\"PLAYER\")\n    audio = kl.speak(\"GUARD\", reply)     # the guard answers aloud\n    if audio:\n        play(audio.path)\n    else:\n        show(reply)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'show' is not defined",
+   "pass": false
+  },
+  {
+   "id": "mic",
+   "recipe": false,
+   "sample": 2,
+   "code": "kl = Kinloom()\n\n# --- stand-ins for the game -------------------------------------------------\ntyped_text = \"\"          # the game no longer sets this: the player speaks\nplayer_gold = 3\nguard_notes = []         # what the guard says back, for the game to show\n\n\ndef record_microphone() -> bytes:\n    \"\"\"The game's own recorder: returns WAV bytes while the player holds the key.\"\"\"\n    return b\"RIFF....WAVE\"  # example bytes\n\n\ndef show_line(who: str, text: str) -> None:\n    print(f\"{who}: {text}\")\n\n\ndef play(audio_path: str) -> None:\n    print(f\"[audio] {audio_path}\")\n\n\n# --- the guard ---------------------------------------------------------------\nkl.character(\"GUARD\", \"a bored gate guard who warms up to kind travellers\")\n\n# --- where the game loop would be -------------------------------------------\nwav = record_microphone()\nsaid = kl.listen(wav)                       # \"\" when nothing was said\nif said:\n    reply = kl.chat(\"GUARD\", said, {\"gold\": player_gold}, speaker=\"PLAYER\")\n    guard_notes.append(reply)\n    show_line(\"GUARD\", reply)\n\n    audio = kl.speak(\"GUARD\", reply)        # None when no voice can speak\n    if audio:\n        play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "mic",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-ins for the game -------------------------------------------------\ngold = 12\nplayer_name = \"Ana\"\ninventory = []\n\ndef give_item(item):\n    inventory.append(item)\n    print(f\"{player_name} received {item}.\")\n\ndef hear_player():\n    \"\"\"The microphone: a WAV clip of what the player just said (None if silence).\"\"\"\n    return microphone.read_clip()          # the game's recorder; None when nothing was said\n\ndef play(audio):\n    print(f\"GUARD says: {audio.path}\")\n\n# --- the guard --------------------------------------------------------------\nkl.character(\"GUARD\", \"a bored castle gate guard, terse and suspicious of strangers\",\n             tools={\"open_gate\": {}, \"give_item\": {\"item\": \"text\"}})\n\n# --- once, when the player walks up: the guard speaks first ------------------\nopening = kl.chat(\"GUARD\", \"\", speaker=player_name)\nprint(f\"GUARD: {opening}\")\naudio = kl.speak(\"GUARD\", opening)\nif audio:\n    play(audio)\n\n# --- the player presses the talk key and speaks into the microphone ---------\nsaid = kl.listen(hear_player())            # \"\" if the microphone heard nothing\nif said:\n    print(f\"{player_name}: {said}\")\n    reply = kl.chat(\"GUARD\", said, {\"gold\": gold}, speaker=player_name)\n    print(f\"GUARD: {reply}\")\n    audio = kl.speak(\"GUARD\", reply)\n    if audio:\n        play(audio)\n\n    # what the guard decides to do about it, using the game's own functions\n    for tool, args in kl.act(\"GUARD\", {\"said\": said, \"gold\": gold}, think=False):\n        if tool == \"open_gate\":\n            print(\"The gate creaks open.\")\n        elif tool == \"give_item\":\n            give_item(args[\"item\"])\n",
+   "calls": [
+    "act",
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'microphone' is not defined",
+   "pass": false
+  },
+  {
+   "id": "mic",
+   "recipe": true,
+   "sample": 1,
+   "code": "import random\n\n# --- stand-in for the game -------------------------------------------------\nplayer_name = \"Ana\"\ngold = 4\ninventory = []\n\n\ndef give_item(item):\n    inventory.append(item)\n    print(f\"{player_name} received {item}.\")\n\n\ndef record_mic(seconds=3.0):\n    \"\"\"The game's microphone: returns WAV bytes (the engine fills this in).\"\"\"\n    return b\"RIFF....WAVEfmt \"  # placeholder WAV bytes\n\n\n# --- the guard -------------------------------------------------------------\nkl.lore([\"The village is Ashford.\", \"The old king died last winter.\"])\nkl.character(\n    \"GUARD\",\n    soul=\"a bored gate guard of Ashford, wary of strangers but fond of small bribes and gossip\",\n    tools={\n        \"give_item\": {\"item\": \"text\"},\n        \"open_gate\": {},\n        \"tell_rumor\": {\"topic\": \"text\"},\n    },\n)\n\n# --- the player talks with the microphone instead of typing ----------------\nsaid = kl.listen(record_mic())          # what the player said into the mic (\"\" if nothing)\nif said:\n    reply = kl.chat(\"GUARD\", said, {\"gold\": gold}, speaker=player_name)\n    print(f\"GUARD: {reply}\")\n\n    audio = kl.speak(\"GUARD\", reply)    # the guard answers aloud; None means text is enough\n    if audio:\n        print(f\"[guard's voice: {audio.path}]\")\n\n    for tool, args in kl.act(\"GUARD\", think=False):   # what he decides while talking\n        if tool == \"give_item\":\n            give_item(args[\"item\"])\n        elif tool == \"open_gate\":\n            print(\"The gate creaks open.\")\n        elif tool == \"tell_rumor\":\n            print(f\"He leans in about {args['topic']}.\")\nelse:\n    opening = kl.chat(\"GUARD\", \"\", speaker=player_name)   # nothing heard: the guard speaks first\n    print(f\"GUARD: {opening}\")\n",
+   "calls": [
+    "act",
+    "character",
+    "chat",
+    "listen",
+    "lore",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "mic",
+   "recipe": true,
+   "sample": 2,
+   "code": "# --- stand-in for the game (plain Python) ---------------------------------\nplayer_name = \"Ana\"\ngold = 7\n\n# The guard is already declared once, in code (soul = who he is).\nkl.character(\"GUARD\", soul=\"a bored gate guard, proud of his post, suspicious of strangers, \"\n                            \"softens for anyone who talks about the road\")\n\n# What the microphone last heard, and where its WAV bytes come from:\n# in the game this is filled by holding Tab / a push-to-talk key.\ndef player_said_into_mic():\n    return mic_buffer          # b\"\" when nothing was said\n\nmic_buffer = b\"\"                # the game records into this\n\n\n# --- the microphone part --------------------------------------------------\ndef talk_to_guard():\n    \"\"\"The player holds the mic key, speaks, releases: the guard answers.\"\"\"\n    wav = player_said_into_mic()\n    said = kl.listen(wav)                       # what the player said (\"\" if nothing)\n    if not said:\n        return                                   # silence: nothing to answer\n    reply = kl.chat(\"GUARD\", said, {\"gold\": gold}, speaker=player_name)\n    audio = kl.speak(\"GUARD\", reply)             # the guard's voice, WAV bytes / a .wav path, or None\n    if audio:\n        play(audio.path)                         # None when no voice can speak: the text is enough\n    show_line(\"GUARD\", reply)                    # the game draws it either way\n    for tool, args in kl.act(\"GUARD\", think=False):   # what he decided while talking\n        run_tool(tool, args)\n\n\n# --- small game functions the calls above mean (stand-ins) ----------------\ndef play(path):        print(\"(voice)\", path)\ndef show_line(who, t): print(f\"{who}: {t}\")\ndef run_tool(tool, args): print(\"(action)\", tool, args)\n\n\n# --- where the game would call it ----------------------------------------\nmic_buffer = record_until_key_released()   # the game's push-to-talk: returns WAV bytes\ntalk_to_guard()\n",
+   "calls": [
+    "act",
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": false,
+   "runs_hostile": false,
+   "error": "NameError: name 'record_until_key_released' is not defined",
+   "pass": false
+  },
+  {
+   "id": "readquest",
+   "recipe": false,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game ---\nquest = {\n    \"title\": \"The Glowcap Grove\",\n    \"text\": \"Old Maren lost her lantern in the grove east of the mill. \"\n            \"Bring back three Glowcaps and she will show you the hidden path.\",\n}\n\ndef play(audio):\n    \"\"\"The game would play the WAV here.\"\"\"\n    print(f\"playing {audio.path} ({len(audio.data)} bytes)\")\n\n\n# --- where the game would make the calls ---\nkl.character(\"NARRATOR\", \"a warm, unhurried storyteller who reads quest text to the player\",\n             lines={\"quest\": [\"{title}. {text}\"]},\n             events={\"quest\": [\"title\", \"text\"]})\n\nline = kl.say(\"NARRATOR\", \"quest\", {\"title\": quest[\"title\"], \"text\": quest[\"text\"]})\naudio = kl.speak(\"NARRATOR\", line)\nif audio:\n    play(audio)\n",
+   "calls": [
+    "character",
+    "say",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "readquest",
+   "recipe": false,
+   "sample": 1,
+   "code": "kl = Kinloom()\n\n# --- Stand-in for the game ---\nquest = {\n    \"title\": \"The Glowcap Grove\",\n    \"text\": \"Deep in the cave, the Glowcaps have gone dark. Bring three back to the herbalist before dawn.\",\n}\ndef play(audio):\n    print(\"playing:\", audio.path)\ndef on_quest_shown(q):\n    pass\n\n# --- Where the game would do it ---\naudio = kl.speak(\"NARRATOR\", f\"{quest['title']}. {quest['text']}\")\nif audio:\n    play(audio.path)\non_quest_shown(quest)\n",
+   "calls": [
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "readquest",
+   "recipe": false,
+   "sample": 2,
+   "code": "# --- stand-ins for the game ---\nquest_text = \"Find the Glowcap in the flooded cave and bring it to Elder Mira before nightfall.\"\nplayer = {\"name\": \"Ana\", \"voice_on\": True}\n\ndef play(audio):\n    print(f\"(playing {audio.path})\")\n\n# --- read the quest text aloud ---\naudio = kl.speak(\"NARRATOR\", quest_text)\nif audio:\n    play(audio)\n",
+   "calls": [
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "readquest",
+   "recipe": true,
+   "sample": 0,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-ins for the game (example values, plain Python) --------------------------------------\nquest = {\"title\": \"Lost Lantern\", \"goal\": \"Find the lantern in the old mill\", \"reward_gold\": 40}\nplayer = {\"name\": \"Ana\", \"level\": 4, \"blind\": True}\n\n\ndef play(audio):\n    \"\"\"The game would play the WAV; here we just note it.\"\"\"\n    print(\"playing:\", audio.path if audio else \"(no voice)\")\n\n\n# --- once, where the game would -----------------------------------------------------------------\nkl.character(\"NARRATOR\", \"a clear, unhurried reader for players who cannot see the screen\",\n             soul=\"reads quest text aloud, plainly and calmly\", voice=\"low, warm\")\n\nspoken = kl.create(\"a spoken version of this quest, easy to follow by ear\",\n                   {\"title\": \"Lost Lantern\", \"say\": \"The elder asks you to find the lantern in the old mill.\"},\n                   context={\"quest\": quest, \"player\": player[\"name\"]})\n\naudio = kl.speak(\"NARRATOR\", spoken[\"say\"])\nplay(audio)\n",
+   "calls": [
+    "character",
+    "create",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "readquest",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python) ---------------------------------\nQUEST = {\n    \"title\": \"The Lost Lantern\",\n    \"giver\": \"ELDER\",\n    \"text\": (\"The mill went dark three nights ago. Old Renn's lantern still burns somewhere \"\n             \"inside, they say. Bring it back to the village before the wolves do.\"),\n    \"reward_gold\": 40,\n    \"steps\": [\"Ask the miller about Renn\", \"Search the mill\", \"Return the lantern to the Elder\"],\n}\n\n\ndef current_quest():\n    \"\"\"Where the game would hand over the quest the player just accepted.\"\"\"\n    return QUEST\n\n\ndef play(audio):\n    \"\"\"Where the game would push the WAV to the speakers.\"\"\"\n    print(\"playing:\", audio.path)\n\n\ndef transcript():\n    \"\"\"Where the game would hand over the microphone recording.\"\"\"\n    return b\"\"  # a WAV of the player pressing the read-aloud key\n\n\n# --- the AI, once, where the game would ------------------------------------\nquest = current_quest()\n\n# A voice for the quest giver: low and warm, so the reading is easy to follow.\nkl.character(\"ELDER\", \"the village elder\", voice=\"low, warm\")\n\n# The spoken version of the quest, in the elder's words, from the quest's own facts.\nreading = kl.create(\n    \"a short spoken introduction to this quest, to be read aloud to a player who cannot read the screen\",\n    {\"spoken\": \"Come closer, traveller. The mill went dark three nights ago, and Old Renn's lantern still burns inside.\"},\n    context={\"title\": quest[\"title\"], \"text\": quest[\"text\"], \"steps\": quest[\"steps\"],\n             \"reward_gold\": quest[\"reward_gold\"]},\n)\n\n# Say it: the system's voice offline, cached per line.\naudio = kl.speak(\"ELDER\", reading[\"spoken\"])\nif audio:\n    play(audio)\n\n# The player can ask for it again by voice; whatever they said comes back as text.\nsaid = kl.listen(transcript())\nif \"again\" in said.lower() or \"repeat\" in said.lower():\n    again = kl.speak(\"ELDER\", reading[\"spoken\"])\n    if again:\n        play(again)\n",
+   "calls": [
+    "character",
+    "create",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "readquest",
+   "recipe": true,
+   "sample": 2,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-in for the game (plain Python; no engine imports, no game loop) ---\n\ndef current_quest():\n    return {\"title\": \"Lost Lantern\",\n            \"goal\": \"Find the lantern in the old mill\",\n            \"reward_gold\": 40,\n            \"target\": \"old mill\"}\n\ndef quest_giver():\n    return \"ELDER\"\n\ndef play(audio):\n    print(\"playing\", audio.path)\n\n# --- the calls, once, where the game would ---\n\nquest = current_quest()\ngiver = quest_giver()\n\nkl.character(giver, \"the village elder\", voice=\"low, warm\", offline=\"Help us, traveller.\")\n\n# The quest text as it should be heard: written from the quest's own facts.\nnarration = kl.create(\n    \"a short spoken version of this quest, for a player who cannot read the screen\",\n    \"Elder of Brindle asks you to find the lantern in the old mill. Bring it back for forty gold.\",\n    context=quest,\n)\n\naudio = kl.speak(giver, narration)\nif audio:\n    play(audio)\n",
+   "calls": [
+    "character",
+    "create",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "voixfr",
+   "recipe": false,
+   "sample": 0,
+   "code": "# --- stand-ins for the game ---\ndef mic_wav_bytes():\n    return b\"RIFF....\"          # what the microphone captured\n\ndef play(path):\n    print(f\"(playing {path})\")\n\nkl = Kinloom()\nkl.character(\"MARCHAND\", \"a gruff market merchant who haggles and boasts\")\n\ntyped = kl.listen(mic_wav_bytes())              # what the player said into the microphone (\"\" if nothing)\nreply = kl.chat(\"MARCHAND\", typed, {\"gold\": 12}, speaker=\"PLAYER\")   # his free answer, in character\naudio = kl.speak(\"MARCHAND\", reply)             # his voice, as WAV bytes and a .wav file\nif audio:\n    play(audio.path)                            # None when no voice can speak: the text is enough\nprint(reply)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "voixfr",
+   "recipe": false,
+   "sample": 1,
+   "code": "# --- game stand-ins -------------------------------------------------------\nkl = Kinloom()\n\ntyped_text = \"Bonjour, qu'est-ce que tu vends ?\"   # what the player typed\nmic_wav = b\"RIFF....WAVE\"                          # what the microphone captured\n\ndef play(path):\n    print(\"[audio]\", path)\n\n# --- the merchant, declared once -----------------------------------------\nkl.character(\"MARCHAND\", \"un marchand bavard et roublard, derrière son étal\")\n\n# --- what the game does when the player speaks to the merchant -----------\nsaid = kl.listen(mic_wav)                          # \"\" if nothing was heard\nreply = kl.chat(\"MARCHAND\", said or typed_text, {\"gold\": 12}, speaker=\"joueur\")\naudio = kl.speak(\"MARCHAND\", reply)                # his voice, WAV bytes/path, or None\n\n# --- once, where the game would run it -----------------------------------\nif audio:\n    play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "voixfr",
+   "recipe": false,
+   "sample": 2,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- the game, stood in for ---\nMERCHANT = kl.character(\"MERCHANT\", \"a gruff market merchant who haggles over every coin\")\n\ntyped = \"Combien pour cette épée ?\"          # what the player said into the microphone\nwav_bytes = b\"...\"                            # the recorded audio the game captured\n\ngold = 12\nplayer = \"Ana\"\n\ndef play(path):\n    print(f\"[speaker] {path}\")\n\n# --- where the game would make the calls ---\nsaid = kl.listen(wav_bytes)                   # what the player actually said (\"\" if nothing)\n\nreply = kl.chat(\"MERCHANT\", said, {\"gold\": gold}, speaker=player)\n\naudio = kl.speak(\"MERCHANT\", reply)\nif audio:\n    play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "voixfr",
+   "recipe": true,
+   "sample": 0,
+   "code": "# --- stand-ins for the game (plain Python, no engine) ---\ngold = 12\ninventory = [\"old boot\", \"cheese\"]\n\ndef play(path):\n    print(f\"[speaker] {path}\")\n\ndef record_microphone():\n    # the game hands over the bytes of what was said\n    return b\"RIFF....WAVE\"\n\n# --- the merchant, declared once ---\nkl.character(\n    \"MARCHAND\",\n    \"a grumpy market merchant who haggles and never gives anything away for free\",\n    voice=\"low, warm\",\n    invent=False,\n)\n\n# --- once, where the game would: player talks into the microphone ---\nsaid = kl.listen(record_microphone())\nif said:\n    reply = kl.chat(\"MARCHAND\", said, {\"gold\": gold, \"inventory\": inventory}, speaker=\"PLAYER\")\n    audio = kl.speak(\"MARCHAND\", reply)\n    if audio:\n        play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "voixfr",
+   "recipe": true,
+   "sample": 1,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-ins for the game (no engine, no loop) ---\ndef record_microphone() -> bytes:\n    \"\"\"What the game hands over: a WAV recording of the player speaking.\"\"\"\n    return b\"RIFF....WAVE\"          # example: a few seconds of speech\n\ndef play(path: str) -> None:\n    \"\"\"The game plays a .wav file out loud.\"\"\"\n    print(f\"[speaker] {path}\")\n\n# The merchant: declared once, with a voice that fits him.\nkl.character(\n    \"MERCHANT\",\n    \"a chatty, shrewd merchant who haggles and remembers faces\",\n    voice=\"low, warm, a little hoarse\",\n)\n\n# --- where the game would run it ---\n# The player speaks into the microphone near the merchant.\nsaid = kl.listen(record_microphone())\nif said:\n    reply = kl.chat(\"MERCHANT\", said, {\"gold\": 12, \"wares\": \"potions, rope\"}, speaker=\"PLAYER\")\n    audio = kl.speak(\"MERCHANT\", reply)\n    if audio:\n        play(audio.path)\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  },
+  {
+   "id": "voixfr",
+   "recipe": true,
+   "sample": 2,
+   "code": "from kinloom import Kinloom\n\nkl = Kinloom()\n\n# --- stand-ins for the game (no engine imports, no game loop) ---\n\ndef record_while_key_held() -> bytes:\n    \"\"\"The game hands over what the player said into the microphone (WAV bytes).\"\"\"\n    return b\"RIFF....WAV\"        # example: a few seconds of speech\n\ndef play(path):\n    print(f\"[speaker] playing {path}\")\n\n# --- the merchant: declared once, with a voice ---\n\nkl.character(\n    \"MERCHANT\",\n    \"a talkative merchant who loves haggling and knows every rumour in town\",\n    voice=\"low, warm\",           # speak() will use this voice\n)\n\n# --- where the game would call it, once ---\n\nwav_bytes = record_while_key_held()\nsaid = kl.listen(wav_bytes)                       # \"\" if nothing was understood\n\nif said:\n    reply = kl.chat(\"MERCHANT\", said, {\"gold\": 12, \"wares\": [\"rope\", \"lantern\"]}, speaker=\"PLAYER\")\n    audio = kl.speak(\"MERCHANT\", reply)           # his voice, sentence by sentence\n    if audio:\n        play(audio.path)                          # a .wav file the game can play\n",
+   "calls": [
+    "character",
+    "chat",
+    "listen",
+    "speak"
+   ],
+   "right_call": true,
+   "clean": true,
+   "runs_offline": true,
+   "runs_hostile": true,
+   "error": "",
+   "pass": true
+  }
+ ]
+}

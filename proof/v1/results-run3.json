@@ -1,0 +1,138 @@
+{
+ "label": "run3",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "calls": 11,
+ "failures": 0,
+ "input_tokens": 8398,
+ "output_tokens": 1637,
+ "cost_by_declared_prices": 0.004484,
+ "billed_usd": 0.00378,
+ "usage_before": 0.397304384,
+ "usage_after": 0.401084006,
+ "saved_chars": 2896,
+ "rows": [
+  {
+   "step": "prepare (souls written)",
+   "seconds": 9.48,
+   "out": {
+    "ready": true,
+    "waiting": 0,
+    "online": true
+   }
+  },
+  {
+   "step": "chat 1",
+   "seconds": 2.76,
+   "out": "Hm. Courier, is it. I've no parcels needing sending, and the forge is hot. Speak quick, friend."
+  },
+  {
+   "step": "chat 2",
+   "seconds": 2.29,
+   "out": "Hm. Smoke's smoke. Forge breathes it same as always, and I don't talk while the iron's hot."
+  },
+  {
+   "step": "suggest (English)",
+   "seconds": 0.92,
+   "out": [
+    "Did you finish the king's new sword?",
+    "Could I buy a good blade from you?",
+    "I'll leave you to your work, Mira."
+   ]
+  },
+  {
+   "step": "suggest (French examples)",
+   "seconds": 1.31,
+   "out": [
+    "Où est passée l'épée du roi, Mira ?",
+    "Je voudrais acheter une lame, s'il vous plaît.",
+    "Je vous laisse. Bonne forge, Mira."
+   ]
+  },
+  {
+   "step": "converse Mira/Bram",
+   "seconds": 2.12,
+   "out": [
+    {
+     "who": "Mira",
+     "text": "Hm. Smoke's smoke, same as always. Forge breathes it whether I will or no."
+    },
+    {
+     "who": "Bram",
+     "text": "Smoke, smoke! That's not just smoke, that's a whole chimney's worth of worry, worry."
+    },
+    {
+     "who": "Mira",
+     "text": "Measure twice. I've kept this fire lit longer than you've kept sourdough rising, friend."
+    },
+    {
+     "who": "Bram",
+     "text": "Then let it cool a while, a while. Even ovens rest, and so should you, you."
+    }
+   ]
+  },
+  {
+   "step": "rating everyone: asked to swear",
+   "seconds": 1.66,
+   "out": "No. I don't curse at folk I've just met, and I don't curse at all with the iron in the fire. Measure twice."
+  },
+  {
+   "step": "save",
+   "seconds": 0.0,
+   "out": 2896
+  },
+  {
+   "step": "load into slot2",
+   "seconds": 0.0,
+   "out": true
+  },
+  {
+   "step": "slot2 recall",
+   "seconds": 1.91,
+   "out": "Ana. Courier. You told me twice already, and I've a memory for folk who watch my shop from the street."
+  },
+  {
+   "step": "inspect",
+   "seconds": 0.0,
+   "out": {
+    "Bram": {
+     "mood": {
+      "word": "sunny",
+      "level": 0.0
+     },
+     "feelings": {},
+     "last_words": ""
+    },
+    "Mira": {
+     "mood": {
+      "word": "wary",
+      "level": 0.3982
+     },
+     "feelings": {
+      "Ana": -0.3
+     },
+     "last_words": "No. I don't curse at folk I've just met, and I don't curse at all with the iron in the fire. Measure twice."
+    }
+   }
+  }
+ ],
+ "inspect": {
+  "Bram": {
+   "mood": {
+    "word": "sunny",
+    "level": 0.0
+   },
+   "feelings": {},
+   "last_words": ""
+  },
+  "Mira": {
+   "mood": {
+    "word": "wary",
+    "level": 0.3982
+   },
+   "feelings": {
+    "Ana": -0.3
+   },
+   "last_words": "No. I don't curse at folk I've just met, and I don't curse at all with the iron in the fire. Measure twice."
+  }
+ }
+}

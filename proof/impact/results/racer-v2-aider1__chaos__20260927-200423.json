@@ -1,0 +1,161 @@
+{
+  "label": "racer-v2-aider1",
+  "scenario": "chaos",
+  "source": "<workspace>\\games\\trials\\racer-v2-aider1",
+  "when": "20260927-200423",
+  "seconds": 90,
+  "commit": "133fefd",
+  "kinloom": {
+    "mode": "online",
+    "stats": {
+      "calls": 42,
+      "failures": 5,
+      "input_tokens": 0,
+      "cached_tokens": 0,
+      "output_tokens": 0,
+      "latency": 58.18400000035763,
+      "offline_answers": 22,
+      "by_kind": {
+        "create": 2,
+        "lines": 19,
+        "decide": 16,
+        "act": 5
+      },
+      "cost": null,
+      "avg_latency": 1.385
+    },
+    "characters": [
+      "NOVA",
+      "THEO",
+      "MINT",
+      "VEGA",
+      "BLAZE",
+      "DIRECTOR"
+    ]
+  },
+  "exit_code": 0,
+  "hung": false,
+  "probe": {
+    "avg_fps": 113.7,
+    "drivers": {
+      "BLAZE": {
+        "boosting_share": 0.076,
+        "drifting_share": 0.0,
+        "lateral_mean": 0.38,
+        "lateral_sd": 1.46,
+        "samples": 353,
+        "speed_mean": 42.88,
+        "speed_sd": 12.07
+      },
+      "MINT": {
+        "boosting_share": 0.025,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.4,
+        "lateral_sd": 1.63,
+        "samples": 353,
+        "speed_mean": 42.58,
+        "speed_sd": 11.27
+      },
+      "NOVA": {
+        "boosting_share": 0.011,
+        "drifting_share": 0.0,
+        "lateral_mean": -1.19,
+        "lateral_sd": 1.37,
+        "samples": 353,
+        "speed_mean": 42.44,
+        "speed_sd": 10.8
+      },
+      "YOU": {
+        "boosting_share": 0.023,
+        "drifting_share": 0.0,
+        "lateral_mean": -0.38,
+        "lateral_sd": 1.71,
+        "samples": 353,
+        "speed_mean": 42.38,
+        "speed_sd": 11.18
+      }
+    },
+    "frame_ms": {
+      "max": 41.4,
+      "p50": 8.55,
+      "p99": 23.29
+    },
+    "frames": 10237,
+    "game": "Aurora Rush",
+    "hitches": {
+      "1000ms": 0,
+      "100ms": 0,
+      "250ms": 0,
+      "50ms": 0
+    },
+    "measured_frames": 10222,
+    "peak": {
+      "enemies": 0,
+      "lap": 3,
+      "nodes": 2000,
+      "score": 0,
+      "wave": 0
+    },
+    "radio": [
+      {
+        "at": 25.0,
+        "question": "how far is the leader?"
+      },
+      {
+        "at": 70.0,
+        "question": "who is attacking me right now?"
+      }
+    ],
+    "samples": 353,
+    "scene_starts": 1,
+    "seconds": 90.0,
+    "texts": {
+      "3RD / 4": 3.5,
+      "4TH / 4": 0.5,
+      "BEST LAP  --:--.---": 0.5,
+      "CHALLENGE   WIN CLEAN   -   never touch a wall": 0.5,
+      "DIRECTOR: Today: Win clean. Race hard.": 0.5,
+      "FINAL LAP! BLAZE leads the way!": 74.1,
+      "Here comes YOU on a full tank!": 14.6,
+      "LAP 1 / 3": 0.5,
+      "LAP 2 / 3": 39.3,
+      "LAP 3 / 3": 74.1,
+      "MINT:  Ah, you got me, MINT.": 50.9,
+      "MINT:  I'm through, YOU! Good fight!": 22.2,
+      "MINT:  Nice move, MINT! Teach me that one.": 3.5,
+      "THEO: Final lap. You're 4TH of 4. Bring it home.": 74.1,
+      "THEO: Wall contact, 1. Mind the rails.": 4.5,
+      "THEO: You clipped the wall. That's 2 today, keep it clean.": 21.7,
+      "THEO: You clipped the wall. That's 3 today, keep it clean.": 49.9,
+      "THEO: You clipped the wall. That's 4 today, keep it clean.": 84.7,
+      "YOU fires the boost!": 21.1
+    },
+    "violation_count": 0,
+    "violations": {}
+  },
+  "log": {
+    "script_errors": 0,
+    "errors": 0,
+    "first": [],
+    "probe_seen": true
+  },
+  "model": {
+    "requests": 50,
+    "kinds": {
+      "extreme": 9,
+      "garbage": 4,
+      "wrong_types": 4,
+      "injection": 5,
+      "truncated": 4,
+      "empty": 4,
+      "http_500": 4,
+      "http_429": 4,
+      "tool_fuzz": 4,
+      "huge_array": 4,
+      "delay": 4
+    },
+    "with_tools": 0,
+    "streamed": 0
+  },
+  "verdict": "PASS"
+}

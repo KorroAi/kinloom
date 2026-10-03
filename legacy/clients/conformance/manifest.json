@@ -1,0 +1,35 @@
+{
+  "types": {
+    "Truck": {
+      "description": "An AI-driven rival truck on the track.",
+      "properties": { "speed": { "type": "number", "unit": "km/h" }, "lap": "integer", "position": "vec3" },
+      "params": { "aggression": { "type": "number", "min": 0, "max": 1, "default": 0.5 },
+                  "mood": { "type": "enum", "options": ["calm", "angry"], "default": "calm" } },
+      "functions": { "boost": { "description": "Short burst of speed.", "args": { "seconds": { "type": "number", "min": 0, "max": 3 } }, "cooldown": 10 },
+                     "honk": {} }
+    },
+    "Hud": { "description": "The on-screen interface.", "functions": { "say": { "args": { "text": { "type": "string", "max": 200 } } } } },
+    "Player": { "properties": { "idle_seconds": "number", "health": "number" } }
+  },
+  "things": [
+    { "id": "truck_2", "type": "Truck", "name": "Rex", "tags": ["rival"] },
+    { "id": "hud", "type": "Hud" },
+    { "id": "player", "type": "Player", "name": "The player" }
+  ],
+  "events": { "overtake": { "description": "Someone overtook someone.", "importance": 0.6 } },
+  "roles": [
+    {
+      "id": "rex",
+      "mission": "You drive Rex. You hate losing to the player.",
+      "inhabits": "truck_2",
+      "sees": ["thing:self", "thing:player", "event:overtake"],
+      "can": ["set:self.aggression", "invoke:self.boost", "say", "remember"],
+      "wake": [ { "on": "event:overtake" } ],
+      "tier": "fast",
+      "fallback": { "say": ["Grr."] }
+    }
+  ],
+  "generators": [
+    { "id": "name", "description": "A name for a truck.", "schema": { "type": "object", "fields": { "name": "string" }, "required": ["name"] } }
+  ]
+}

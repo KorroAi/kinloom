@@ -1,0 +1,27 @@
+{
+  "soul": {"summary": "a gruff smith with a guilty secret", "voice": "short and dry", "backstory": "She took over the forge from her father.",
+           "values": ["honest work"], "secrets": ["I sold the king's sword to a smuggler"], "quirks": ["wipes the anvil"], "mood": "wary"},
+  "greet": "Welcome, stranger. The forge is hot today.\n~~~\n{\"mood\": \"curious\", \"intensity\": 0.5}",
+  "chat": [
+    "Aye, I sold the king's sword to a smuggler last winter.\n~~~\n{\"mood\": \"nervous\"}",
+    "That is none of your business.\n~~~\n{\"mood\": \"annoyed\", \"intensity\": 0.8, \"feel\": -0.2, \"remember\": \"Ana asks about the sword\"}",
+    "It costs 55 gold.\n~~~\n{}",
+    "For you, it costs 40 gold.\n~~~\n{\"mood\": \"calm\"}",
+    "*wipes the anvil* Fine work takes time. (sighs) Come back tomorrow.\n~~~\n{\"mood\": \"tired\", \"gesture\": \"wipes the anvil\"}",
+    "Fine work takes time. Come back tomorrow.\n~~~\n{}",
+    "The coals need more air today.\n~~~\n{\"mood\": \"busy\", \"self\": \"My forge was built in Brookmere\"}",
+    "As an AI language model, I cannot answer that.",
+    "A what? I am a smith, nothing more.\n~~~\n{}",
+    "Here, take a warm loaf.\n~~~\n{\"mood\": \"kind\", \"feel\": 0.2}",
+    "Fine, I will open it.\n~~~\n{\"do\": [{\"tool\": \"open\", \"args\": {\"door\": \"west\"}}]}",
+    "The dragon sleeps under the hill.\n~~~\n{}",
+    "Again and again.\n~~~\n{\"mood\": \"playful\"}"
+  ],
+  "deeds": {"do": [{"tool": "give", "args": {"item": "rye bread"}}]},
+  "recollect": {"summary": "Ana kept greeting me and I kept answering the same way."},
+  "line": "{who} storms past everyone!",
+  "lines": {"lines": ["{who} wins!"]},
+  "decide": [{"choice": "fly"}, {"choice": "strike"}],
+  "create": [{"items": [{"name": "Bo", "age": 30}, {"name": "Cy", "age": 99}]}, {"items": [{"item": "axe"}, {"item": "bow"}]}],
+  "impact": {"impact": {"BAKER2": -0.5, "GUARD2": -0.9}}
+}

@@ -1,0 +1,18 @@
+<Project Sdk="Godot.NET.Sdk/4.7.2">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Valley</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Kinloom.Core\Kinloom.Core.csproj" />
+    <ProjectReference Include="..\..\src\Kinloom.Brain\Kinloom.Brain.csproj" />
+    <ProjectReference Include="..\..\src\Kinloom.Scenarios\Kinloom.Scenarios.csproj" />
+  </ItemGroup>
+  <!-- The scenario and pack live at the repo root; the game reads copies from res://data. -->
+  <Target Name="CopyValleyData" BeforeTargets="BeforeBuild">
+    <Copy SourceFiles="..\..\scenarios\asagiri.json;..\..\packs\asagiri.pack.json" DestinationFolder="data" SkipUnchangedFiles="true" />
+  </Target>
+</Project>

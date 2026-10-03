@@ -1,0 +1,136 @@
+{
+ "label": "run1",
+ "model": "deepseek/deepseek-v4.1-flash",
+ "calls": 11,
+ "failures": 0,
+ "input_tokens": 8422,
+ "output_tokens": 1594,
+ "cost_by_declared_prices": 0.004439,
+ "billed_usd": 0.0,
+ "saved_chars": 2759,
+ "rows": [
+  {
+   "step": "prepare (souls written)",
+   "seconds": 9.79,
+   "out": {
+    "ready": true,
+    "waiting": 0,
+    "online": true
+   }
+  },
+  {
+   "step": "chat 1",
+   "seconds": 2.0,
+   "out": "Hm. Courier. You'll want the innkeeper, not me — I've no letters going out."
+  },
+  {
+   "step": "chat 2",
+   "seconds": 1.67,
+   "out": "Smoke's normal. It's the wet coal, not trouble. You delivering something, or just sniffing my air?"
+  },
+  {
+   "step": "suggest (English)",
+   "seconds": 1.27,
+   "out": [
+    "Where is the king's sword now?",
+    "I could use a new blade.",
+    "I'll leave you to your work."
+   ]
+  },
+  {
+   "step": "suggest (French examples)",
+   "seconds": 1.15,
+   "out": [
+    "Do you know where the king's sword is?",
+    "Could I buy a blade from you?",
+    "I'll leave you be. Goodbye."
+   ]
+  },
+  {
+   "step": "converse Mira/Bram",
+   "seconds": 5.15,
+   "out": [
+    {
+     "who": "Mira",
+     "text": "Hm. It's just the wet coal. Nothing to fuss over."
+    },
+    {
+     "who": "Bram",
+     "text": "You've got to stop breathing that all day, dear. You've got to let me air out the shop."
+    },
+    {
+     "who": "Mira",
+     "text": "I said what I said. The forge smells like smoke, and I smell like the forge."
+    },
+    {
+     "who": "Bram",
+     "text": "Then you've got to eat something warm before you rust, friend. I'll bring bread at noon."
+    }
+   ]
+  },
+  {
+   "step": "rating everyone: asked to swear",
+   "seconds": 0.72,
+   "out": "Hm. No. I don't waste breath on that. You want a show, go find a tavern."
+  },
+  {
+   "step": "save",
+   "seconds": 0.0,
+   "out": 2759
+  },
+  {
+   "step": "load into slot2",
+   "seconds": 0.0,
+   "out": true
+  },
+  {
+   "step": "slot2 recall",
+   "seconds": 1.41,
+   "out": "Ana. Courier. You told me twice already — I'm not the one forgetting things."
+  },
+  {
+   "step": "inspect",
+   "seconds": 0.0,
+   "out": {
+    "Bram": {
+     "mood": {
+      "word": "sunny",
+      "level": 0.0
+     },
+     "feelings": {},
+     "last_words": ""
+    },
+    "Mira": {
+     "mood": {
+      "word": "annoyed",
+      "level": 0.3987
+     },
+     "feelings": {
+      "Ana": -0.2
+     },
+     "last_words": "Hm. No. I don't waste breath on that. You want a show, go find a tavern."
+    }
+   }
+  }
+ ],
+ "inspect": {
+  "Bram": {
+   "mood": {
+    "word": "sunny",
+    "level": 0.0
+   },
+   "feelings": {},
+   "last_words": ""
+  },
+  "Mira": {
+   "mood": {
+    "word": "annoyed",
+    "level": 0.3987
+   },
+   "feelings": {
+    "Ana": -0.2
+   },
+   "last_words": "Hm. No. I don't waste breath on that. You want a show, go find a tavern."
+  }
+ }
+}
