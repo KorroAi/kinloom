@@ -59,9 +59,28 @@ static func is_local(url: String, name: String) -> bool:
 	return host_of(url) in ["127.0.0.1", "localhost", "::1", "0.0.0.0"] or name == "ollama"
 
 
+## Requests in flight. stopping (set by Kinloom.shutdown()): open connections close at their next poll and new ones
+## are refused, so nothing is left open when the game quits (Godot crashes on exit if a connection is freed then).
+static var open := 0
+static var stopping := false
+
+
 ## One request: [status or null, PackedByteArray body or error text, headers {lowercase: value}].
 ## on_line: called with each line of the answer as it arrives (SSE); the body is then empty.
 static func request(method: int, url: String, headers: Dictionary, data: PackedByteArray, deadline: float, on_line := Callable()) -> Array:
+	if stopping:
+		return [null, "closed", {}]
+	open += 1
+	var r: Array = await _request(method, url, headers, data, deadline, on_line)
+	open -= 1
+	return r
+
+
+static func _over(deadline: float) -> bool:
+	return stopping or now() > deadline
+
+
+static func _request(method: int, url: String, headers: Dictionary, data: PackedByteArray, deadline: float, on_line: Callable) -> Array:
 	var parts := split_url(url)
 	if parts.is_empty():
 		return [null, "bad url " + url, {}]
@@ -71,7 +90,7 @@ static func request(method: int, url: String, headers: Dictionary, data: PackedB
 		return [null, "network error: cannot connect", {}]
 	while client.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
 		client.poll()
-		if now() > deadline:
+		if _over(deadline):
 			client.close()
 			return [null, "timed out", {}]
 		if client.get_status() in [HTTPClient.STATUS_RESOLVING, HTTPClient.STATUS_CONNECTING]:
@@ -88,7 +107,7 @@ static func request(method: int, url: String, headers: Dictionary, data: PackedB
 		return [null, "network error: request failed", {}]
 	while client.get_status() == HTTPClient.STATUS_REQUESTING:
 		client.poll()
-		if now() > deadline:
+		if _over(deadline):
 			client.close()
 			return [null, "timed out", {}]
 		if client.get_status() == HTTPClient.STATUS_REQUESTING:
@@ -109,7 +128,7 @@ static func request(method: int, url: String, headers: Dictionary, data: PackedB
 		client.poll()
 		var chunk := client.read_response_body_chunk()
 		if chunk.is_empty():
-			if now() > deadline:
+			if _over(deadline):
 				client.close()
 				return [null, "timed out", got]
 			await frame()

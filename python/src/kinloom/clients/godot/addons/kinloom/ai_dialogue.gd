@@ -73,7 +73,7 @@ func _ready() -> void:
 ## Shows the box; the character speaks first when speak_first is on.
 func open() -> void:
 	visible = true
-	_input.grab_focus()
+	_focus_input()
 	if speak_first:
 		send("")
 
@@ -116,7 +116,7 @@ func send(text: String) -> String:
 		gestured.emit(str(s["gesture"]))
 	_busy = false
 	_input.editable = true
-	_input.grab_focus()
+	_focus_input()
 	replied.emit(reply)
 	return reply
 
@@ -163,6 +163,8 @@ func _build() -> void:
 	_input = LineEdit.new()
 	_input.placeholder_text = "Say something..."
 	_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if "keep_editing_on_text_submit" in _input:          # Godot 4.4+: Enter would leave edit mode
+		_input.set("keep_editing_on_text_submit", true)
 	_input.text_submitted.connect(func(t: String):
 		_input.clear()
 		if t.strip_edges() != "":
@@ -244,3 +246,10 @@ func _escape(text: String) -> String:
 
 func _kinloom() -> Node:
 	return get_node_or_null("/root/Kinloom")
+
+
+## Focus and edit mode (Godot 4.4+ leaves edit mode when the line is disabled, on Enter or on Esc): typing goes on.
+func _focus_input() -> void:
+	_input.grab_focus()
+	if _input.has_method("is_editing") and not _input.call("is_editing"):
+		_input.call("edit")

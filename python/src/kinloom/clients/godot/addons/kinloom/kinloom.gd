@@ -22,6 +22,7 @@ signal said(character: String, text: String)
 signal acted(character: String, tool: String, args: Dictionary)
 
 const Brain = preload("native/brain.gd")
+const Http = preload("native/http.gd")
 const Py = preload("native/py.gd")
 
 ## Where `kinloom serve` runs. Project setting "kinloom/url" or env KINLOOM_URL override it.
@@ -85,6 +86,7 @@ func _exit_tree() -> void:
 ## bool), memory (default "user://kinloom-memory.json"; "" keeps nothing), call_timeout.
 ## Characters, tools and minds already declared are declared again in the new brain.
 func native(options := {}) -> void:
+	Http.stopping = false
 	var o: Dictionary = options.duplicate()
 	if not o.has("memory"):
 		o["memory"] = "user://kinloom-memory.json"
@@ -147,6 +149,18 @@ func off(listener: Callable) -> void:
 func close() -> void:
 	if _brain != null:
 		_brain.close()
+
+
+## Before quitting the game (native mode): closes the model requests still open, waits for them (at most `wait`
+## seconds) and saves memory. Godot crashes on exit when an HTTP connection is freed during shutdown, so quit after:
+##   await Kinloom.shutdown()
+##   get_tree().quit()
+func shutdown(wait := 2.0) -> void:
+	Http.stopping = true
+	var end := _now() + wait
+	while Http.open > 0 and _now() < end:
+		await get_tree().process_frame
+	close()
 
 
 # ---------------- the verbs ----------------

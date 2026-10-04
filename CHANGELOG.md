@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+Found by building and playtesting a Godot demo game (real keyboard and mouse events, real model):
+
+- Godot native: quitting while a model request was open crashed Godot on exit (an HTTP connection freed during
+  shutdown). New `await Kinloom.shutdown()` closes open requests, waits for them and saves memory: call it, then
+  `get_tree().quit()`.
+- Godot `AIDialogue`: after the first message the line kept the focus but left edit mode (Godot 4.4+), so typing
+  went nowhere until the player clicked it again. It now stays in edit mode.
+
 ## 1.0.0 (2026-10-03)
 
 First release, in Python and in every SDK (TypeScript/JavaScript, C#, Java, Rust, C++, GDScript, Lua).

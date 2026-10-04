@@ -9,6 +9,7 @@ No-code options: an `AIDialogue` node (a dialogue box with a character in it: na
 `AIMind` node under any unit (senses = its properties, actions = its methods, rules; `reward_property` + `done_signal`
 to make it learn): it calls the chosen method by itself.
 Saves: `save_state()` / `load_state(text)` (GDScript keeps the names `save` and `load` for itself).
+Quitting in native mode: `await Kinloom.shutdown()` then `get_tree().quit()` (open model requests closed first).
 ---
 ```gdscript
 # Characters with a soul: one sentence, a person the player talks to (mood, feelings, memories, secrets, actions)
