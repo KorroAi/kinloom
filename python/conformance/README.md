@@ -15,3 +15,6 @@ Every engine client must print exactly `expected.txt` when it runs this scenario
 7. With the server unreachable: `say` (offline line), `chat` (offline reply), `decide` (defaults), `create` (the example).
 
 Run everything: `python conformance/run.py`.
+
+Godot played like a player (real key events into the addon's `AIDialogue`; quitting while a native model request is
+open): `python conformance/godot_ui.py`. Both failed in a real game before they were fixed.

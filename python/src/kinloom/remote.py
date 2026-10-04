@@ -133,16 +133,18 @@ class RemoteBrain:
     # ---------------- declarations ----------------
 
     def character(self, session, name, personality="", lines=None, offline=None, events=None, tools=None, max_words=None,
-                  every=8.0, language=None, group=None, soul=None, trust=None, invent=True, voice=None, max_chars=None):
+                  every=8.0, language=None, group=None, soul=None, trust=None, invent=True, voice=None, max_chars=None,
+                  warmth=None, secret_trust=None, warm_up=None):
         self.local.character(session, name, personality, lines, offline, events, tools, max_words, every, language, group,
-                             soul, trust, invent, voice, max_chars)
+                             soul, trust, invent, voice, max_chars, warmth, secret_trust, warm_up)
         c = self.local._characters.get((session, clean_text(str(name))))
         own = _wire(c.own_tools) if c else {}
         refs = list(c.tool_refs) if c else []
         wire_tools = (refs + ([own] if own else [])) if refs else own      # names of the game's tools travel as names
         body = {"name": name, "personality": personality, "lines": lines, "offline": offline, "events": events,
                 "tools": wire_tools or None, "max_words": max_words, "every": every, "language": language, "group": group,
-                "soul": soul, "trust": trust, "invent": invent, "voice": voice, "max_chars": max_chars}
+                "soul": soul, "trust": trust, "invent": invent, "voice": voice, "max_chars": max_chars,
+                "warmth": warmth, "secret_trust": secret_trust, "warm_up": warm_up}
         body = {k: v for k, v in body.items() if v is not None}
         key = (session, clean_text(str(name)))
         with self._lock:
@@ -376,6 +378,11 @@ class RemoteBrain:
                           self.timeout)
         replies = r.get("replies") if isinstance(r, dict) else None
         return replies if isinstance(replies, list) and len(replies) == len(given) else given
+
+    def steer(self, session, name, text):
+        self.local.steer(session, name, text)          # offline, the local brain uses it up the same way
+        self._ready(session, name)
+        self._request(session, "steer", {"name": name, "text": text}, 3.0)
 
     def converse(self, session, a, b, about="", turns=4):
         r = self._request(session, "converse", {"a": a, "b": b, "about": about, "turns": turns}, self.timeout)

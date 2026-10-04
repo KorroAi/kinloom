@@ -9,6 +9,18 @@ Found by building and playtesting a Godot demo game (real keyboard and mouse eve
   `get_tree().quit()`.
 - Godot `AIDialogue`: after the first message the line kept the focus but left edit mode (Godot 4.4+), so typing
   went nowhere until the player clicked it again. It now stays in edit mode.
+- `steer(name, text)`, in Python, every SDK and over HTTP: the game decides what happens in a character's next reply
+  ("admit you were in the office at 12:30") and the model says it in their voice, even a secret of their card (used
+  once). Written rules in a soul ("break when shown the proof") were followed about half the time; game state is not.
+- `warmth` (the feeling for anyone before any talk, default 0), `warm_up` (the most one conversation can win, 0.3) and
+  `secret_trust` (the feeling above which a secret may be shared, 0.6), per character and in kinloom.json. With the
+  old fixed values a secret could not come out in one conversation.
+- `"reply_timeout"` in kinloom.json: how long a spoken reply may take on a hosted model (8 s, was fixed).
+- The second look at a reply (what it commits the character to do) is asked again once when the call fails: under a
+  slow model an admission was lost.
+- Prompts: gestures are written about the character ("taps the table", never "my"), habits show in the gesture and
+  are never spoken, and a tool is not used for what a reply only hints at or denies.
+- `python conformance/godot_ui.py` (and CI): the Godot addon played with real key events.
 
 ## 1.0.0 (2026-10-03)
 

@@ -62,6 +62,12 @@ func _ready() -> void:
 	out("trust: " + (", ".join(opened) if not opened.is_empty() else "none"))
 	kl.character("FILT", "a storyteller", {"offline": "No comment."})
 	out("filter: " + await kl.chat("FILT", "Tell me a story."))
+	kl.character("NINA", "a singer", {"soul": {"summary": "a singer", "secrets": ["I went up to the office at 12:30"]}, "warmth": 0.3,
+		"secret_trust": 0.25, "warm_up": 0.1})
+	out("warmth: %s" % Py.repr(await kl.opinion("NINA", "Ana")))
+	await kl.steer("NINA", "admit you went up to the office at 12:30")
+	out("steer: " + await kl.chat("NINA", "Where were you?", {}, "Ana"))
+	out("warm up: %s" % Py.repr(await kl.opinion("NINA", "Ana")))
 	kl.character("ECHO", "a parrot", {})
 	for i in 11:
 		await kl.chat("ECHO", "Hello %d" % i)

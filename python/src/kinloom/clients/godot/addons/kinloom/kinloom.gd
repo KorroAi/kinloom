@@ -170,7 +170,9 @@ func shutdown(wait := 2.0) -> void:
 ## (["overtake"] or {"overtake": ["who", "whom"]} to prepare lines at once), tools ({"boost": {"seconds": [0.5, 2.0]}},
 ## names of the game's tools ["open_door"], or "all"),
 ## max_words, max_chars (a text box's size: the model's text never goes past it), every (seconds between fresh
-## decisions), language ("auto": answer in the speaker's language), soul, trust, invent, voice, group.
+## decisions), language ("auto": answer in the speaker's language), soul, trust, invent, voice, group, warmth (their
+## feeling for anyone before any talk, -1..1), warm_up (the most one conversation can win, 0.3), secret_trust (the
+## feeling above which a secret of their card may be shared, 0.6).
 func character(name: String, personality: String, options := {}) -> void:
 	var d: Dictionary = options.duplicate(true)
 	d["name"] = name
@@ -287,6 +289,12 @@ func suggest(name: String, examples: Array, speaker := "player", facts := {}) ->
 			out.append(Py.text_of(x))
 		return out
 	return examples.duplicate()
+
+
+## What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it in
+## the character's voice, even a secret of their card. Used by the next chat only; "" takes it back.
+func steer(name: String, text: String) -> void:
+	await _post("steer", {"name": name, "text": text}, 3.0)
 
 
 ## A short exchange between two characters (one model call), remembered by both: [{"who", "text"}] (empty offline).

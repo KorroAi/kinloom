@@ -41,6 +41,12 @@ console.log("trust reply: " + (await kl.chat("GATE", "Open the gate.")));
 console.log("trust: " + (kl.act("GATE", {}, false).map((a) => a.tool).join(", ") || "none"));
 kl.character("FILT", "a storyteller", { offline: "No comment." });
 console.log("filter: " + (await kl.chat("FILT", "Tell me a story.")));
+kl.character("NINA", "a singer", { soul: { summary: "a singer", secrets: ["I went up to the office at 12:30"] }, warmth: 0.3,
+  secret_trust: 0.25, warm_up: 0.1 });
+console.log(`warmth: ${await kl.opinion("NINA", "Ana")}`);
+await kl.steer("NINA", "admit you went up to the office at 12:30");
+console.log("steer: " + (await kl.chat("NINA", "Where were you?", {}, "Ana")));
+console.log(`warm up: ${await kl.opinion("NINA", "Ana")}`);
 kl.character("ECHO", "a parrot");
 for (let i = 0; i < 11; i++) await kl.chat("ECHO", "Hello " + i);
 await kl.prepare(10);

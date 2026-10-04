@@ -307,6 +307,17 @@ add("prompt", ["bond_block", None, ["Ana", {"talks": 3}, "2 days ago", 0.65, ["l
     prompts.bond_block("Ana", {"talks": 3}, "2 days ago", 0.65, ["likes ships"], "angry", "strongly", "a trainer", True))
 add("prompt", ["bond_block", None, ["Bo", {"talks": 1}, "just now", -0.2, [], "wary", "a little", "", True]],
     prompts.bond_block("Bo", {"talks": 1}, "just now", -0.2, [], "wary", "a little", "", True))
+add("prompt", ["bond_block", None, ["Ana", {"talks": 2}, "an hour ago", 0.5, [], "calm", "", "", True, 0.4]],
+    prompts.bond_block("Ana", {"talks": 2}, "an hour ago", 0.5, [], "calm", "", "", True, 0.4))
+add("prompt", ["bond_block", None, ["Ana", {"talks": 2}, "an hour ago", 0.5, [], "calm", "", "", True, 0.9]],
+    prompts.bond_block("Ana", {"talks": 2}, "an hour ago", 0.5, [], "calm", "", "", True, 0.9))
+add("prompt", ["steer_block", None, ["admit you went up to the office at 12:30"]], prompts.steer_block("admit you went up to the office at 12:30"))
+add("prompt", ["steer_block", None, [""]], prompts.steer_block(""))
+add("prompt", ["steer_block", None, ["  a  very " + "long " * 80 + "steer  "]], prompts.steer_block("  a  very " + "long " * 80 + "steer  "))
+for spec in [{"name": "A"}, {"name": "B", "warmth": 0.45, "secret_trust": 0.2, "warm_up": 0.1},
+             {"name": "C", "warmth": 5, "secret_trust": -3, "warm_up": 9}, {"name": "D", "warmth": "0.5", "warm_up": -1}]:
+    c = char(spec)
+    add("feelings", [spec], [c.warmth, c.secret_trust, c.warm_up])
 add("prompt", ["deeds_user", None, ["MIRA", "Ana", "Give me bread", "Fine, take it."]], prompts.deeds_user("MIRA", "Ana", "Give me bread", "Fine, take it."))
 add("prompt", ["deeds_user", None, ["MIRA", "Ana", "", "Hello."]], prompts.deeds_user("MIRA", "Ana", "", "Hello."))
 add("prompt", ["soul_user", None, ["a gruff smith", LORE]], prompts.soul_user("a gruff smith", LORE))

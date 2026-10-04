@@ -126,7 +126,9 @@ MAX_NAME = 48
 MAX_EVENT = 160               # event names may describe the moment ("challenging another trainer to a battle")
 MAX_CHARACTERS = 5000         # across sessions: past this, unknown names get a throwaway character (nothing grows)
 _CONFIG_KEYS = ("personality", "soul", "lines", "offline", "events", "tools", "max_words", "max_chars", "every", "language",
-                "group", "trust", "invent", "voice")
+                "group", "trust", "invent", "voice", "warmth", "secret_trust", "warm_up")
+MAX_STEER = 300               # what the game decides for the next reply (steer), in characters
+REPLY_TIMEOUT = 8.0           # seconds a spoken reply may take on a hosted model (kinloom.json "reply_timeout")
 AUTO = "auto"                 # language="auto": replies in the language of whoever talks to the character
 DEFAULT_LANGUAGE = "English"  # what "auto" writes when nobody is talking (prepared lines, decisions, content)
 MAX_WAITING = 50              # actions decided while talking that nobody collected yet, per character
@@ -282,9 +284,16 @@ def _number_ok(text_number, allowed):
     return False
 
 
+def _feeling_setting(value, what, low, high, default):
+    """warmth / secret_trust / warm_up: a number clamped to [low, high]; None is the default."""
+    if value is None:
+        return default
+    return max(low, min(high, _num(value, what)))
+
+
 class Character:
     def __init__(self, name, personality="", lines=None, offline=None, events=None, tools=None, max_words=None, every=8.0, language=None,
-                 group=None, trust=None, invent=True, voice=None, max_chars=None):
+                 group=None, trust=None, invent=True, voice=None, max_chars=None, warmth=None, secret_trust=None, warm_up=None):
         self.name = clean_text(str(name))[:MAX_NAME] or "?"
         self.group = clean_text(str(group))[:MAX_NAME] if group else None
         self.personality = clean_text(personality)[:600]
@@ -332,6 +341,11 @@ class Character:
         self.trust_wanted = {str(k): max(-1.0, min(1.0, float(v))) for k, v in (trust.items() if isinstance(trust, dict) else [])
                              if _finite(v) is not None}
         self.trust = {k: v for k, v in self.trust_wanted.items() if k in self.tools}
+        # warmth: the feeling for anyone before any talk; warm_up: the most one conversation can win (however sweet the
+        # words); secret_trust: the feeling above which the character may share a secret
+        self.warmth = _feeling_setting(warmth, "warmth", -1.0, 1.0, 0.0)
+        self.warm_up = _feeling_setting(warm_up, "warm_up", 0.0, 2.0, _souls.TALK_RISE)
+        self.secret_trust = _feeling_setting(secret_trust, "secret_trust", -1.0, 1.0, _souls.SECRET_TRUST)
         self.card = None          # the soul card (souls.card) when the game asked for a soul
         self.card_ready = False   # False while the model is still writing it
         self.soul_key = None      # what the card was made from: cards and prepared greetings are shared by it
@@ -539,6 +553,14 @@ class Brain:
         self._spent = collections.deque()      # (time, dollars) of recent calls, for the cost caps
         self.max_cost_per_hour = _finite(cfg.get("max_cost_per_hour"))   # dollars; needs declared prices
         self.max_cost_per_day = _finite(cfg.get("max_cost_per_day"))
+        # reply_timeout: how long a spoken reply may take on a hosted model (never past call_timeout)
+        self.reply_timeout = REPLY_TIMEOUT
+        if cfg.get("reply_timeout") is not None:
+            rt = _finite(cfg.get("reply_timeout")) if not isinstance(cfg.get("reply_timeout"), bool) else None
+            if rt is None or rt <= 0:
+                refused.append("kinloom.json: reply_timeout must be a number of seconds, got %r" % (cfg.get("reply_timeout"),))
+            else:
+                self.reply_timeout = max(1.0, min(120.0, rt))
         self.memory = Memory(memory_path)
         self._lock = threading.RLock()
         self._characters = {}                  # (session, name) -> Character
@@ -566,6 +588,7 @@ class Brain:
         self._said = {}                        # (session, name) -> their last replies, to anyone (no echoes)
         self._switches = 0                     # provider switches already told in the journal
         self._rises = {}                       # (session, name, speaker) -> (since, feeling gained, last) this conversation
+        self._steers = {}                      # (session, name) -> what the game decided for the next reply (steer)
         self._events = 0
         self._spreads = 0
         self._empty_told = set()               # (session, name, what) whose empty answer was told in the journal
@@ -869,8 +892,10 @@ class Brain:
         return max(self.inner_grace, 5.0) if self._patient() else self.inner_grace
 
     def _reply_deadline(self):
-        """How long a spoken reply may take: 8 s hosted; 15 s on this machine's own model or a coding agent."""
-        return min(self.call_timeout, 8.0) if not self._patient() else max(min(self.call_timeout, 8.0), 15.0)
+        """How long a spoken reply may take: reply_timeout (8 s) hosted; at least 15 s on this machine's own model or a
+        coding agent; never past call_timeout."""
+        base = min(self.call_timeout, self.reply_timeout)
+        return base if not self._patient() else max(base, 15.0)
 
     def _pictures(self, name, image):
         """[Picture] from what the game passed (bytes, a path, base64, a data URI); a bad one is told and left out."""
@@ -921,9 +946,10 @@ class Brain:
     # ---------------- character ----------------
 
     def character(self, session, name, personality="", lines=None, offline=None, events=None, tools=None, max_words=None, every=8.0,
-                  language=None, group=None, soul=None, trust=None, invent=True, voice=None, max_chars=None, _config=False):
+                  language=None, group=None, soul=None, trust=None, invent=True, voice=None, max_chars=None, warmth=None,
+                  secret_trust=None, warm_up=None, _config=False):
         c = Character(name, personality, lines, offline, events, tools, max_words, every, language, group, trust, invent,
-                      voice, max_chars)
+                      voice, max_chars, warmth, secret_trust, warm_up)
         with self._lock:
             if (session, c.name) not in self._characters and len(self._characters) >= MAX_CHARACTERS:
                 self._log("refused", c.name, "too many characters (%d): not stored" % MAX_CHARACTERS)
@@ -1082,8 +1108,9 @@ class Brain:
                 word, level = self._mood(session, c)
                 system = prompts.chat_system(c, self._lang(c, chat=True), self._card_lines(c), self.lore(session), task="greet")
                 user = self._context(session, c.name, "", personal=False) + prompts.bond_block(
-                    "this stranger", None, "", 0.0, [], word, _souls.strength(level) if level else "",
-                    secrets=bool((c.card or {}).get("secrets"))) + prompts.message_block("A stranger", "")
+                    "this stranger", None, "", c.warmth, [], word, _souls.strength(level) if level else "",
+                    secrets=bool((c.card or {}).get("secrets")), secret_trust=c.secret_trust) + \
+                    prompts.message_block("A stranger", "")
                 r = self._call("greet", c.name, system, user, False, False, 400)
                 if not r.ok:
                     return
@@ -1167,16 +1194,16 @@ class Brain:
                 self._moods[(session, c.name)] = {"word": i["mood"], "level": i["intensity"], "t": self.clock()}
         if i["feel"]:
             change = i["feel"]
-            if change > 0:     # warming up is slow: at most TALK_RISE per conversation, however sweet the words
+            if change > 0:     # warming up is slow: at most warm_up (0.3) per conversation, however sweet the words
                 with self._lock:
                     now = self.wall()
                     start, gained, last = self._rises.get((session, c.name, speaker), (now, 0.0, -1e18))
                     if now - last > _souls.NEW_TALK:
                         start, gained = now, 0.0
-                    change = max(0.0, min(change, _souls.TALK_RISE - gained))
+                    change = max(0.0, min(change, c.warm_up - gained))
                     self._rises[(session, c.name, speaker)] = (start, gained + change, now)
                 if change < i["feel"]:
-                    self._log("refused", c.name, "feel: %s already won %+.1f this conversation" % (speaker, _souls.TALK_RISE))
+                    self._log("refused", c.name, "feel: %s already won %+.1f this conversation" % (speaker, c.warm_up))
             if change:
                 self.feel(session, c.name, speaker, change)
         if i["self"] and self._allowed(i["self"]):
@@ -1997,6 +2024,20 @@ class Brain:
 
     # ---------------- chat ----------------
 
+    def steer(self, session, name, text):
+        """What the game decides for name's next reply (used once, by the next chat); "" takes it back."""
+        if not isinstance(text, str):
+            raise ValueError("steer: text must be a string, got %r" % (text,))
+        c = self._char(session, name)
+        text = " ".join(clean_text(text).split())[:MAX_STEER]
+        with self._lock:
+            if text:
+                self._steers[(session, c.name)] = text
+            else:
+                self._steers.pop((session, c.name), None)
+        if text:
+            self._log("steer", c.name, text)
+
     def chat(self, session, name, message, facts=None, speaker="player", stream=None, timeout=None, max_chars=None,
              image=None):
         """A reply in character. An empty message: the speaker came up to the character, who speaks first.
@@ -2022,7 +2063,9 @@ class Brain:
         reply, inner = None, {}
         prepared = None
         source = "model"
-        if not message and not facts and bond is None and not who and not pictures:   # someone new walks up: the prepared first line
+        with self._lock:
+            steer = self._steers.pop((session, c.name), "")       # what the game decided for this reply: used once
+        if not message and not facts and bond is None and not who and not pictures and not steer:   # someone new walks up: the prepared first line
             with self._lock:
                 prepared = self._greetings.pop((c.name, getattr(c, "soul_key", None)), None)
         if prepared is not None:
@@ -2041,11 +2084,12 @@ class Brain:
                 prompts.bond_block(speaker, bond, _souls.ago(now - bond["last"]) if bond else "",
                                    self.opinion(session, c.name, speaker), self._known(session, c.name, speaker),
                                    word, _souls.strength(level) if level else "", who,
-                                   bool((c.card or {}).get("secrets"))) + \
+                                   bool((c.card or {}).get("secrets")), c.secret_trust) + \
                 prompts.worn_block(*_souls.worn([t for who, t in history if who == c.name])) + \
+                prompts.steer_block(steer) + \
                 prompts.picture_block(pictures, speaker) + prompts.message_block(speaker, message) + \
                 prompts.box_block(_limit(max_chars))
-            allowed = _allowed_numbers(facts, state, message, c.personality, _souls.texts(c.card or {}),
+            allowed = _allowed_numbers(facts, state, message, steer, c.personality, _souls.texts(c.card or {}),
                                        self.memory.recall(session, [c.name, "world"], message), self._known(session, c.name, speaker))
             repair = ""
             streamed = False
@@ -2053,7 +2097,8 @@ class Brain:
                 mine = list(self._said.get((session, c.name), ()))[-6:]
             # Secrets are kept by the code, not only asked of the model: a reply that gives one away to someone not
             # trusted enough is stopped as it streams and asked again (then cut, if the model insists).
-            hidden = (c.card or {}).get("secrets") or [] if self.opinion(session, c.name, speaker) < _souls.SECRET_TRUST else []
+            # A steer is the game's own decision: it may reveal a secret.
+            hidden = (c.card or {}).get("secrets") or [] if self.opinion(session, c.name, speaker) < c.secret_trust and not steer else []
             public = _souls.public_texts(c.card or {}) + [c.personality or ""]
             for attempt in (0, 1):
                 splitter = _souls.Splitter() if stream is not None and not streamed else None
@@ -2186,8 +2231,11 @@ class Brain:
     def _deeds(self, c, speaker, message, reply):
         """What a reply that named no tool commits the character to: one small call, only for characters with tools.
         Measured on a real model (proof/replies): replies said yes in words and left "do" empty most of the time."""
-        r = self._call("deeds", c.name, prompts.deeds_system(c), prompts.deeds_user(c.name, speaker, message, reply),
-                       True, True, 150, timeout=min(self.call_timeout, 5.0))
+        system, user = prompts.deeds_system(c), prompts.deeds_user(c.name, speaker, message, reply)
+        r = self._call("deeds", c.name, system, user, True, True, 150, timeout=min(self.call_timeout, 5.0))
+        if not r.ok:        # a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+            self._log("repair", c.name, "deeds: %s; asked again" % (r.error or "failed"))
+            r = self._call("deeds", c.name, system, user, True, True, 150, timeout=min(self.call_timeout, 5.0))
         data = find_json(r.text) if r.ok else None
         found = data.get("do") if isinstance(data, dict) else None
         return [x for x in found if isinstance(x, dict)][:3] if isinstance(found, list) else []
@@ -2479,11 +2527,24 @@ class Brain:
                 self._opinions[session] = table
             return table
 
+    def _warmth(self, session, a):
+        """What a character feels for someone it has no opinion of yet: its warmth (0 for anyone else)."""
+        if not a:
+            return 0.0
+        self._from_config(session, a)
+        with self._lock:
+            c = self._characters.get((session, a))
+        return c.warmth if c is not None else 0.0
+
     def opinion(self, session, a, b):
-        """What a thinks of b, -1..1 (0: no opinion)."""
+        """What a thinks of b, -1..1 (no opinion yet: a's warmth, 0 unless the game gave one)."""
+        a, b = _name(a), _name(b)
         table = self._opinion_table(session)
         with self._lock:
-            return table.get(_name(a), {}).get(_name(b), 0.0)
+            row = table.get(a, {})
+            if b in row:
+                return row[b]
+        return self._warmth(session, a)
 
     def opinions(self, session, a):
         table = self._opinion_table(session)
@@ -2495,8 +2556,9 @@ class Brain:
         a, b = _name(a), _name(b)
         table = self._opinion_table(session)
         v = _finite(change)
+        start = self._warmth(session, a)
         with self._lock:
-            old = table.get(a, {}).get(b, 0.0)
+            old = table.get(a, {}).get(b, start)
             if v is None or not a or not b or a == b:
                 return old
             if a not in table and len(table) >= MAX_CHARACTERS:
@@ -2695,7 +2757,8 @@ class Kinloom:
         return Kinloom(session=session, brain=self.brain)
 
     def character(self, name, personality="", lines=None, offline=None, events=None, tools=None, max_words=None, every=8.0, language=None,
-                  group=None, soul=None, trust=None, invent=True, voice=None, max_chars=None):
+                  group=None, soul=None, trust=None, invent=True, voice=None, max_chars=None, warmth=None, secret_trust=None,
+                  warm_up=None):
         """lines: {"event": ["..."], "*": [...]} the game's own lines ({fact} placeholders), or {"event": {"when": "what is
         happening, in words", "lines": [...]}}. max_words / max_chars: how long a line or reply may be (max_chars: a text
         box's size; the model's text never goes past it). language: "auto" answers in the speaker's language.
@@ -2704,9 +2767,17 @@ class Kinloom:
         lore, the facts and what it is told). trust: {tool: feeling}, e.g. {"give": 0.3}: while talking, that tool is only used for speakers the character
         feels at least that for (feelings go from -1 to 1 and move at most 0.3 per reply).
         soul: a sentence (or True: the personality) the model turns once into a full inner life (card, saved in
-        memory), or a card dict written by the game. Every character has a mood and bonds; a soul makes them deep."""
+        memory), or a card dict written by the game. Every character has a mood and bonds; a soul makes them deep.
+        warmth: their feeling for anyone before any talk (-1..1, default 0); warm_up: the most one conversation can win
+        (default 0.3); secret_trust: the feeling above which they may share a secret of their card (default 0.6)."""
         self.brain.character(self.id, name, personality, lines, offline, events, tools, max_words, every, language, group, soul,
-                             trust, invent, voice, max_chars)
+                             trust, invent, voice, max_chars, warmth, secret_trust, warm_up)
+        return self
+
+    def steer(self, name, text):
+        """What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it
+        in the character's voice, even a secret of their card. Used by the next chat only; "" takes it back."""
+        self.brain.steer(self.id, name, text)
         return self
 
     def lore(self, lines=None):

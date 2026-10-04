@@ -53,7 +53,8 @@ def _top_level_commas(args):
 
 
 TOP_KEYS = ("provider", "model", "base_url", "command", "pool", "language", "calls_per_minute", "prices", "memory", "port",
-            "banned_words", "max_cost_per_hour", "max_cost_per_day", "lore", "characters", "tools", "models", "rating")
+            "banned_words", "max_cost_per_hour", "max_cost_per_day", "lore", "characters", "tools", "models", "rating",
+            "reply_timeout")
 API_PROVIDERS = ("deepseek", "anthropic", "openai", "ollama", "custom", "offline")
 
 
@@ -84,6 +85,9 @@ def _config_findings(folder):
         _rating(cfg.get("rating"))
     except ValueError as e:
         out.append(("error", "kinloom.json: %s" % e))
+    rt = cfg.get("reply_timeout")
+    if rt is not None and (isinstance(rt, bool) or not isinstance(rt, (int, float)) or rt <= 0):
+        out.append(("error", "kinloom.json: \"reply_timeout\" is a number of seconds (8 by default), got %r" % (rt,)))
     models = cfg.get("models")
     if models is not None and (not isinstance(models, dict) or any(
             k not in ("chat", "background") or not (v is None or isinstance(v, (str, dict))) for k, v in models.items())):
@@ -131,6 +135,10 @@ def _config_findings(folder):
             if _GIVING.match(t) and t not in trust:
                 out.append(("warn", "kinloom.json: players will try to talk %s into %r: bound it with \"trust\": "
                                     "{\"%s\": 0.3} (kinloom add ... --trust %s=0.3)" % (name, t, t, t)))
+        for k in ("warmth", "secret_trust", "warm_up"):
+            v = spec.get(k)
+            if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float))):
+                out.append(("error", "kinloom.json: %s %s must be a number, got %r" % (name, k, v)))
         from .brain import _CONFIG_KEYS
         unknown = [k for k in spec if k not in _CONFIG_KEYS]
         if unknown:

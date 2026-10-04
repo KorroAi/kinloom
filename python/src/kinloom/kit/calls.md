@@ -7,17 +7,18 @@ sky = kl.decide("WEATHER", {"season": "winter", "day": 12}, {"sky": ["sun", "sno
 item = kl.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50], "story": "Found under a cold stone."}, context={"depth": 3})
 #   -> a dict like the example (~1-2 s); count=5 -> a list of 5; instant=True -> from a pool
 kl.character("ROVER", "the player's dog", tools={"sit": {}, "fetch": {"item": "stick"}})   # or Python functions: they run
-for tool, args in kl.act("ROVER", {"order": typed_text}):   # instant: validated calls chosen since the last time
+for tool, args in kl.act("ROVER", {"order": typed_text}):   # instant: validated calls since the last time
     run(tool, args)
-kl.tools({"open_door": {"door": "north"}})   # the game's tools, once; a character names them: tools=["open_door"]
+kl.tools({"open_door": {"door": "north"}})   # the game's tools, once; characters name them: tools=["open_door"]
 seen = kl.create("what the screen shows", {"danger": [0.0, 1.0]}, image=png_bytes)   # it looks: bytes, a path, base64
 kl.character("VEGA", "a short, excited announcer", lines={"built": ["{who} built a {what}!"]}, events={"built": ["who", "what"]})
-line = kl.say("VEGA", "built", {"who": "Ana", "what": "bridge"})            # instant, only your facts in it
-reply = kl.chat("MIRA", typed_text, {"gold": 3}, speaker="Ana")             # a free answer in character, ~1 s (not per frame)
+line = kl.say("VEGA", "built", {"who": "Ana", "what": "bridge"})   # instant, only your facts in it
+reply = kl.chat("MIRA", typed_text, {"gold": 3}, speaker="Ana")   # a free answer in character, ~1 s (not per frame)
+kl.steer("MIRA", "admit the sword")   # the game decides her next reply
 for tool, args in reply.do: run(tool, args)   # with tools: what she decided in this reply
-audio = kl.speak("MIRA", reply)          # her voice: audio.data (WAV bytes), audio.path (a .wav file), or None
-if audio: play(audio.path)               # None when no voice can speak: the text is enough
-said = kl.listen(wav_bytes)              # what the player said into the microphone ("" if nothing)
+audio = kl.speak("MIRA", reply)          # her voice: audio.data (WAV), audio.path, or None
+if audio: play(audio.path)               # None: no voice, the text is enough
+said = kl.listen(wav_bytes)              # what the player said ("" if nothing)
 kl.event("the player stole bread", by="PLAYER", seen_by=["BAKER"], tag="theft")   # only witnesses know
 kl.meet("BAKER", "GUARD")        # they share it; then kl.knows("GUARD", "theft"), kl.opinion("GUARD", "PLAYER") -1..1
 kl.mind("RAIDER", "a cautious raider", senses={"hp": [0.0, 1.0], "allies": [0, 20]}, actions={"flee": {}, "flank": {}},
@@ -45,6 +46,7 @@ await Kinloom.prepare(10.0)                         # a loading screen: what Kin
 Kinloom.character("VEGA", "a short, excited announcer", {"lines": {"built": ["{who} built a {what}!"]}, "events": {"built": ["who", "what"]}})
 var line: String = await Kinloom.say("VEGA", "built", {"who": "Ana", "what": "bridge"})      # instant
 var reply: String = await Kinloom.chat("MIRA", typed_text, {"gold": 3}, "Ana")                # free answer, ~1 s
+Kinloom.steer("MIRA", "admit you sold the king's sword")   # the game decides her next reply (even a secret)
 Kinloom.speak_aloud("MIRA", reply)          # her voice (or the system's); speak() gives the AudioStreamWAV
 var said: String = await Kinloom.listen(wav_bytes)                                            # microphone -> text
 Kinloom.event("the player stole bread", [], {"by": "PLAYER", "seen_by": ["BAKER"]})          # then knows / opinion / reputation
@@ -74,6 +76,7 @@ var seen = await kl.Create("what the screen shows", new Dictionary<string, objec
 await kl.Prepare(10);                         // a loading screen: what Kinloom writes ahead is ready
 string line = await kl.Say("VEGA", "built", new Dictionary<string, object> { ["who"] = "Ana" });   // instant (lines declared once)
 string reply = await kl.Chat("MIRA", typedText, null, "Ana");                                        // free answer, ~1 s
+await kl.Steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
 byte[]? wav = await kl.Speak("MIRA", reply);    // WAV or null; KinloomClient.WavSamples(wav, ...) -> AudioClip
 string said = await kl.Listen(wavBytes);        // microphone -> text (KinloomClient.Wav(samples, ch, hz) makes the WAV)
 await kl.Event("the player stole bread", by: "PLAYER", seenBy: new[] { "BAKER" });                  // who knows it
@@ -101,6 +104,7 @@ await kl.prepare(10);                                // a loading screen: what K
 kl.character("VEGA", "a short, excited announcer", { lines: { built: ["{who} built a {what}!"] }, events: { built: ["who", "what"] } });
 const line = await kl.say("VEGA", "built", { who: "Ana", what: "bridge" });   // instant
 const reply = await kl.chat("MIRA", typedText, { gold: 3 }, "Ana");           // free answer, ~1 s (onPiece to stream)
+await kl.steer("MIRA", "admit you sold the king's sword");    // the game decides her next reply (even a secret)
 const line = await kl.speak("MIRA", reply); if (line) new Audio(line.url).play();   // null: show the text only
 const said = await kl.listen(recordedBlob);                                    // microphone (MediaRecorder) -> text
 kl.event("the player stole bread", [], { by: "PLAYER", seenBy: ["BAKER"] });  // then knows / opinion / reputation
@@ -127,6 +131,7 @@ kl:create("what the screen shows", { danger = { 0, Kinloom.real(1) } }, { image 
 kl:prepare(10, function(ready) loading_done = ready.ready end)   -- a loading screen: what Kinloom writes ahead is ready
 kl:say("VEGA", "built", { who = "Ana", what = "bridge" }, function(text) caption = text end)   -- lines declared once
 kl:chat("MIRA", typed_text, { gold = 3 }, function(reply) dialogue = reply end, "Ana")      -- free answer, ~1 s
+kl:steer("MIRA", "admit you sold the king's sword")   -- the game decides her next reply (even a secret)
 kl:speak("MIRA", "Halt!", function(wav) if wav then play(wav) end end)   -- WAV bytes (a string), nil: text only
 kl:listen(wav_bytes, nil, function(said) heard = said end)               -- microphone -> text
 kl:event("the player stole bread", nil, { by = "PLAYER", seen_by = { "BAKER" } })           -- who knows it
@@ -151,6 +156,7 @@ let seen = kl.create_image("what the screen shows", obj! { "danger" => vec![0.0,
 kl.prepare(10.0);                                                // a loading screen: what Kinloom writes ahead is ready
 let line = kl.say("VEGA", "built", obj! { "who" => "Ana" });                 // fast (lines declared once)
 let reply = kl.chat_as("MIRA", &typed_text, obj! { "gold" => 3 }, "Ana");     // free answer, ~1 s: on a thread
+kl.steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
 let wav = kl.speak("MIRA", &reply);           // WAV bytes; empty: show the text only
 let said = kl.listen(&wav_bytes, "");         // microphone -> text
 kl.event_with("the player stole bread", obj! { "by" => "PLAYER", "seen_by" => vec!["BAKER"] });
@@ -175,6 +181,7 @@ Object seen = kl.create("what the screen shows", map("danger", list(0.0, 1.0)), 
 kl.prepare(10);                                      // a loading screen: what Kinloom writes ahead is ready
 String line = kl.say("VEGA", "built", map("who", "Ana"));                     // fast (lines declared once)
 String reply = kl.chat("MIRA", typedText, map("gold", 3), "Ana");             // free answer, ~1 s: chatAsync off the game thread
+kl.steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
 byte[] wav = kl.speak("MIRA", reply);           // WAV bytes; null: show the text only (speakAsync off the game thread)
 String said = kl.listen(wavBytes);              // microphone -> text
 kl.event("the player stole bread", map("by", "PLAYER", "seen_by", list("BAKER")));
@@ -199,6 +206,7 @@ auto seen = kl.create("what the screen shows", obj({{"danger", arr({0.0, 1.0})}}
 kl.prepare(10);                                              // a loading screen: what Kinloom writes ahead is ready
 std::string line = kl.say("VEGA", "built", obj({{"who", "Ana"}}));            // fast (lines declared once)
 std::string reply = kl.chat("MIRA", typed_text, obj({{"gold", 3}}), "Ana");   // free answer, ~1 s: chat_async off the loop
+kl.steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
 std::vector<unsigned char> wav = kl.speak("MIRA", reply);   // WAV bytes; empty: show the text only
 std::string said = kl.listen(wav_bytes);                     // microphone -> text
 kl.event_with("the player stole bread", obj({{"by", "PLAYER"}, {"seen_by", arr({"BAKER"})}}));
@@ -220,6 +228,7 @@ POST /v1/act    {"name": "ROVER", "situation": {"order": "<typed text>"}}  -> {"
 POST /v1/tools  {"tools": {"open_door": {"door": "north"}}}   the game's tools, once; a character names them: "tools": ["open_door"]
 POST /v1/create {..., "image": "<base64 PNG/JPEG>"}   (also /v1/chat): the model looks at it   POST /v1/prepare {"timeout": 10}
 POST /v1/say    {"name": "VEGA", "event": "built", "facts": {"who": "Ana"}}   POST /v1/chat {"name", "message", "speaker", "facts"}
+POST /v1/steer  {"name": "MIRA", "text": "admit you sold the king's sword"}   the game decides her next reply; "" takes it back
 POST /v1/speak  {"name": "MIRA", "text": "Halt!"} -> {"audio": "<base64 WAV>" or ""}   POST /v1/listen {"audio": "<base64>"} -> {"text"}
 POST /v1/event  {"text": "the player stole bread", "by": "PLAYER", "seen_by": ["BAKER"]}   then /v1/knows, /v1/opinion
 Units every frame with no model call: POST /v1/mind once, then run the mind in the game, or POST /v1/think (see KINLOOM.md).

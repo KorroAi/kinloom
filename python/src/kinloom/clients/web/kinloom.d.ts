@@ -202,6 +202,9 @@ export declare class Kinloom {
      * keeping that example's intent, written for this moment ("Ask about her past" -> "So, the king's sword?"). The
      * examples are the offline answer, so index i always means the same choice. */
     suggest(name: string, examples: string[], speaker?: string, facts?: Facts): Promise<string[]>;
+    /** What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it
+     * in the character's voice, even a secret of their card. Used by the next chat only; "" takes it back. */
+    steer(name: string, text: string): Promise<void>;
     /** A short exchange between two characters (one model call), remembered by both: [{who, text}] ([] offline). */
     converse(a: string, b: string, about?: string, turns?: number): Promise<{
         who: string;
@@ -480,7 +483,9 @@ export declare const prompts: {
     recollectSystem(c: Persona, language: string): string;
     bondBlock(speaker: string, bond: {
         talks: number;
-    } | null, since: string, feelingValue: number, known: string[], moodWord: string, moodStrength: string, who?: string, secrets?: boolean): string;
+    } | null, since: string, feelingValue: number, known: string[], moodWord: string, moodStrength: string, who?: string, secrets?: boolean, secretTrust?: number): string;
+    /** What the game decided for this reply (steer): the model makes it happen, in the character's words. */
+    steerBlock(steer: string): string;
     repair(error: string): string;
     stayInCharacter(name: string): string;
     sayNew(): string;
@@ -760,12 +765,15 @@ export declare class Character implements Persona {
     invent: boolean;
     trustWanted: Record<string, number>;
     trust: Record<string, number>;
+    warmth: number;
+    secret_trust: number;
+    warm_up: number;
     card: Record<string, any> | null;
     cardReady: boolean;
     soulKey: string | null;
     voiceId: string | null;
     voice: string;
-    constructor(name: unknown, personality?: unknown, lines?: any, offline?: any, events?: any, tools?: any, maxWords?: any, every?: any, language?: any, group?: any, trust?: any, invent?: any, voice?: any, maxChars?: any);
+    constructor(name: unknown, personality?: unknown, lines?: any, offline?: any, events?: any, tools?: any, maxWords?: any, every?: any, language?: any, group?: any, trust?: any, invent?: any, voice?: any, maxChars?: any, warmth?: any, secretTrust?: any, warmUp?: any);
     moment(event: string): string;
 }
 export interface BrainOptions {
@@ -832,6 +840,8 @@ export declare class Brain {
     private said;
     private switches;
     private rises;
+    private steers;
+    private replyTimeout;
     private events;
     private spreads;
     private emptyTold;
@@ -936,7 +946,11 @@ export declare class Brain {
     saveState(session: string): string;
     /** Puts back what saveState gave (this session's state is replaced). */
     loadState(session: string, text: unknown): boolean;
+    /** What a character feels for someone it has no opinion of yet: its warmth (0 for anyone else). */
+    private warmthOf;
     opinion(session: string, a: unknown, b: unknown): number;
+    /** What the game decides for name's next reply (used once, by the next chat); "" takes it back. */
+    steer(session: string, name: unknown, text: unknown): void;
     opinions(session: string, a: unknown): Record<string, number>;
     feel(session: string, a0: unknown, b0: unknown, change: unknown): number;
     reputation(session: string, target: unknown, group: unknown): number;

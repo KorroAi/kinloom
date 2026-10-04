@@ -259,6 +259,12 @@ static class Program
         Console.WriteLine("trust: " + (opened.Count > 0 ? string.Join(", ", opened.Select(a => a.Tool)) : "none"));
         kl.Character("FILT", "a storyteller", D(("offline", "No comment.")));
         Console.WriteLine("filter: " + await kl.Chat("FILT", "Tell me a story."));
+        kl.Character("NINA", "a singer", D(("soul", D(("summary", "a singer"), ("secrets", new List<object> { "I went up to the office at 12:30" }))),
+            ("warmth", 0.3), ("secret_trust", 0.25), ("warm_up", 0.1)));
+        Console.WriteLine("warmth: " + N(await kl.Opinion("NINA", "Ana")));
+        await kl.Steer("NINA", "admit you went up to the office at 12:30");
+        Console.WriteLine("steer: " + await kl.Chat("NINA", "Where were you?", null, "Ana"));
+        Console.WriteLine("warm up: " + N(await kl.Opinion("NINA", "Ana")));
         kl.Character("ECHO", "a parrot");
         for (int i = 0; i < 11; i++) await kl.Chat("ECHO", "Hello " + i);
         await kl.Prepare(10);

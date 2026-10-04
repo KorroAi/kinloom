@@ -13,6 +13,9 @@ deeds: give {"item":"rye bread"}
 trust reply: Fine, I will open it.
 trust: none
 filter: No comment.
+warmth: 0.3
+steer: Fine. I went up to the office at 12:30.
+warm up: 0.4
 recollect: Earlier with player: Ana kept greeting me and I kept answering the same way.
 fresh: BLAZE storms past everyone!
 box: Short BLAZE!

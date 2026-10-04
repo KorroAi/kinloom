@@ -70,6 +70,12 @@ static void deep(const std::string& base) {
     std::cout << "trust: " << (opened.empty() ? std::string("none") : opened) << "\n";
     kl.character("FILT", "a storyteller", obj({{"offline", "No comment."}}));
     std::cout << "filter: " << kl.chat("FILT", "Tell me a story.", obj({})) << "\n";
+    kl.character("NINA", "a singer", obj({{"soul", obj({{"summary", "a singer"}, {"secrets", arr({"I went up to the office at 12:30"})}})},
+                                          {"warmth", 0.3}, {"secret_trust", 0.25}, {"warm_up", 0.1}}));
+    std::cout << "warmth: " << kl.opinion("NINA", "Ana") << "\n";
+    kl.steer("NINA", "admit you went up to the office at 12:30");
+    std::cout << "steer: " << kl.chat("NINA", "Where were you?", obj({}), "Ana") << "\n";
+    std::cout << "warm up: " << kl.opinion("NINA", "Ana") << "\n";
     kl.character("ECHO", "a parrot", obj({}));
     for (int i = 0; i < 11; i++) kl.chat("ECHO", "Hello " + std::to_string(i), obj({}));
     kl.prepare(10);

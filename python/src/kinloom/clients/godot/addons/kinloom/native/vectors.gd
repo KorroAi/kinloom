@@ -87,6 +87,9 @@ static func vector(fn: String, args: Array) -> Variant:
 			return Souls.strength(args[0])
 		"feeling":
 			return Prompts.feeling(args[0])
+		"feelings":
+			var fc = _character(args[0])
+			return [fc.warmth, fc.secret_trust, fc.warm_up]
 		"stream":
 			var splitter := Stream.Splitter.new()
 			var guard := Stream.Guard.new(Py.re(Lines.META))
@@ -193,7 +196,9 @@ static func _prompt(name: String, spec: Variant, a: Array) -> Variant:
 		"message_block":
 			return Prompts.message_block(a[0], _arg(a, 1, ""))
 		"bond_block":
-			return Prompts.bond_block(a[0], a[1], a[2], a[3], a[4], a[5], a[6], _arg(a, 7, ""), _arg(a, 8, false))
+			return Prompts.bond_block(a[0], a[1], a[2], a[3], a[4], a[5], a[6], _arg(a, 7, ""), _arg(a, 8, false), _arg(a, 9, Souls.SECRET_TRUST))
+		"steer_block":
+			return Prompts.steer_block(_arg(a, 0, ""))
 		"deeds_user":
 			return Prompts.deeds_user(a[0], a[1], _arg(a, 2, ""), a[3])
 		"soul_user":

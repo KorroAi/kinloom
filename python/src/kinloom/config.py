@@ -10,9 +10,11 @@
       "memory": ".kinloom/memory.json", "port": 7717,
       "banned_words": ["..."],     (model text containing one of them is never shown: the offline answer is used)
       "max_cost_per_hour": 1.0, "max_cost_per_day": 10.0,   (dollars; need "prices")
+      "reply_timeout": 8,          (seconds a spoken reply may take on a hosted model before the offline reply)
       "lore": ["The village is Ashford.", ...],              (world facts every character treats as true)
       "characters": {"Mira": {"soul": "one sentence", "offline": "Busy.", "tools": {"give": {"item": "sword"}},
-                              "trust": {"give": 0.3}, "invent": false, "language": "French", ...}}
+                              "trust": {"give": 0.3}, "invent": false, "language": "French",
+                              "warmth": 0.4, "secret_trust": 0.6, "warm_up": 0.3, ...}}
     }
 Characters and lore here need no code in the game (every engine, every session); edits are picked up while it runs.
 Keys are never read from this file: DEEPSEEK_API_KEY, ANTHROPIC_API_KEY, OPENAI_API_KEY or KINLOOM_API_KEY.

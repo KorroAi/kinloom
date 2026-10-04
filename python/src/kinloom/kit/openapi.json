@@ -2301,6 +2301,74 @@
     "summary": "Mode, model, stats, characters and minds (a player token sees only the mode)."
    }
   },
+  "/v1/steer": {
+   "post": {
+    "operationId": "steer",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "name": {
+          "type": "string"
+         },
+         "session": {
+          "type": "string"
+         },
+         "text": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "name",
+         "text"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "ok": {
+           "type": "boolean"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline"
+     }
+    },
+    "summary": "What the game decides happens in the character's next reply (the model words it; a secret may come out); \"\" takes it back."
+   }
+  },
   "/v1/stream": {
    "get": {
     "operationId": "get_v1/stream",

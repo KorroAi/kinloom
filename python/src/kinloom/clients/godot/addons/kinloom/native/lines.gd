@@ -343,6 +343,15 @@ static func character(name: Variant, spec: Dictionary) -> Array:
 	for k in c.trust_wanted:
 		if c.tools.has(k):
 			c.trust[k] = c.trust_wanted[k]
+	# warmth: the feeling for anyone before any talk; warm_up: the most one conversation can win; secret_trust: the
+	# feeling above which a secret may be shared
+	for setting in [["warmth", -1.0, 1.0], ["secret_trust", -1.0, 1.0], ["warm_up", 0.0, 2.0]]:
+		var v = spec.get(setting[0])
+		if v != null:
+			var r := arg_num(v, setting[0])
+			if r[0] == null:
+				return [null, r[1]]
+			c.set(setting[0], clampf(r[0], setting[1], setting[2]))
 	var voice = spec.get("voice")
 	if voice is Dictionary:
 		var vid := Py.clean(Py.text_of(voice.get("id")) if Py.truthy(voice.get("id")) else "").substr(0, 120)
@@ -374,6 +383,9 @@ class Character:
 	var invent := true
 	var trust_wanted := {}
 	var trust := {}
+	var warmth := 0.0
+	var secret_trust := 0.6
+	var warm_up := 0.3
 	var voice_id = null
 	var voice := ""
 	var offline_turn := 0

@@ -15,9 +15,10 @@
     "Here, take a warm loaf.\n~~~\n{\"mood\": \"kind\", \"feel\": 0.2}",
     "Fine, I will open it.\n~~~\n{\"do\": [{\"tool\": \"open\", \"args\": {\"door\": \"west\"}}]}",
     "The dragon sleeps under the hill.\n~~~\n{}",
+    "Fine. I went up to the office at 12:30.\n~~~\n{\"mood\": \"ashamed\", \"feel\": 0.3}",
     "Again and again.\n~~~\n{\"mood\": \"playful\"}"
   ],
-  "deeds": {"do": [{"tool": "give", "args": {"item": "rye bread"}}]},
+  "deeds": ["!fail", {"do": [{"tool": "give", "args": {"item": "rye bread"}}]}],
   "recollect": {"summary": "Ana kept greeting me and I kept answering the same way."},
   "line": "{who} storms past everyone!",
   "lines": {"lines": ["{who} wins!"]},

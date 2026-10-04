@@ -82,6 +82,8 @@ POSTS = {
     "inspect": ("A snapshot for a debug overlay: characters, minds, calls (admin token).", {}, [],
                 {"online": B, "characters": O, "minds": O, "calls": I, "failures": I, "cost": N}),
     "save": ("Everything Kinloom knows about this session, as one text for the game's save slot.", {}, [], {"data": S}),
+    "steer": ("What the game decides happens in the character's next reply (the model words it; a secret may come out); "
+              "\"\" takes it back.", {"name": S, "text": S}, ["name", "text"], {"ok": B}),
     "load": ("Puts back what save gave (this session's state is replaced; 12 MB).", {"data": S}, ["data"], {"ok": B}),
 }
 

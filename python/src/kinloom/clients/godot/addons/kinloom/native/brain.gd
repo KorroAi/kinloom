@@ -37,7 +37,9 @@ const HEARSAY := 0.5
 const RUMOR_DECAY := 0.8
 const MIN_RUMOR := 0.1
 const CONFIG_KEYS := ["personality", "soul", "lines", "offline", "events", "tools", "max_words", "max_chars", "every", "language",
-	"group", "trust", "invent", "voice"]
+	"group", "trust", "invent", "voice", "warmth", "secret_trust", "warm_up"]
+const MAX_STEER := 300
+const REPLY_TIMEOUT := 8.0
 
 var hedge_after := 2.5
 var stall_after := 3.0
@@ -73,6 +75,8 @@ var bonds := {}
 var said_by := {}
 var switches := 0
 var rises := {}
+var steers := {}                  # session|name -> what the game decided for the next reply (steer)
+var reply_timeout := REPLY_TIMEOUT
 var events := 0
 var spreads := 0
 var empty_told := {}
@@ -159,6 +163,12 @@ func _init(o := {}) -> void:
 		call_timeout = float(o["call_timeout"])
 	max_cost_per_hour = Py.finite(cfg.get("max_cost_per_hour"))
 	max_cost_per_day = Py.finite(cfg.get("max_cost_per_day"))
+	if cfg.get("reply_timeout") != null:
+		var rt = Py.finite(cfg.get("reply_timeout")) if typeof(cfg.get("reply_timeout")) != TYPE_BOOL else null
+		if rt == null or rt <= 0:
+			_log("refused", "kinloom", "kinloom.json: reply_timeout must be a number of seconds, got " + Py.py_repr(cfg.get("reply_timeout")))
+		else:
+			reply_timeout = clampf(rt, 1.0, 120.0)
 	if cfg.get("characters") is Dictionary:
 		for name in cfg["characters"]:
 			var spec = cfg["characters"][name]
@@ -421,7 +431,8 @@ func _grace() -> float:
 
 
 func _reply_deadline() -> float:
-	return minf(call_timeout, 8.0) if not _patient() else maxf(minf(call_timeout, 8.0), 15.0)
+	var base := minf(call_timeout, reply_timeout)
+	return base if not _patient() else maxf(base, 15.0)
 
 
 func _pictures(name: String, image: Variant) -> Array:
@@ -628,7 +639,7 @@ func _write_greeting(session: String, c, key: String) -> void:
 	var m := _mood(session, c)
 	var system := Prompts.chat_system(c, _lang(c, true), _card_lines(c), lore(session), "greet")
 	var secrets := not Souls.secrets(c.card).is_empty()
-	var user := _context(session, c.name, "", false) + Prompts.bond_block("this stranger", null, "", 0.0, [], m[0], Souls.strength(m[1]) if m[1] else "", "", secrets) + \
+	var user := _context(session, c.name, "", false) + Prompts.bond_block("this stranger", null, "", c.warmth, [], m[0], Souls.strength(m[1]) if m[1] else "", "", secrets, c.secret_trust) + \
 		Prompts.message_block("A stranger", "")
 	var r: Dictionary = await _ask("greet", c.name, system, user, false, false, 400)
 	if r.ok:
@@ -733,10 +744,10 @@ func _inner(session: String, c, speaker: String, data: Variant) -> Array:
 			var rise: Array = rises.get(rkey, [now, 0.0, -1e18])
 			if now - rise[2] > Souls.NEW_TALK:
 				rise = [now, 0.0, rise[2]]
-			change = maxf(0.0, minf(change, Souls.TALK_RISE - rise[1]))
+			change = maxf(0.0, minf(change, c.warm_up - rise[1]))
 			rises[rkey] = [rise[0], rise[1] + change, now]
 			if change < i.feel:
-				_log("refused", c.name, "feel: " + speaker + " already won " + Py.fixed(Souls.TALK_RISE, 1, true) + " this conversation")
+				_log("refused", c.name, "feel: " + speaker + " already won " + Py.fixed(c.warm_up, 1, true) + " this conversation")
 		if change != 0:
 			feel(session, c.name, speaker, change)
 	if i.self != "" and _allowed(i.self):
@@ -1682,7 +1693,9 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 	var inner = {}
 	var prepared = null
 	var source := "model"
-	if message == "" and facts.is_empty() and bond == null and who == "" and pictures.is_empty():
+	var steer: String = steers.get(session + SEP + c.name, "")          # what the game decided for this reply: used once
+	steers.erase(session + SEP + c.name)
+	if message == "" and facts.is_empty() and bond == null and who == "" and pictures.is_empty() and steer == "":
 		var gkey: String = c.name + SEP + str(c.soul_key)
 		prepared = greetings.get(gkey)
 		greetings.erase(gkey)
@@ -1703,16 +1716,17 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 		var secrets := not Souls.secrets(c.card).is_empty()
 		var user := Prompts.history_block(talk, Souls.KEEP) + _context(session, c.name, message) + Prompts.facts_block(facts) + \
 			Prompts.bond_block(speaker, bond, Souls.ago(now - bond.last) if bond != null else "", opinion(session, c.name, speaker),
-				_known(session, c.name, speaker), m[0], Souls.strength(m[1]) if m[1] != 0.0 else "", who, secrets) + \
-			Prompts.worn_block(w[0], w[1]) + Prompts.picture_block(not pictures.is_empty(), speaker) + Prompts.message_block(speaker, message) + \
-			Prompts.box_block(box)
-		var allowed := Lines.allowed_numbers([facts, st, message, c.personality, Souls.texts(c.card),
+				_known(session, c.name, speaker), m[0], Souls.strength(m[1]) if m[1] != 0.0 else "", who, secrets, c.secret_trust) + \
+			Prompts.worn_block(w[0], w[1]) + Prompts.steer_block(steer) + Prompts.picture_block(not pictures.is_empty(), speaker) + \
+			Prompts.message_block(speaker, message) + Prompts.box_block(box)
+		var allowed := Lines.allowed_numbers([facts, st, message, steer, c.personality, Souls.texts(c.card),
 			memory.recall(session, [c.name, "world"], message), _known(session, c.name, speaker)])
 		var repair := ""
 		var flow := {"streamed": false}
 		var recent: Array = said_by.get(session + SEP + c.name, [])
 		var mine: Array = recent.slice(maxi(0, recent.size() - 6))
-		var hidden: Array = Souls.secrets(c.card) if opinion(session, c.name, speaker) < Souls.SECRET_TRUST else []
+		# A steer is the game's own decision: it may reveal a secret.
+		var hidden: Array = Souls.secrets(c.card) if opinion(session, c.name, speaker) < c.secret_trust and steer == "" else []
 		var pub := Souls.public_texts(c.card)
 		pub.append(c.personality)
 		for attempt in 2:
@@ -1869,8 +1883,12 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 
 
 func _deeds(c, speaker: String, message: String, reply: String) -> Array:
-	var r: Dictionary = await _ask("deeds", c.name, Prompts.deeds_system(c), Prompts.deeds_user(c.name, speaker, message, reply), true, true, 150,
-		null, minf(call_timeout, 5.0))
+	var system := Prompts.deeds_system(c)
+	var user := Prompts.deeds_user(c.name, speaker, message, reply)
+	var r: Dictionary = await _ask("deeds", c.name, system, user, true, true, 150, null, minf(call_timeout, 5.0))
+	if not r.ok:        # a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+		_log("repair", c.name, "deeds: " + (str(r.error) if r.error != null and str(r.error) != "" else "failed") + "; asked again")
+		r = await _ask("deeds", c.name, system, user, true, true, 150, null, minf(call_timeout, 5.0))
 	var data = Py.find_json(r.text) if r.ok else null
 	var found = data.get("do") if data is Dictionary else null
 	var out := []
@@ -2316,13 +2334,36 @@ func load_state(session: String, text: Variant) -> bool:
 	return true
 
 
+## What a character feels for someone it has no opinion of yet: its warmth (0 for anyone else).
+func _warmth(session: String, a: Variant) -> float:
+	if a == null or a == "":
+		return 0.0
+	_from_config(session, a)
+	var c = characters.get(session + SEP + a)
+	return c.warmth if c != null else 0.0
+
+
 func opinion(session: String, a: Variant, b: Variant) -> float:
 	var t := _opinion_table(session)
 	var na = Lines.name_of(a)
 	var nb = Lines.name_of(b)
-	if na == null or nb == null or not t.has(na):
+	if na == null or nb == null:
 		return 0.0
-	return float(t[na].get(nb, 0.0))
+	if t.has(na) and t[na].has(nb):
+		return float(t[na][nb])
+	return _warmth(session, na)
+
+
+## What the game decides for name's next reply (used once, by the next chat); "" takes it back.
+func steer(session: String, name: Variant, text: String) -> void:
+	var c = char_of(session, name)
+	var t := Py.squash(Py.clean(text)).substr(0, MAX_STEER)
+	var key: String = session + SEP + c.name
+	if t != "":
+		steers[key] = t
+		_log("steer", c.name, t)
+	else:
+		steers.erase(key)
 
 
 func opinions(session: String, a: Variant) -> Dictionary:
@@ -2335,7 +2376,8 @@ func feel(session: String, a0: Variant, b0: Variant, change: Variant) -> float:
 	var b = Lines.name_of(b0)
 	var table := _opinion_table(session)
 	var v = Py.finite(change)
-	var old: float = float(table[a].get(b, 0.0)) if a != null and b != null and table.has(a) else 0.0
+	var start := _warmth(session, a)
+	var old: float = float(table[a].get(b, start)) if a != null and b != null and table.has(a) else start
 	if v == null or a == null or a == "" or b == null or b == "" or a == b:
 		return old
 	if not table.has(a) and table.size() >= MAX_CHARACTERS:
@@ -2558,7 +2600,16 @@ func _verb(verb: String, body: Dictionary, session: String) -> Array:
 				"offline": body.get("offline"), "events": body.get("events"), "tools": body.get("tools"), "max_words": body.get("max_words"),
 				"every": body.get("every") if body.get("every") != null else 8.0, "language": body.get("language"), "group": body.get("group"),
 				"soul": body.get("soul"), "trust": body.get("trust"), "invent": not (typeof(body.get("invent")) == TYPE_BOOL and body.invent == false),
-				"voice": body.get("voice"), "max_chars": body.get("max_chars")})
+				"voice": body.get("voice"), "max_chars": body.get("max_chars"), "warmth": body.get("warmth"),
+				"secret_trust": body.get("secret_trust"), "warm_up": body.get("warm_up")})
+			return [200, {"ok": true}]
+		"steer":
+			miss = _missing(body, ["name"])
+			if miss != "":
+				return _err(400, miss)
+			if typeof(body.get("text")) != TYPE_STRING:
+				return _err(400, "missing 'text' (what happens in the next reply; \"\" takes it back)")
+			steer(session, name, body.text)
 			return [200, {"ok": true}]
 		"say":
 			miss = _missing(body, ["name", "event"])

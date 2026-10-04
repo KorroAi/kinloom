@@ -275,6 +275,12 @@ public class Scenario {
         System.out.println("trust: " + (opened.isEmpty() ? "none" : names));
         kl.character("FILT", "a storyteller", map("offline", "No comment."));
         System.out.println("filter: " + kl.chat("FILT", "Tell me a story.", map()));
+        kl.character("NINA", "a singer", map("soul", map("summary", "a singer", "secrets", java.util.Arrays.asList("I went up to the office at 12:30")),
+            "warmth", 0.3, "secret_trust", 0.25, "warm_up", 0.1));
+        System.out.println("warmth: " + kl.opinion("NINA", "Ana"));
+        kl.steer("NINA", "admit you went up to the office at 12:30");
+        System.out.println("steer: " + kl.chat("NINA", "Where were you?", map(), "Ana"));
+        System.out.println("warm up: " + kl.opinion("NINA", "Ana"));
         kl.character("ECHO", "a parrot", map());
         for (int i = 0; i < 11; i++) kl.chat("ECHO", "Hello " + i, map());
         kl.prepare(10);

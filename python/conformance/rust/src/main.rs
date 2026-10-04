@@ -305,6 +305,12 @@ fn deep(base: &str) {
     println!("trust: {}", if opened.is_empty() { "none".to_string() } else { opened.join(", ") });
     kl.character("FILT", "a storyteller", obj! { "offline" => "No comment." });
     println!("filter: {}", kl.chat("FILT", "Tell me a story.", obj! {}));
+    kl.character("NINA", "a singer", obj! { "soul" => obj! { "summary" => "a singer", "secrets" => vec!["I went up to the office at 12:30"] },
+        "warmth" => 0.3, "secret_trust" => 0.25, "warm_up" => 0.1 });
+    println!("warmth: {}", kl.opinion("NINA", "Ana"));
+    kl.steer("NINA", "admit you went up to the office at 12:30");
+    println!("steer: {}", kl.chat_as("NINA", "Where were you?", obj! {}, "Ana"));
+    println!("warm up: {}", kl.opinion("NINA", "Ana"));
     kl.character("ECHO", "a parrot", obj! {});
     for i in 0..11 {
         kl.chat("ECHO", &format!("Hello {}", i), obj! {});

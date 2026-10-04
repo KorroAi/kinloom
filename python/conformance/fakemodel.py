@@ -1,7 +1,7 @@
 """A fake model server for the native SDK conformance: OpenAI-compatible (/v1/chat/completions, streamed or not,
 /v1/audio/speech, /v1/audio/transcriptions) and Anthropic (/v1/messages). Answers come from a script per task (the
 "Kinloom task: X" line of the system prompt), like KINLOOM_SCRIPT: a list is used in order (its last answer repeats),
-a single answer repeats forever. Every request is recorded; GET /log returns them, POST /reset starts again.
+a single answer repeats forever; the answer "!fail" is a failed call (HTTP 422). Every request is recorded; GET /log returns them, POST /reset starts again.
 
     python fakemodel.py <port> <script.json>
 """
@@ -138,7 +138,7 @@ def make(script):
                           "max_tokens": body.get("max_tokens", body.get("max_completion_tokens")), "stream": stream,
                           "model": body.get("model")})
             answer = script.answer(task)
-            if answer is None:
+            if answer is None or answer == "!fail":
                 self._send(422, {"error": {"message": "no scripted answer for task %s" % task}})
                 return
             usage = {"prompt_tokens": (len(system) + len(user)) // 4, "completion_tokens": len(answer) // 4}
@@ -167,7 +167,7 @@ def make(script):
             self._record({"api": "anthropic", "task": task, "system": system, "user": user, "pictures": pictures,
                           "json": False, "max_tokens": body.get("max_tokens"), "stream": stream, "model": body.get("model")})
             answer = script.answer(task)
-            if answer is None:
+            if answer is None or answer == "!fail":
                 self._send(422, {"type": "error", "error": {"message": "no scripted answer for task %s" % task}})
                 return
             usage = {"input_tokens": (len(system or "") + len(user)) // 4, "output_tokens": len(answer) // 4}

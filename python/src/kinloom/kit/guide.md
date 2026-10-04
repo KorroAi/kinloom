@@ -25,17 +25,17 @@ game still works with no key, no network or a slow model.
   `"all"`), what they decide while talking comes with the reply (Python `reply.do`; others `act(name, {}, false)`), once. `trust={"give": 0.3}`: that tool only for people
   they like that much. `lore([...])`: facts never contradicted; `invent=false`: no made-up names; `soul(name, speaker)`:
   card, mood, bonds, memories, `gesture`. Boxes: Godot `AIDialogue`, Unity `KinloomDialogue`, web `talkBox(kl, name)`, Python `Talk`.
+- **The game decides**: `steer(name, "admit you were in the office")`: their next reply does it, even a secret. Trust: `warmth` 0,
+  `warm_up` 0.3 a talk, `secret_trust` 0.6. Source (Python `line.source`, others `source(name)`) "offline" with a model set up: late, show silence (`"reply_timeout"` 8 s).
 - **Shapes by example**, and the example is the offline answer: `["a", "b"]` one of them; `[0.0, 1.0]` a number in that
   range; `[1, 10]` a whole number; `0.5`, `true`, `"A sample."` that type (shown offline); `[example]` a list; `{...}` an object. Answers are
   validated and clamped: use them as they are, no re-checks (the example is the fallback). `image=` (chat, create): it sees.
 - **`say` is instant**: lines written ahead, filled with *your* facts (pass every value raw). Declare each character
   once with `lines` (offline `{fact}` lines per event or `"*"`; `{"dare": {"when": "what is happening", "lines": [...]}}`
   tells the model the moment) and `events` (fact names): lines ready (`prepare()` waits). `event`, `state`: facts.
-- **Where it came from**: Python `line.source`, others `source(name)`: "model", "prepared" or "offline" (empties: journal).
 - **No keyboard**: `suggest(name, [examples], speaker)` -> what the player can pick, one per example (offline: the
   examples). `converse(a, b, about)`: they talk together. `save()`/`load(text)`: the AI in your save file. `inspect()`.
-- **`decide` and `act` are instant** every frame (refreshed in the background, `every` seconds). A choice made **once**
-  (before a level): `create(what, example, context=facts)`, ~1-2 s.
+- **`decide` and `act` are instant** every frame (refreshed in the background, `every` s); once, before a level: `create(...)`, ~1-2 s.
 - The model, the developer's choice: a key in the environment for `kinloom serve` or the native SDK (`ANTHROPIC_API_KEY`,
   `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` + `KINLOOM_MODEL`; never in the game) or their agent's plan (`kinloom use`).
   kinloom.json `"rating": "everyone"|"teen"|"mature"`, `"models": {"background": "a-cheaper-model"}`. Before a release:

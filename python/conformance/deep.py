@@ -57,6 +57,12 @@ print("trust reply: " + kl.chat("GATE", "Open the gate."))
 print("trust: " + (", ".join(t for t, _ in kl.act("GATE", {}, think=False)) or "none"))
 kl.character("FILT", "a storyteller", offline="No comment.")
 print("filter: " + kl.chat("FILT", "Tell me a story."))
+kl.character("NINA", "a singer", soul={"summary": "a singer", "secrets": ["I went up to the office at 12:30"]}, warmth=0.3,
+             secret_trust=0.25, warm_up=0.1)
+print("warmth: %s" % kl.opinion("NINA", "Ana"))
+kl.steer("NINA", "admit you went up to the office at 12:30")
+print("steer: " + kl.chat("NINA", "Where were you?", speaker="Ana"))
+print("warm up: %s" % kl.opinion("NINA", "Ana"))
 kl.character("ECHO", "a parrot")
 for i in range(11):
     kl.chat("ECHO", "Hello %d" % i)

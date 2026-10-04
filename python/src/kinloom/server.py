@@ -49,7 +49,7 @@ from urllib.parse import parse_qs, urlparse
 MAX_BODY = 1024 * 1024
 VERBS = ["character", "say", "chat", "decide", "act", "create", "event", "remember", "state", "mind", "report", "think", "reward", "explain",
          "meet", "spread", "knows", "opinion", "opinions", "feel", "reputation", "soul", "lore", "speak", "listen", "tools",
-         "prepare", "suggest", "converse", "inspect", "save", "load"]
+         "prepare", "suggest", "converse", "inspect", "save", "load", "steer"]
 MAX_AUDIO_BODY = 12 * 1024 * 1024     # /v1/listen carries a recording, /v1/chat and /v1/create a picture (base64)
 MEDIA_PATHS = ("/v1/listen", "/v1/chat", "/v1/create", "/v1/load")   # and a save slot loaded back
 MAX_REWARDS = 1000
@@ -117,7 +117,14 @@ def handle(brain, verb, body, session):
             brain.character(session, name, body.get("personality") or "", body.get("lines"), body.get("offline"), body.get("events"),
                             body.get("tools"), body.get("max_words"), 8.0 if body.get("every") is None else body["every"], body.get("language"),
                             body.get("group"), body.get("soul"), body.get("trust"), body.get("invent") is not False,
-                            body.get("voice"), body.get("max_chars"))
+                            body.get("voice"), body.get("max_chars"), body.get("warmth"), body.get("secret_trust"),
+                            body.get("warm_up"))
+            return {"ok": True}
+        if verb == "steer":
+            _need(body, "name")
+            if not isinstance(body.get("text"), str):
+                raise ApiError(400, "missing 'text' (what happens in the next reply; \"\" takes it back)")
+            brain.steer(session, name, body["text"])
             return {"ok": True}
         if verb == "say":
             _need(body, "name", "event")

@@ -47,6 +47,12 @@ for _, a in ipairs(kl:act("GATE", {}, false)) do names[#names + 1] = a.tool end
 out("trust: " .. (#names > 0 and table.concat(names, ", ") or "none"))
 kl:character("FILT", "a storyteller", { offline = "No comment." })
 out("filter: " .. kl:chat("FILT", "Tell me a story."))
+kl:character("NINA", "a singer", { soul = { summary = "a singer", secrets = { "I went up to the office at 12:30" } }, warmth = 0.3,
+  secret_trust = 0.25, warm_up = 0.1 })
+out("warmth: " .. num(kl:opinion("NINA", "Ana")))
+kl:steer("NINA", "admit you went up to the office at 12:30")
+out("steer: " .. kl:chat("NINA", "Where were you?", {}, nil, "Ana"))
+out("warm up: " .. num(kl:opinion("NINA", "Ana")))
 kl:character("ECHO", "a parrot")
 for i = 0, 10 do kl:chat("ECHO", "Hello " .. i) end
 kl:prepare(10)
