@@ -16,7 +16,7 @@
     kinloom test [--record F | --replay F | --offline]   the game's AI checked like code (kinloom.tests.json)
     kinloom probe NAME         plays a character like a tester would: secrets, manipulation, repeats, length, speed
     kinloom doctor             what Kinloom found: model, key, latency, config
-    kinloom guide [engine]     the instructions for coding agents (the calls, rules, 34 patterns)
+    kinloom guide [engine]     the instructions for coding agents (the calls, rules, 39 patterns)
     kinloom check [folder]     finds integration mistakes (missing await, undeclared characters, keys in code)
     kinloom mcp                tools for coding agents (Claude Code, Codex, Cursor, ...)
     kinloom demo               watch a mind learn to win a fight, offline, in seconds (no key)
@@ -809,7 +809,7 @@ def main_parser():
     d.add_argument("--dir", default=".")
     d.set_defaults(fn=cmd_doctor)
 
-    g = sub.add_parser("guide", help="print the instructions for coding agents (the calls, rules, 34 patterns)")
+    g = sub.add_parser("guide", help="print the instructions for coding agents (the calls, rules, 39 patterns)")
     g.add_argument("engine", nargs="?", help="godot, unity, dotnet, web, python, love, unreal, other (default: detected)")
     g.add_argument("--dir", default=".")
     g.add_argument("--short", action="store_true", help="without the patterns")

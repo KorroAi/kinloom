@@ -235,6 +235,10 @@ public final class Kinloom {
     }
 
     private final Map<String, String[]> saidAhead = new ConcurrentHashMap<>();     // key -> {text, source}: an answer that came late
+    private final Map<String, List<Action>> lastDo = new ConcurrentHashMap<>();       // the actions of name's last reply (chat's check)
+    private final Map<String, Map<String, Object>> decideRefused = new ConcurrentHashMap<>();   // decide's check: what was refused
+    private final Map<String, Object> decideOk = new ConcurrentHashMap<>();           // and what was last accepted
+    private final Map<String, Integer> remarkTurns = new LinkedHashMap<>();           // offline remarks said in turn (relay)
     private final Map<String, SayFetch> sayFetching = new ConcurrentHashMap<>();
     /** Milliseconds say() waits for a relay before answering from your own lines (a local server answers well within it). */
     public int sayWaitMs = 30;
@@ -308,9 +312,81 @@ public final class Kinloom {
 
     /** chat with the reply streamed: onPiece gets it as it is written, for a dialogue box that fills as they speak. */
     public String chat(String name, String message, Map<String, Object> facts, String speaker, byte[] image, java.util.function.Consumer<String> onPiece) {
+        return chat(name, message, facts, speaker, image, onPiece, null);
+    }
+
+    /** chat with the game's rules for what is said: check returns null or "" to accept the reply, or why it refuses it; a
+     *  refused reply is taken back and asked again once, then the offline reply (onPiece gets the reply once accepted). */
+    public String chat(String name, String message, Map<String, Object> facts, String speaker, byte[] image, java.util.function.Consumer<String> onPiece,
+                       java.util.function.Function<String, String> check) {
         Map<String, Object> body = map("name", name, "message", message, "facts", facts == null ? map() : facts,
                 "speaker", speaker, "do", true);
         if (image != null && image.length > 0) body.put("image", java.util.Base64.getEncoder().encodeToString(image));
+        if (check == null) return chatOnce(name, body, onPiece);
+        String text = chatOnce(name, body, null);
+        for (boolean drop : new boolean[] {false, true}) {
+            if ("offline".equals(sources.get(name))) break;
+            final String said = text;
+            String why = judged(() -> check.apply(said));
+            if (why.isEmpty()) break;
+            List<Action> taken = lastDo.getOrDefault(name, new ArrayList<>());
+            Pending p = actions.computeIfAbsent(name, k -> new Pending());
+            synchronized (p) { p.ready.removeIf(taken::contains); }
+            Map<String, Object> again = new LinkedHashMap<>(body);
+            again.put("refused", map("answer", text, "why", why));
+            again.put("drop", drop);
+            text = chatOnce(name, again, null);
+        }
+        if (onPiece != null && !text.isEmpty()) {
+            try { onPiece.accept(text); } catch (RuntimeException e) { System.err.println("[kinloom] chat: onPiece failed: " + e.getMessage()); }
+        }
+        return text;
+    }
+
+    /** reason(verdict()); a check that throws refuses ("the game's check failed"), never breaking the call. */
+    static String judged(java.util.function.Supplier<Object> verdict) {
+        try { return reason(verdict.get()); }
+        catch (RuntimeException e) { System.err.println("[kinloom] the game's check failed: " + e); return "the game's check failed"; }
+    }
+
+    /** The oldest entries go once a facade table passes 2000 (decisions refused or accepted, remarks in turn). */
+    private static void cap(Map<String, ?> table) {
+        java.util.Iterator<String> it = table.keySet().iterator();
+        while (table.size() > 2000 && it.hasNext()) { it.next(); it.remove(); }
+    }
+
+    /** A short line from someone in the crowd about what just happened (no character to declare), ~1 s. who: who says it
+     *  ("an old fisherman", "" for anyone); offline: your own lines ({fact} placeholders), said in turn without a model. */
+    public String remark(String about, String who, Map<String, Object> facts, List<String> offline, int maxChars) {
+        Map<String, Object> body = map("about", about, "facts", facts == null ? map() : facts);
+        if (who != null && !who.isEmpty()) body.put("who", who);
+        if (offline != null) body.put("offline", new ArrayList<Object>(offline));
+        if (maxChars > 0) body.put("max_chars", (long) maxChars);
+        Map<String, Object> r = post("remark", body, chatTimeoutMs);
+        if (r != null && r.get("text") instanceof String) return (String) r.get("text");
+        Map<String, Object> f = facts == null ? map() : facts;
+        List<String> usable = new ArrayList<>();
+        for (String t : offline == null ? new ArrayList<String>() : offline) {
+            boolean ok = true;
+            java.util.regex.Matcher m = PLACEHOLDER.matcher(t);
+            while (m.find()) if (!f.containsKey(m.group(1))) ok = false;
+            if (ok) usable.add(t);
+        }
+        if (usable.isEmpty()) return "";
+        String key = Py.slice(Text.clean(who == null ? "" : who), 48);       // as the brain names who speaks
+        if (key.isEmpty()) key = "someone in the crowd";
+        int turn;
+        synchronized (remarkTurns) {
+            turn = remarkTurns.getOrDefault(key, 0);
+            remarkTurns.put(key, turn + 1);
+            cap(remarkTurns);
+        }
+        return Souls.fitChars(fill(usable.get(turn % usable.size()), f), maxChars > 0 ? Math.max(10, Math.min(2000, maxChars)) : null);
+    }
+
+    public String remark(String about) { return remark(about, "", null, null, 0); }
+
+    private String chatOnce(String name, Map<String, Object> body, java.util.function.Consumer<String> onPiece) {
         Map<String, Object> r = onPiece != null ? stream(body, onPiece) : post("chat", body, chatTimeoutMs);
         setSource(name, r);
         if (r == null) {
@@ -323,13 +399,31 @@ public final class Kinloom {
             return str(o);
         }
         redeclare(name, r);
-        if (r.get("do") instanceof List) {
-            Pending p = actions.computeIfAbsent(name, k -> new Pending());
-            synchronized (p) {
-                addActions(p, r.get("do"));
-            }
+        Pending p = actions.computeIfAbsent(name, k -> new Pending());
+        synchronized (p) {
+            int before = p.ready.size();
+            addActions(p, r.get("do"));
+            lastDo.put(name, new ArrayList<>(p.ready.subList(before, p.ready.size())));
         }
         return str(r.get("text"));
+    }
+
+    /** What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses. */
+    public static String reason(Object verdict) {
+        if (verdict == null || Boolean.TRUE.equals(verdict) || "".equals(verdict)) return "";
+        if (Boolean.FALSE.equals(verdict)) return "it breaks the game's rules";
+        String why = Py.slice(Py.squash(Text.clean(Py.str(verdict))), 300);
+        return why.isEmpty() ? "refused" : why;
+    }
+
+    /** What a character remembers when the game refused one of its actions (act's check). */
+    public static String refusedNote(String tool, Object args, String why) { return "The game did not let me " + tool + " " + Py.dumps(args, false, false) + ": " + why; }
+
+    private static Object cloneJson(Object v) { return Py.loads(Py.dumps(v)); }
+
+    private void give(java.util.function.Consumer<Object> each, Object item) {
+        try { each.accept(cloneJson(item)); }
+        catch (RuntimeException e) { System.err.println("[kinloom] create: each failed: " + e.getMessage()); }
     }
 
     @SuppressWarnings("unchecked")
@@ -345,6 +439,35 @@ public final class Kinloom {
 
     public CompletableFuture<String> chatAsync(String name, String message, Map<String, Object> facts) {
         return CompletableFuture.supplyAsync(() -> chat(name, message, facts), POOL);
+    }
+
+    /** decide with the game's rules: a refused decision is not used (the last accepted one is, else the example) and the next
+     *  decisions are made knowing why. check returns null or "" to accept. */
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> decide(String name, Map<String, Object> situation, Map<String, Object> choices, java.util.function.Function<Object, String> check) {
+        return (Map<String, Object>) checkedDecision(name + "|" + toJson(choices), situation, s -> decide(name, s, choices), check, defaultOf(choices));
+    }
+
+    public Object decide(String name, Map<String, Object> situation, List<Object> options, java.util.function.Function<Object, String> check) {
+        return checkedDecision(name + "|" + toJson(options), situation, s -> decide(name, s, options), check, defaultOf(options));
+    }
+
+    private Object checkedDecision(String key, Map<String, Object> situation, java.util.function.Function<Map<String, Object>, Object> decide,
+                                   java.util.function.Function<Object, String> check, Object fallback) {
+        Map<String, Object> note = decideRefused.get(key);
+        Map<String, Object> sit = situation == null ? map() : situation;
+        if (note != null) { sit = new LinkedHashMap<>(sit); sit.put("the game refused your last decision", note); }
+        Object value = decide.apply(sit);
+        String why = judged(() -> check.apply(cloneJson(value)));
+        if (why.isEmpty()) {
+            decideRefused.remove(key);
+            decideOk.put(key, value);
+            cap(decideOk);
+            return value;
+        }
+        decideRefused.put(key, map("decision", value, "why", why));
+        cap(decideRefused);
+        return decideOk.containsKey(key) ? cloneJson(decideOk.get(key)) : fallback;
     }
 
     /** Instant: the latest decision shaped like `choices` (the model refreshes it in the background). */
@@ -431,6 +554,18 @@ public final class Kinloom {
 
     public List<String> suggest(String name, List<String> examples, String speaker) { return suggest(name, examples, speaker, null); }
 
+    /** suggest with the game's rules: a reply check refuses is replaced by its example. */
+    public List<String> suggest(String name, List<String> examples, String speaker, Map<String, Object> facts, java.util.function.Function<String, String> check) {
+        List<String> replies = suggest(name, examples, speaker, facts);
+        if (check == null) return replies;
+        List<String> out = new ArrayList<>();
+        for (int i = 0; i < replies.size(); i++) {
+            final String reply = replies.get(i);
+            out.add(!judged(() -> check.apply(reply)).isEmpty() && i < examples.size() ? examples.get(i) : reply);
+        }
+        return out;
+    }
+
     /** What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it in
      * the character's voice, even a secret of their card. Used by the next chat only; "" takes it back. */
     public void steer(String name, String text) { post("steer", map("name", name, "text", text), 3000); }
@@ -469,6 +604,22 @@ public final class Kinloom {
         return act(name, situation, true);
     }
 
+    /** act with the game's rules: check(tool, args) returns null or "" to allow the action; a refused one is not returned, and
+     *  the character remembers why. */
+    public List<Action> act(String name, Map<String, Object> situation, boolean think, java.util.function.BiFunction<String, Map<String, Object>, String> check) {
+        List<Action> got = act(name, situation, think);
+        if (check == null) return got;
+        List<Action> kept = new ArrayList<>();
+        for (Action a : got) {
+            @SuppressWarnings("unchecked")
+            String why = judged(() -> check.apply(a.tool, (Map<String, Object>) cloneJson(a.args)));
+            if (why.isEmpty()) { kept.add(a); continue; }
+            String note = refusedNote(a.tool, a.args, why);
+            POOL.execute(() -> post("remember", map("name", name, "note", note, "importance", 0.6), 3000));
+        }
+        return kept;
+    }
+
     /** act with think false: only what the character decided while talking (no model call of its own). */
     @SuppressWarnings("unchecked")
     public List<Action> act(String name, Map<String, Object> situation, boolean think) {
@@ -504,21 +655,97 @@ public final class Kinloom {
 
     /** create with a picture the model looks at (PNG, JPEG, GIF or WebP bytes). */
     public Object create(String what, Object example, Map<String, Object> context, int count, boolean instant, byte[] image) {
+        return create(what, example, context, count, instant, image, null, null);
+    }
+
+    /** create with the game's own rules and offline answer. check returns null or "" to accept the answer, or why it
+     * refuses it: the model hears the reason once, then the offline answer is used (with count/instant, refused items
+     * are replaced). offline: the game's own offline answer, shaped like the example (null: the example). */
+    public Object create(String what, Object example, Map<String, Object> context, java.util.function.Function<Object, String> check, Object offline) {
+        return create(what, example, context, 0, false, null, check, offline);
+    }
+
+    public Object create(String what, Object example, Map<String, Object> context, int count, boolean instant, byte[] image,
+                         java.util.function.Function<Object, String> check, Object offline) {
+        return create(what, example, context, count, instant, image, check, offline, null);
+    }
+
+    /** create with each: every item of a list answer as soon as the model has written it (native mode; through a relay,
+     *  when the answer arrives), checked item by item (refused items are left out; with count, filled by the offline answer). */
+    public Object create(String what, Object example, Map<String, Object> context, int count, boolean instant, byte[] image,
+                         java.util.function.Function<Object, String> check, Object offline, java.util.function.Consumer<Object> each) {
         if (count > 0 && example instanceof List && ((List<?>) example).size() == 1) example = ((List<?>) example).get(0);
+        Object fallback = defaultOf(example);
+        if (offline != null) {
+            Object[] c = Shape.of(example).check(offline);
+            if (!(Boolean) c[0]) throw new IllegalArgumentException("create: offline must be shaped like the example: " + c[2]);
+            fallback = c[1];
+        }
         Map<String, Object> body = map("what", what, "example", example, "context", context == null ? map() : context,
                 "instant", instant);
         if (image != null && image.length > 0) body.put("image", java.util.Base64.getEncoder().encodeToString(image));
         if (count > 0) body.put("count", count);
-        Map<String, Object> r = post("create", body, instant ? 2000 : chatTimeoutMs);
-        if (r == null || r.get("value") == null) {
-            Object d = defaultOf(example);
-            if (count <= 0) return d;
-            List<Object> many = new ArrayList<>();
-            for (int i = 0; i < count; i++) many.add(defaultOf(example));
-            return many;
-        }
-        return r.get("value");
+        if (offline != null) body.put("offline", fallback);
+        boolean listed = count > 0 || Shape.of(example).kind.equals("list");
+        return created(body, count, instant, check, fallback, true, each, listed);
     }
+
+    /** One create request, then the game's check: a list item by item (in native mode as the model writes, each item handed
+     *  to each at once), anything else whole (refused: sent back once with its reason). */
+    private Object created(Map<String, Object> body, int count, boolean instant, java.util.function.Function<Object, String> check,
+                           Object fallback, boolean retry, java.util.function.Consumer<Object> each, boolean listed) {
+        if (each != null && listed && brain != null) {
+            java.util.function.Predicate<Object> hook = x -> {        // native: the brain hands over each item as the model writes it
+                if (check != null && !whyOf(check, x).isEmpty()) return false;
+                give(each, x);
+                return true;
+            };
+            body.put("__item", hook);
+        }
+        Map<String, Object> r = post("create", body, instant ? 2000 : chatTimeoutMs);
+        body.remove("__item");
+        if (r == null || r.get("value") == null) {
+            Object v = cloneJson(fallback);
+            if (count > 0) {
+                List<Object> many = new ArrayList<>();
+                for (int i = 0; i < count; i++) many.add(cloneJson(fallback));
+                v = many;
+            }
+            return out(v, each, listed);
+        }
+        Object value = r.get("value");
+        boolean offlineAnswer = "offline".equals(r.get("source"));
+        if (listed && value instanceof List) {
+            List<Object> items = new ArrayList<>(Py.asList(value));
+            int streamed = r.get("streamed") == null ? 0 : (int) num(r.get("streamed"));
+            if (streamed > 0) {                          // checked and handed over already; the rest is the offline filling
+                if (each != null) for (Object x : items.subList(streamed, items.size())) give(each, x);
+                return items;
+            }
+            if (check != null && !offlineAnswer) items.removeIf(x -> !whyOf(check, x).isEmpty());
+            if (count > 0) while (items.size() < count) items.add(cloneJson(fallback));
+            else if (items.isEmpty()) return out(cloneJson(fallback), each, listed);
+            return out(items, each, listed);
+        }
+        if (check == null || offlineAnswer) return out(value, each, listed);
+        String why = whyOf(check, value);
+        if (why.isEmpty()) return out(value, each, listed);
+        if (!retry || instant) return out(cloneJson(fallback), each, listed);
+        Map<String, Object> again = new LinkedHashMap<>(body);
+        again.put("refused", map("answer", value, "why", why));
+        return created(again, 0, false, check, fallback, false, each, listed);
+    }
+
+    private Object out(Object v, java.util.function.Consumer<Object> each, boolean listed) {
+        if (each != null) {
+            if (listed && v instanceof List) for (Object x : Py.asList(v)) give(each, x);
+            else give(each, v);
+        }
+        return v;
+    }
+
+    /** Why the game's check refuses an answer ("" when it accepts it). */
+    private static String whyOf(java.util.function.Function<Object, String> check, Object value) { return judged(() -> check.apply(cloneJson(value))); }
 
     public Object create(String what, Object example) {
         return create(what, example, null, 0, false);
@@ -2294,6 +2521,17 @@ public final class Kinloom {
                     return new Object[] {true, v, null};
                 }
                 case "list": {
+                    Map<String, Object> wrapped = Py.asMap(value);
+                    if (wrapped != null) {
+                        // JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+                        List<Object> lists = new ArrayList<>();
+                        for (Object x : wrapped.values()) if (Py.asList(x) != null) lists.add(x);
+                        if (!lists.isEmpty()) value = lists.get(0);      // the first list, as items stream it (Items)
+                        else if ("object".equals(item.kind)) {
+                            Object[] one = item.check(value, path + "[0]");
+                            if ((Boolean) one[0]) return new Object[] {true, new ArrayList<>(Arrays.asList(one[1])), null};
+                        }
+                    }
                     List<Object> list = Py.asList(value);
                     if (list == null) return new Object[] {false, null, path + " must be a list"};
                     if (list.size() > MAX_LIST) return new Object[] {false, null, path + " must have at most " + MAX_LIST + " items"};
@@ -3210,10 +3448,55 @@ public final class Kinloom {
             return String.join("\n", lines);
         }
 
+        /** obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones
+         *  matter most): the last values are shortened first, then replaced by "(cut)". Anything else is cut. */
         static String clip(Object obj, int limit) {
             String text = Py.dumps(obj, false, false);
-            return Py.len(text) <= limit ? text : Py.slice(text, limit) + "...";
+            if (Py.len(text) <= limit) return text;
+            Map<String, Object> d = Py.asMap(obj);
+            if (d != null && !d.isEmpty()) {
+                List<String> keys = new ArrayList<>(d.keySet());
+                List<String> pairs = new ArrayList<>();          // '"key": value', as the whole object writes it
+                long size = 0;
+                for (String k : keys) {
+                    pairs.add(Py.dumps(k, false, false) + ": " + Py.dumps(d.get(k), false, false));
+                    size += Py.len(pairs.get(pairs.size() - 1)) + 2;   // with the braces and the ", " between pairs
+                }
+                for (int round = 0; round < 2; round++) {
+                    for (int i = keys.size() - 1; i >= 0; i--) {
+                        Object v = round == 0 ? shortValue(d.get(keys.get(i))) : "(cut)";
+                        String fresh = Py.dumps(keys.get(i), false, false) + ": " + Py.dumps(v, false, false);
+                        size += Py.len(fresh) - Py.len(pairs.get(i));
+                        pairs.set(i, fresh);
+                        if (size <= limit) return "{" + String.join(", ", pairs) + "}";
+                    }
+                }
+                text = "{" + String.join(", ", pairs) + "}";
+            }
+            return Py.slice(text, 0, limit) + "...";
         }
+
+        /** A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted. */
+        static Object shortValue(Object v) {
+            if (v instanceof String) { String s = (String) v; return Py.len(s) <= 80 ? s : Py.slice(s, 0, 80) + "..."; }
+            if (v instanceof Map) return Py.len(Py.dumps(v, false, false)) <= 200 ? v : "(" + ((Map<?, ?>) v).size() + " fields)";
+            if (v instanceof List && ((List<?>) v).size() > 3) {
+                List<?> l = (List<?>) v;
+                return new ArrayList<Object>(Arrays.asList(l.get(0), l.get(1), l.get(2), "(" + (l.size() - 3) + " more)"));
+            }
+            return v;
+        }
+
+        /** Someone in the crowd (no declared character) says one line about what just happened. */
+        static String remarkSystem(String who, String language, Integer chars) {
+            return String.join("\n", "Kinloom task: remark", "You are " + who + " in a video game world. Something just happened in front of you.",
+                "Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words" +
+                    (chars != null && chars > 0 ? " and at most " + chars + " characters" : "") + ".",
+                "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.",
+                writeIn(language), DATA, "Answer as JSON: {\"line\": \"what you say\"}");
+        }
+
+        static String remarkUser(String about) { return "What just happened: " + about + "\nSay your line now."; }
 
         /** Characters of facts, situation, context or state the model reads (more is cut, and journaled). */
         static final int CLIP = 4000;
@@ -3269,6 +3552,13 @@ public final class Kinloom {
             if (pictures == 0) return "";
             if (speaker != null && !speaker.isEmpty()) return "A picture comes with this moment: what " + speaker + " shows you, or what you see right now. Look at it.\n";
             return "A picture comes with this request: look at it and use what it shows.\n";
+        }
+
+        /** The game refused the last answer (create's check): its reason, once, with the answer it refused. */
+        static String refusedBlock(Map<String, Object> refused) {
+            if (refused == null) return "";
+            return "The game refused your last answer: " + refused.get("why") + "\nThe refused answer: " + clip(refused.get("answer"), 1500) +
+                    "\nAnswer again: keep what was fine, fix that.\n";
         }
 
         /** What the game decided for this reply (steer): the model makes it happen, in the character's words. */
@@ -3740,6 +4030,19 @@ public final class Kinloom {
                     list.addAll(sorted);
                 }
                 dirty = true;
+            }
+            schedule();
+        }
+
+        /** Removes the latest note with exactly this text (a reply the game refused is not remembered). */
+        void takeBack(String session, String scope, String text) {
+            String t = Py.slice(Py.squash(text == null ? "" : text), 300);
+            synchronized (lock) {
+                List<Map<String, Object>> notes = this.notes.get(session + "\u0000" + scope);
+                if (notes == null) return;
+                for (int i = notes.size() - 1; i >= 0; i--) {
+                    if (t.equals(notes.get(i).get("text"))) { notes.remove(i); dirty = true; break; }
+                }
             }
             schedule();
         }
@@ -5343,6 +5646,56 @@ public final class Kinloom {
         KinloomException(int status, String message) { super(message); this.status = status; }
     }
 
+    /** The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+     *  {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements. */
+    static final class Items {
+        private final StringBuilder buf = new StringBuilder();
+        private final List<Character> stack = new ArrayList<>();
+        private int i, start;
+        private Integer level;
+        private boolean str, esc, done;
+
+        List<String> feed(String piece) {
+            List<String> out = new ArrayList<>();
+            if (done || piece == null || piece.isEmpty()) return out;
+            buf.append(piece);
+            while (i < buf.length()) {
+                char ch = buf.charAt(i);
+                if (str) {
+                    if (esc) esc = false;
+                    else if (ch == '\\') esc = true;
+                    else if (ch == '"') str = false;
+                } else if (ch == '"') {
+                    str = true;
+                } else if (ch == '[' || ch == '{') {
+                    stack.add(ch);
+                    if (ch == '[' && level == null && (stack.size() == 1 || (stack.size() == 2 && stack.get(0) == '{'))) {
+                        level = stack.size();
+                        start = i + 1;
+                    }
+                } else if (ch == ']' || ch == '}') {
+                    if (ch == ']' && level != null && stack.size() == level) {
+                        emit(buf.substring(start, i), out);
+                        done = true;
+                        i++;
+                        return out;
+                    }
+                    if (!stack.isEmpty()) stack.remove(stack.size() - 1);
+                } else if (ch == ',' && level != null && stack.size() == level) {
+                    emit(buf.substring(start, i), out);
+                    start = i + 1;
+                }
+                i++;
+            }
+            return out;
+        }
+
+        private static void emit(String text, List<String> out) {
+            String t = Py.strip(text);
+            if (!t.isEmpty()) out.add(t);
+        }
+    }
+
     static final class Act {
         final String tool;
         final Map<String, Object> args;
@@ -5574,6 +5927,9 @@ public final class Kinloom {
         private static final int MAX_STEER = 300;
         private static final double REPLY_TIMEOUT = 8.0;
         private final Map<String, String> steers = new HashMap<>();      // session|name -> the next reply's steer
+        private final Map<String, List<Act>> lastDecided = new LinkedHashMap<>();   // chat's check: the last reply's actions, taken back
+        private final Map<String, Undo> lastUndo = new LinkedHashMap<>();           // and what it changed inside
+        private final Map<String, Integer> remarkTurns = new LinkedHashMap<>();     // offline remarks said in turn
         private double replyTimeout = REPLY_TIMEOUT;
         private final Object lock = new Object();
         volatile ModelProvider provider;
@@ -6268,12 +6624,30 @@ public final class Kinloom {
             return out;
         }
 
-        @SuppressWarnings("unchecked")
+        /** What a reply changed inside, to put back if the game refuses it (chat's check). */
+        private static final class Undo {
+            boolean hasMood, hasRise, hasGesture;
+            Map<String, Object> mood;
+            double[] rise;
+            String seen, shown;
+            double feel;
+            final List<String> notes = new ArrayList<>();
+        }
+
         private List<Act> inner(String session, CharacterDef c, String speaker, Map<String, Object> data) {
+            return inner(session, c, speaker, data, new Undo());
+        }
+
+        @SuppressWarnings("unchecked")
+        private List<Act> inner(String session, CharacterDef c, String speaker, Map<String, Object> data, Undo undo) {
             Map<String, Object> i = Souls.innerOfReply(data);
             String key = k(session, c.name);
             String mood = (String) i.get("mood");
-            if (mood != null && allowed(mood)) synchronized (lock) { moods.put(key, map("word", mood, "level", i.get("intensity"), "t", clock.getAsDouble())); }
+            if (mood != null && allowed(mood)) synchronized (lock) {
+                undo.hasMood = true;
+                undo.mood = moods.get(key);
+                moods.put(key, map("word", mood, "level", i.get("intensity"), "t", clock.getAsDouble()));
+            }
             Double feel = (Double) i.get("feel");
             if (feel != null && feel != 0) {
                 double change = feel;
@@ -6281,6 +6655,8 @@ public final class Kinloom {
                     synchronized (lock) {
                         double now = wall.getAsDouble();
                         String rkey = k(session, c.name, speaker);
+                        undo.hasRise = true;
+                        undo.rise = rises.get(rkey);
                         double[] r = rises.getOrDefault(rkey, new double[] {now, 0.0, -1e18});
                         double start = r[0], gained = r[1];
                         if (now - r[2] > Souls.NEW_TALK) { start = now; gained = 0.0; }
@@ -6290,15 +6666,27 @@ public final class Kinloom {
                     }
                     if (change < feel) log("refused", c.name, "feel: " + speaker + " already won " + Py.fixed(c.warmUp, 1, "+") + " this conversation", null);
                 }
-                if (change != 0) feel(session, c.name, speaker, change);
+                if (change != 0) {
+                    double before = opinion(session, c.name, speaker);
+                    undo.feel = feel(session, c.name, speaker, change) - before;
+                }
             }
             String self = (String) i.get("self"), remember = (String) i.get("remember"), gesture = (String) i.get("gesture");
-            if (!self.isEmpty() && allowed(self)) memory.add(session, c.name, self, 0.9, map("about", Lines.SELF));
+            if (!self.isEmpty() && allowed(self)) {
+                memory.add(session, c.name, self, 0.9, map("about", Lines.SELF));
+                undo.notes.add(self);
+            }
             if (!remember.isEmpty()) {
-                if (allowed(remember)) memory.add(session, c.name, remember, 0.8, map("about", speaker));
+                if (allowed(remember)) {
+                    memory.add(session, c.name, remember, 0.8, map("about", speaker));
+                    undo.notes.add(remember);
+                }
                 else log("refused", c.name, "remember: blocked by the content filter", null);
             }
             synchronized (lock) {
+                undo.hasGesture = true;
+                undo.seen = gestureSeen.get(key);
+                undo.shown = gestures.get(key);
                 boolean fresh = !gesture.isEmpty() && allowed(gesture) && !Souls.sameAction(gesture, gestureSeen.get(key));
                 gestureSeen.put(key, gesture.toLowerCase(Locale.ROOT));
                 if (fresh) gestures.put(key, gesture); else gestures.remove(key);
@@ -6615,11 +7003,18 @@ public final class Kinloom {
         }
 
         private Object structured(String kind, String name, String system, String user, Shape shape, boolean foreground, int maxTokens, Double timeout, List<Picture> images) {
-            ModelReply r = call(kind, name, system, user, true, foreground, maxTokens, null, timeout, images);
+            return structured(kind, name, system, user, shape, foreground, maxTokens, timeout, images, null, null);
+        }
+
+        /** onText: the answer's pieces as they come; used: true when part of it was already used (then no repair). */
+        private Object structured(String kind, String name, String system, String user, Shape shape, boolean foreground, int maxTokens, Double timeout,
+                                  List<Picture> images, java.util.function.Consumer<String> onText, java.util.function.BooleanSupplier used) {
+            ModelReply r = call(kind, name, system, user, true, foreground, maxTokens, onText, timeout, images);
             if (!r.ok) return null;
             Object[] p = shape.parse(r.text);
             if ((Boolean) p[0] && !allowed(p[1])) { log("refused", name, kind + ": blocked by the content filter", null); return null; }
             if ((Boolean) p[0]) return p[1];
+            if (used != null && used.getAsBoolean()) return null;
             log("repair", name, kind + ": " + p[2], null);
             if (Text.CUT.equals(p[2])) maxTokens = Math.min(4000, maxTokens * 2);   // stopped by the token limit: room to finish
             r = call(kind, name, system, user + Prompts.repair((String) p[2]), true, foreground, maxTokens, null, timeout, images);
@@ -7063,9 +7458,15 @@ public final class Kinloom {
 
         // ---------------- create ----------------
 
-        Object create(String session, Object what0, Object example, Object context, Object count, boolean instant, Double timeout, Object image) {
+        /** {value, "model" or "offline", how many items onItem already got}. offline: the game's own offline answer;
+         *  refused: {answer, why} the game refused. onItem: for a list answer, every item as soon as the model has written
+         *  it; false when the game refuses it (left out). */
+        Object[] create(String session, Object what0, Object example, Object context, Object count, boolean instant, Double timeout, Object image,
+                        Object offline, Object refused0, java.util.function.Predicate<Object> onItem) {
             if (Py.truthy(count) && example instanceof List && Py.asList(example).size() == 1) example = Py.asList(example).get(0);
             Shape shape = Shape.of(example);
+            Object fallback = offlineAnswer(shape, offline);
+            Map<String, Object> refused = refusal(refused0);
             String what = Text.clean(Py.str(what0));
             clipNote(Py.slice(what, CharacterDef.MAX_WHAT), "what", what, CharacterDef.MAX_WHAT, true);
             clipNote(Py.slice(what, CharacterDef.MAX_WHAT), "context", context, Prompts.CLIP, false);
@@ -7073,29 +7474,175 @@ public final class Kinloom {
             List<Picture> pics = image != null ? pictures(what, image) : new ArrayList<>();
             if (instant) {
                 if (!pics.isEmpty()) log("refused", what, "image: not used with instant=True (those items are made ahead)", null);
-                return fromPool(session, what, shape, context);
+                Object[] got = fromPool(session, what, shape, context);
+                return (Boolean) got[0] ? new Object[] {got[1], "model", 0} : new Object[] {Py.loads(Py.dumps(fallback)), "offline", 0};
             }
             if (Py.truthy(count)) {
                 int n = Math.max(1, Math.min(50, (int) CharacterDef.argNum(count, "count")));
-                List<Object> items = createMany(session, what, shape, context, n, true, timeout, pics);
-                while (items.size() < n) items.add(shape.defaultValue());
-                return items;
+                List<Object> streamedMany = new ArrayList<>();
+                ItemFeed feedMany = onItem != null ? streamer(shape, onItem, streamedMany, n) : null;
+                List<Object> items = createMany(session, what, shape, context, n, true, timeout, pics, feedMany);
+                if (feedMany != null) feedMany.close();
+                synchronized (streamedMany) { if (!streamedMany.isEmpty()) items = new ArrayList<>(streamedMany); }
+                String source = items.isEmpty() ? "offline" : "model";
+                while (items.size() < n) items.add(Py.loads(Py.dumps(fallback)));
+                return new Object[] {items, source, streamedMany.size()};
             }
-            if (provider == null) return shape.defaultValue();
+            if (provider == null) return new Object[] {Py.loads(Py.dumps(fallback)), "offline", 0};
+            if (refused != null) log("refused", what, "create: the game refused it: " + refused.get("why"), null);
             String system = Prompts.createSystem(what, shape, written());
-            String user = context(session, null, what, true) + Prompts.contextBlock(context) + Prompts.pictureBlock(pics.size(), null);
-            Object value = structured("create", what, system, user, shape, true, 1500, timeout, pics);
-            if (value == null) { count("offline_answers"); return shape.defaultValue(); }
+            String user = context(session, null, what, true) + Prompts.contextBlock(context) + Prompts.pictureBlock(pics.size(), null) +
+                    Prompts.refusedBlock(refused);
+            List<Object> streamed = new ArrayList<>();
+            ItemFeed feed = onItem != null && shape.kind.equals("list") ? streamer(shape.item, onItem, streamed, MAX_STREAMED) : null;
+            Object value = structured("create", what, system, user, shape, true, 1500, timeout, pics, feed, feed != null ? () -> {
+                synchronized (streamed) { return !streamed.isEmpty(); } } : null);
+            if (feed != null) feed.close();
+            synchronized (streamed) { if (!streamed.isEmpty()) value = new ArrayList<>(streamed); }
+            if (value == null) { count("offline_answers"); return new Object[] {Py.loads(Py.dumps(fallback)), "offline", 0}; }
             log("create", what, Py.slice(Py.dumps(value), 300), null);
-            return value;
+            return new Object[] {value, "model", streamed.size()};
+        }
+
+        private static final int MAX_STREAMED = 200, MAX_ABOUT = 300, REMARK_WORDS = 20;
+        private static final String DEFAULT_WHO = "someone in the crowd";
+
+        /** onText for a list answer: each finished item, valid and allowed, goes to onItem at once (kept when accepted). */
+        /** A list answer's onText; after close() (the call returned) a stream that goes on (a call given up on) hands
+         *  nothing more over. kept is locked while an item is handed over. */
+        private final class ItemFeed implements java.util.function.Consumer<String> {
+            final Items items = new Items();
+            final Shape itemShape;
+            final java.util.function.Predicate<Object> onItem;
+            final List<Object> kept;
+            final int limit;
+            boolean open = true;
+
+            ItemFeed(Shape itemShape, java.util.function.Predicate<Object> onItem, List<Object> kept, int limit) {
+                this.itemShape = itemShape; this.onItem = onItem; this.kept = kept; this.limit = limit;
+            }
+
+            @Override public void accept(String piece) {
+                synchronized (kept) {
+                    if (!open) return;
+                    for (String text : items.feed(piece)) {
+                        if (kept.size() >= limit) return;
+                        Object[] c = itemShape.parse(text);
+                        if (!(Boolean) c[0] || !allowed(c[1]) || !onItem.test(c[1])) continue;
+                        kept.add(c[1]);
+                    }
+                }
+            }
+
+            void close() { synchronized (kept) { open = false; } }
+        }
+
+        private ItemFeed streamer(Shape itemShape, java.util.function.Predicate<Object> onItem, List<Object> kept, int limit) {
+            return new ItemFeed(itemShape, onItem, kept, limit);
+        }
+
+        /** A short line said out loud by someone in the crowd (no character to declare) about what just happened.
+         *  offline: the game's own lines ({fact} placeholders), taken in turn when no model answers. */
+        Said remark(String session, Object about0, Object who0, Object facts0, Object offline, Object maxChars) {
+            if (!(about0 instanceof String)) throw new IllegalArgumentException("remark: about must be a string (what just happened), got " + Py.pyRepr(about0));
+            String about = Py.slice(Py.squash(Text.clean((String) about0)), MAX_ABOUT);
+            String who = Py.slice(Py.squash(Text.clean(who0 == null ? "" : Py.str(who0))), CharacterDef.MAX_NAME);
+            if (who.isEmpty()) who = DEFAULT_WHO;
+            Map<String, Object> facts = mapping(facts0, "facts");
+            clipNote(who, "facts", facts, Prompts.CLIP, false);
+            List<String> lines = new ArrayList<>();
+            if (offline instanceof String) lines.add((String) offline);
+            else if (offline instanceof List) {
+                for (Object x : (List<?>) offline) {
+                    if (!(x instanceof String)) throw new IllegalArgumentException("remark: offline must be a line or a list of lines, like [\"Would you look at that!\"], got " + Py.pyRepr(offline));
+                    lines.add((String) x);
+                }
+            } else if (offline != null) throw new IllegalArgumentException("remark: offline must be a line or a list of lines, like [\"Would you look at that!\"], got " + Py.pyRepr(offline));
+            Integer limit = boxLimit(maxChars);
+            if (provider != null && !about.isEmpty()) {
+                ModelReply r = call("remark", who, Prompts.remarkSystem(who, written(), limit),
+                    context(session, null, about, true) + Prompts.factsBlock(facts) + Prompts.remarkUser(about), true, true, 120, null, null, null);
+                Map<String, Object> data = r.ok ? Py.asMap(Text.findJson(r.text)) : null;
+                String said = data != null && data.get("line") instanceof String ? validRemark((String) data.get("line"), facts, about, limit) : "";
+                if (!said.isEmpty()) {
+                    log("remark", who, said, map("about", about));
+                    Said out = new Said();
+                    out.text = said;
+                    out.source = "model";
+                    return out;
+                }
+            }
+            List<String> usable = new ArrayList<>();
+            for (String t : lines) {
+                boolean ok = true;
+                java.util.regex.Matcher m = Lines.PLACEHOLDER_RE.matcher(t);
+                while (m.find()) if (!facts.containsKey(m.group(1))) ok = false;
+                if (ok) usable.add(t);
+            }
+            String spoken = "";
+            if (!usable.isEmpty()) {
+                int turn;
+                synchronized (lock) {
+                    turn = remarkTurns.getOrDefault(k(session, who), 0);
+                    remarkTurns.put(k(session, who), turn + 1);
+                    trim(remarkTurns);
+                }
+                spoken = Souls.fitChars(Lines.fill(usable.get(turn % usable.size()), facts), limit);
+            }
+            count("offline_answers");
+            log("remark", who, spoken, map("about", about, "source", "offline"));
+            if (spoken.isEmpty()) tellEmpty(session, who, "remark", "remark by " + who + " answered \"\" (give it offline=[...] lines, said when no model answers)");
+            Said out = new Said();
+            out.text = spoken;
+            out.source = "offline";
+            return out;
+        }
+
+        /** The remark as said: one short line, the filter passed, no numbers the game did not give; else "". */
+        private String validRemark(String line, Map<String, Object> facts, String about, Integer limit) {
+            String text = Py.strip(Py.strip(Py.strip(Text.clean(line)), "\""));
+            if (text.isEmpty() || !allowed(text) || Lines.META.matcher(text).find() || Lines.PROMPTISH.matcher(text).find() || text.contains("{")) return "";
+            List<Double> allowedNumbers = Lines.allowedNumbers(facts, about);
+            java.util.regex.Matcher m = Lines.NUMBER.matcher(text);
+            while (m.find()) if (!Lines.numberOk(m.group(), allowedNumbers)) return "";
+            return Souls.cap(text, REMARK_WORDS, limit);
+        }
+
+        private static final int MAX_WHY = 300;      // why the game refused a created answer (create's check), in characters
+
+        /** The game's own offline answer (create's offline), checked against the example's shape. */
+        private static Object offlineAnswer(Shape shape, Object offline) {
+            if (offline == null) return shape.defaultValue();
+            Object[] c = shape.check(offline);
+            if (!(Boolean) c[0]) throw new IllegalArgumentException("create: offline must be shaped like the example: " + c[2]);
+            return c[1];
+        }
+
+        /** {answer, why}: an answer the game refused (sent back once with create's check), or null. */
+        private static Map<String, Object> refusal(Object r) {
+            if (r == null) return null;
+            Map<String, Object> d = Py.asMap(r);
+            if (d == null || !d.containsKey("answer") || !(d.get("why") instanceof String))
+                throw new IllegalArgumentException("create: refused must be {\"answer\": the refused answer, \"why\": \"the reason\"}, got " + Py.pyRepr(r));
+            String why = Py.slice(Py.squash(Text.clean((String) d.get("why"))), MAX_WHY);
+            if (why.isEmpty()) return null;
+            Map<String, Object> out = new LinkedHashMap<>();
+            out.put("answer", d.get("answer"));
+            out.put("why", why);
+            return out;
         }
 
         private List<Object> createMany(String session, String what, Shape shape, Object context, int count, boolean foreground, Double timeout, List<Picture> pics) {
+            return createMany(session, what, shape, context, count, foreground, timeout, pics, null);
+        }
+
+        private List<Object> createMany(String session, String what, Shape shape, Object context, int count, boolean foreground, Double timeout, List<Picture> pics,
+                                        java.util.function.Consumer<String> onText) {
             List<Object> items = new ArrayList<>();
             if (provider == null) return items;
             String system = Prompts.createManySystem(what, shape, count, written());
             String user = context(session, null, what, true) + Prompts.contextBlock(context) + Prompts.pictureBlock(pics == null ? 0 : pics.size(), null);
-            ModelReply r = call("create", what, system, user, true, foreground, Math.min(4000, 200 + 150 * count), null, timeout, pics);
+            ModelReply r = call("create", what, system, user, true, foreground, Math.min(4000, 200 + 150 * count), onText, timeout, pics);
             if (!r.ok) return items;
             Object data = Text.findJson(r.text);
             List<Object> raw = Py.asMap(data) != null ? Py.asList(Py.asMap(data).get("items")) : Py.asList(data);
@@ -7109,7 +7656,7 @@ public final class Kinloom {
         }
 
         @SuppressWarnings("unchecked")
-        private Object fromPool(String session, String what, Shape shape, Object context) {
+        private Object[] fromPool(String session, String what, Shape shape, Object context) {
             String key = k(session, what, shape.signature());
             Object[] pool;
             Object item = null;
@@ -7133,19 +7680,32 @@ public final class Kinloom {
                     }
                 });
             }
-            return has ? item : shape.defaultValue();
+            return new Object[] {has, item};
         }
 
         // ---------------- chat ----------------
 
         @SuppressWarnings("unchecked")
         Said chat(String session, Object name, Object message0, Object facts0, Object speaker0, java.util.function.Consumer<String> stream, Double timeout, Object maxChars, Object image) {
+            return chat(session, name, message0, facts0, speaker0, stream, timeout, maxChars, image, null, false);
+        }
+
+        /** refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of it, its
+         *  actions) and asked again knowing why; drop: taken back and answered offline (refused twice). */
+        @SuppressWarnings("unchecked")
+        Said chat(String session, Object name, Object message0, Object facts0, Object speaker0, java.util.function.Consumer<String> stream, Double timeout, Object maxChars,
+                  Object image, Object refused0, boolean drop) {
             CharacterDef c = character(session, name);
             long began = System.nanoTime();
             List<Picture> pics = image != null ? pictures(c.name, image) : new ArrayList<>();
             Integer limit = boxLimit(maxChars) != null ? boxLimit(maxChars) : c.maxChars;
             String message = Py.slice(Text.clean(message0 == null ? "" : message0), 1000);
             String speaker = nameOf(speaker0) != null ? nameOf(speaker0) : "player";
+            Map<String, Object> refused = refusal(refused0);
+            if (refused != null) {
+                takeBack(session, c, speaker, message, Py.str(refused.get("answer")));
+                log("refused", c.name, "chat: the game refused the reply: " + refused.get("why"), null);
+            }
             Map<String, Object> facts = mapping(facts0, "facts");
             clipNote(c.name, "facts", facts, Prompts.CLIP, false);
             String hkey = k(session, c.name, speaker);
@@ -7180,7 +7740,7 @@ public final class Kinloom {
                 innerData = (Map<String, Object>) prepared[1];
                 source = "prepared";
                 if (stream != null) stream.accept(reply);
-            } else if (provider != null) {
+            } else if (provider != null && !drop) {
                 Object[] mood = moodOf(session, c);
                 double level = (Double) mood[1];
                 String system = Prompts.chatSystem(c, lang(c, true), cardLines(c), lore(session), "chat");
@@ -7195,7 +7755,7 @@ public final class Kinloom {
                     Prompts.messageBlock(speaker, message) + Prompts.boxBlock(boxLimit(maxChars));
                 List<Double> allowedNums = Lines.allowedNumbers(facts, st, message, steer, c.personality, Souls.texts(c.card),
                     memory.recall(session, Arrays.asList(c.name, "world"), message, 6, true), known(session, c.name, speaker));
-                String repair = "";
+                String repair = refused != null ? "\n\n" + Prompts.refusedBlock(refused) : "";
                 boolean[] streamed = {false};
                 List<String> mine;
                 synchronized (lock) {
@@ -7310,7 +7870,14 @@ public final class Kinloom {
                     List<Object> found = deeds(c, speaker, message, reply, Math.max(1.5, left));
                     if (!found.isEmpty()) { innerData = new LinkedHashMap<>(innerData == null ? new LinkedHashMap<>() : innerData); innerData.put("do", found); }
                 }
-                decided = inner(session, c, speaker, innerData);
+                Undo undo = new Undo();
+                decided = inner(session, c, speaker, innerData, undo);
+                synchronized (lock) {
+                    lastDecided.put(k(session, c.name), new ArrayList<>(decided));
+                    lastUndo.put(k(session, c.name), undo);
+                    trim(lastDecided);
+                    trim(lastUndo);
+                }
                 if (source.equals("prepared")) prepareGreeting(session, c);    // the next stranger's, with the mood this one left
             } else if (reply == null) {
                 innerData = null;
@@ -7359,6 +7926,37 @@ public final class Kinloom {
             out.source = source;
             out.actions = decided;
             return out;
+        }
+
+        /** The reply the game refused: out of the conversation, the memory and the actions waiting for act(). */
+        private void takeBack(String session, CharacterDef c, String speaker, String message, String answer) {
+            Undo undo;
+            synchronized (lock) {
+                List<String[]> h = history.get(k(session, c.name, speaker));
+                if (h != null && !h.isEmpty() && h.get(h.size() - 1)[0].equals(c.name) && h.get(h.size() - 1)[1].equals(answer)) {
+                    h.remove(h.size() - 1);
+                    if (!message.isEmpty() && !h.isEmpty() && h.get(h.size() - 1)[0].equals(speaker) && h.get(h.size() - 1)[1].equals(message)) h.remove(h.size() - 1);
+                }
+                java.util.ArrayDeque<String> s0 = said.get(k(session, c.name));
+                if (s0 != null && !s0.isEmpty() && s0.peekLast().equals(answer)) s0.removeLast();
+                List<Act> acts = lastDecided.remove(k(session, c.name));
+                if (acts != null) for (Act a : acts) a.taken = true;
+                undo = lastUndo.remove(k(session, c.name));
+                if (undo != null) {
+                    String key = k(session, c.name), rkey = k(session, c.name, speaker);
+                    if (undo.hasMood) { if (undo.mood == null) moods.remove(key); else moods.put(key, undo.mood); }
+                    if (undo.hasRise) { if (undo.rise == null) rises.remove(rkey); else rises.put(rkey, undo.rise); }
+                    if (undo.hasGesture) {
+                        if (undo.seen == null) gestureSeen.remove(key); else gestureSeen.put(key, undo.seen);
+                        if (undo.shown == null) gestures.remove(key); else gestures.put(key, undo.shown);
+                    }
+                }
+            }
+            if (undo != null) {          // the feeling it moved, the memories it wrote: not kept either
+                if (undo.feel != 0) feel(session, c.name, speaker, -undo.feel);
+                for (String note : undo.notes) memory.takeBack(session, c.name, note);
+            }
+            if (!message.isEmpty()) memory.takeBack(session, c.name, speaker + " said: " + Py.slice(message, 120) + " / I answered: " + Py.slice(answer, 160));
         }
 
         /** budget: seconds for everything here (the asking again included). */
@@ -7994,7 +8592,8 @@ public final class Kinloom {
                         need(body, "name");
                         if (!(body.get("message") instanceof String)) throw new KinloomException(400, "missing 'message' (\"\" when the character speaks first)");
                         String speaker = body.get("speaker") instanceof String && !((String) body.get("speaker")).isEmpty() ? (String) body.get("speaker") : "player";
-                        Said s = chat(session, name, body.get("message"), facts(body), speaker, null, null, body.get("max_chars"), image(body));
+                        Said s = chat(session, name, body.get("message"), facts(body), speaker, null, null, body.get("max_chars"), image(body),
+                            body.get("refused"), Boolean.TRUE.equals(body.get("drop")));
                         Map<String, Object> r = map("text", s.text, "declared", isDeclared(session, name));
                         r.putAll(feelings(session, name, speaker));
                         r.putAll(replyExtra(s, body));
@@ -8017,7 +8616,16 @@ public final class Kinloom {
                     case "create":
                         need(body, "what");
                         if (!body.containsKey("example")) throw new KinloomException(400, "missing 'example' (an example answer: it is also the offline answer)");
-                        return map("value", create(session, body.get("what"), body.get("example"), body.get("context"), body.get("count"), Py.truthy(body.get("instant")), null, image(body)));
+                        @SuppressWarnings("unchecked")
+                        java.util.function.Predicate<Object> hook = body.get("__item") instanceof java.util.function.Predicate ? (java.util.function.Predicate<Object>) body.get("__item") : null;
+                        Object[] made = create(session, body.get("what"), body.get("example"), body.get("context"), body.get("count"), Py.truthy(body.get("instant")), null,
+                                image(body), body.get("offline"), body.get("refused"), hook);
+                        return map("value", made[0], "source", made[1], "streamed", (long) (int) (Integer) made[2]);
+                    case "remark": {
+                        if (!(body.get("about") instanceof String)) throw new KinloomException(400, "missing 'about' (what just happened, as text)");
+                        Said s = remark(session, body.get("about"), body.get("who"), facts(body), body.get("offline"), body.get("max_chars"));
+                        return map("text", s.text, "source", s.source);
+                    }
                     case "tools":
                         if (!body.containsKey("tools")) return map("tools", new ArrayList<Object>(tools(session, null)));
                         if (!(body.get("tools") instanceof Map)) throw new KinloomException(400, "'tools' must be an object {name: example args}");
@@ -8152,7 +8760,8 @@ public final class Kinloom {
 
         Map<String, Object> chatStream(String session, Map<String, Object> body, java.util.function.Consumer<String> onPiece) {
             String speaker = body.get("speaker") instanceof String && !((String) body.get("speaker")).isEmpty() ? (String) body.get("speaker") : "player";
-            Said s = chat(session, body.get("name"), body.get("message"), body.get("facts"), speaker, onPiece, null, body.get("max_chars"), body.get("image"));
+            Said s = chat(session, body.get("name"), body.get("message"), body.get("facts"), speaker, onPiece, null, body.get("max_chars"), body.get("image"),
+                body.get("refused"), Boolean.TRUE.equals(body.get("drop")));
             Map<String, Object> r = map("done", true, "text", s.text);
             r.putAll(feelings(session, body.get("name"), speaker));
             r.putAll(replyExtra(s, body));
@@ -8219,6 +8828,9 @@ public final class Kinloom {
                 case "worn": return Arrays.asList(Souls.worn(Py.strings(a.get(0))));
                 case "drop_narrated": return Arrays.asList((Object[]) Souls.dropNarrated((String) a.get(0), (String) a.get(1), Py.strings(a.get(2))));
                 case "inner": return Souls.innerOfReply(a.get(0));
+                case "reason": return Kinloom.reason(a.get(0));
+                case "refused_note": return Kinloom.refusedNote((String) a.get(0), a.get(1), (String) a.get(2));
+                case "items": { Items it = new Items(); List<Object> got = new ArrayList<>(); for (Object p : Py.asList(a.get(0))) got.addAll(it.feed((String) p)); return got; }
                 case "card": return Souls.card(a.get(0), (String) a.get(1));
                 case "describe_card": return Souls.describe(Py.asMap(a.get(0)));
                 case "mood_now": return Arrays.asList(Souls.moodNow(Py.asMap(a.get(0)), Py.d(a.get(1)), (String) a.get(2)));
@@ -8326,6 +8938,9 @@ public final class Kinloom {
                         a.size() > 9 && a.get(9) != null ? Py.d(a.get(9)) : Souls.SECRET_TRUST);
                 }
                 case "steer_block": return Prompts.steerBlock(a.get(0) == null ? "" : (String) a.get(0));
+                case "remark_system": return Prompts.remarkSystem((String) a.get(0), (String) a.get(1), intOrNull(a.get(2)));
+                case "remark_user": return Prompts.remarkUser((String) a.get(0));
+                case "refused_block": return Prompts.refusedBlock(Py.asMap(a.get(0)));
                 case "deeds_user": return Prompts.deedsUser((String) a.get(0), (String) a.get(1), (String) a.get(2), (String) a.get(3));
                 case "soul_user": return Prompts.soulUser((String) a.get(0), Py.strings(a.get(1)));
                 case "repair": return Prompts.repair((String) a.get(0));

@@ -160,6 +160,15 @@ class Shape:
                 return False, None, "%s must be at most %d characters" % (path, self.info["max"])
             return True, v, None
         if k == "list":
+            if isinstance(value, dict):
+                # JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+                lists = [v for v in value.values() if isinstance(v, list)]
+                if lists:
+                    value = lists[0]            # the first list, as items stream it (Items)
+                elif self.info["item"].kind == "object":
+                    ok, v, _ = self.info["item"].check(value, path + "[0]")
+                    if ok:
+                        return True, [v], None
             if not isinstance(value, list):
                 return False, None, "%s must be a list" % path
             if len(value) > MAX_LIST:
@@ -252,6 +261,62 @@ def clean_text(text):
     """One tidy line: control characters (terminal escapes, NUL...) removed, whitespace collapsed."""
     text = _CONTROL.sub("", _ANSI.sub("", str(text)))
     return " ".join(text.split())
+
+
+class Items:
+    """The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+    {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements."""
+
+    def __init__(self):
+        self.buf = ""
+        self.i = 0
+        self.stack = []
+        self.string = False
+        self.escape = False
+        self.level = None
+        self.start = 0
+        self.done = False
+
+    def feed(self, piece):
+        out = []
+        if self.done or not piece:
+            return out
+        self.buf += piece
+        while self.i < len(self.buf):
+            ch = self.buf[self.i]
+            if self.string:
+                if self.escape:
+                    self.escape = False
+                elif ch == "\\":
+                    self.escape = True
+                elif ch == '"':
+                    self.string = False
+            elif ch == '"':
+                self.string = True
+            elif ch == "[" or ch == "{":
+                self.stack.append(ch)
+                if ch == "[" and self.level is None and (len(self.stack) == 1 or (len(self.stack) == 2 and self.stack[0] == "{")):
+                    self.level = len(self.stack)
+                    self.start = self.i + 1
+            elif ch == "]" or ch == "}":
+                if ch == "]" and self.level is not None and len(self.stack) == self.level:
+                    self._emit(self.buf[self.start:self.i], out)
+                    self.done = True
+                    self.i += 1
+                    return out
+                if self.stack:
+                    self.stack.pop()
+            elif ch == "," and self.level is not None and len(self.stack) == self.level:
+                self._emit(self.buf[self.start:self.i], out)
+                self.start = self.i + 1
+            self.i += 1
+        return out
+
+    @staticmethod
+    def _emit(text, out):
+        text = text.strip()
+        if text:
+            out.append(text)
 
 
 def find_json(text, limit=100_000):

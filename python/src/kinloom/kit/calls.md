@@ -6,30 +6,32 @@ sky = kl.decide("WEATHER", {"season": "winter", "day": 12}, {"sky": ["sun", "sno
 #   -> {"sky": "snow", "wind": 0.7}: instant every frame, refreshed in the background
 item = kl.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50], "story": "Found under a cold stone."}, context={"depth": 3})
 #   -> a dict like the example (~1-2 s); count=5 -> a list of 5; instant=True -> from a pool
+plan = kl.create("a hut", {"x": [0, 40]}, check=lambda p: "" if p["x"] < 30 else "no room", offline={"x": 3})
+#   check: your rules ("" or why, fixed once by the model); chat, decide, act, suggest take check= too
+kl.create("a town's parts", [{"kind": ["house", "well"]}], each=print)   # each part as it is written
+shout = kl.remark("a lighthouse went up", who="a fisherman")   # a passer-by's line, no character to declare
 kl.character("ROVER", "the player's dog", tools={"sit": {}, "fetch": {"item": "stick"}})   # or Python functions: they run
-for tool, args in kl.act("ROVER", {"order": typed_text}):   # instant: validated calls since the last time
+for tool, args in kl.act("ROVER", {"order": typed_text}):   # instant: validated calls
     run(tool, args)
-kl.tools({"open_door": {"door": "north"}})   # the game's tools, once; characters name them: tools=["open_door"]
-seen = kl.create("what the screen shows", {"danger": [0.0, 1.0]}, image=png_bytes)   # it looks: bytes, a path, base64
+kl.tools({"open_door": {"door": "north"}})   # the game's tools: characters name them
+seen = kl.create("what the screen shows", {"danger": [0.0, 1.0]}, image=png_bytes)   # it looks at it
 kl.character("VEGA", "a short, excited announcer", lines={"built": ["{who} built a {what}!"]}, events={"built": ["who", "what"]})
 line = kl.say("VEGA", "built", {"who": "Ana", "what": "bridge"})   # instant, only your facts in it
 reply = kl.chat("MIRA", typed_text, {"gold": 3}, speaker="Ana")   # a free answer in character, ~1 s (not per frame)
 kl.steer("MIRA", "admit the sword")   # the game decides her next reply
 for tool, args in reply.do: run(tool, args)   # with tools: what she decided in this reply
-audio = kl.speak("MIRA", reply)          # her voice: audio.data (WAV), audio.path, or None
-if audio: play(audio.path)               # None: no voice, the text is enough
-said = kl.listen(wav_bytes)              # what the player said ("" if nothing)
+audio = kl.speak("MIRA", reply)   # her voice: audio.path (WAV) or None
+said = kl.listen(wav_bytes)       # speech -> text
 kl.event("the player stole bread", by="PLAYER", seen_by=["BAKER"], tag="theft")   # only witnesses know
-kl.meet("BAKER", "GUARD")        # they share it; then kl.knows("GUARD", "theft"), kl.opinion("GUARD", "PLAYER") -1..1
+kl.meet("BAKER", "GUARD")   # they share it: kl.knows("GUARD", "theft"), kl.opinion("GUARD", "PLAYER")
 kl.mind("RAIDER", "a cautious raider", senses={"hp": [0.0, 1.0], "allies": [0, 20]}, actions={"flee": {}, "flank": {}},
-        rules={"flee": ["hp low"], "flank": ["allies above 2"]})     # once
-a = kl.think("RAIDER", {"hp": 0.3, "allies": 5}, who="raider-7")     # every frame, every unit, no model call: a["action"]
-picks = kl.suggest("MIRA", ["Ask about the sword", "Leave"], speaker="Ana")   # choices to show, one per example
-talk = kl.converse("MIRA", "BAKER", about="the smoke")   # they talk: [{"who", "text"}] ([] offline)
-slot = kl.save(); kl.load(slot)       # the AI's state as one string, in the game's save file
-seen_by_ai = kl.inspect()             # a debug overlay: moods, feelings, last words
-# People talking to a character, ready-made: kinloom.talk.PygameTalkBox (pygame) or Talk (any engine); voice=True
-# says replies sentence by sentence and records while Tab is held.
+        rules={"flee": ["hp low"], "flank": ["allies above 2"]})   # once
+a = kl.think("RAIDER", {"hp": 0.3, "allies": 5}, who="raider-7")   # every frame, no model call: a["action"]
+picks = kl.suggest("MIRA", ["Ask about the sword", "Leave"], speaker="Ana")   # one choice per example
+talk = kl.converse("MIRA", "BAKER", about="the smoke")   # they talk: [{"who", "text"}]
+slot = kl.save(); kl.load(slot)   # in the game's save file
+seen_by_ai = kl.inspect()   # a debug overlay
+# A ready-made talk box: kinloom.talk.PygameTalkBox (pygame) or Talk (any engine).
 
 ## gdscript
 # Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
@@ -37,6 +39,10 @@ var sky = Kinloom.decide("WEATHER", {"season": "winter", "day": 12}, {"sky": ["s
 #   -> {"sky": "snow", "wind": 0.7}: instant every frame, refreshed in the background
 var item = await Kinloom.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50], "story": "Found under a cold stone."}, {"depth": 3})
 #   -> one Dictionary like the example (~1-2 s); create(what, example, {}, 5) -> an Array of 5
+var plan = await Kinloom.create("a hut", {"x": [0, 40]}, {}, 0, false, null, func(p): return "" if p.x < 30 else "off the plot", {"x": 3})
+#   check: your rules ("" accepts; else why: fixed once), offline: yours; chat, decide, act, suggest take a check too
+await Kinloom.create("a town's parts", [{"kind": ["house", "well"]}], {}, 0, false, null, null, null, func(p): print(p))   # each, as written
+var shout: String = await Kinloom.remark("a lighthouse went up", "a fisherman")   # a passer-by's line, no character
 Kinloom.character("ROVER", "the player's dog", {"tools": {"sit": {}, "fetch": {"item": "stick"}}})
 for a in Kinloom.act("ROVER", {"order": typed_text}):        # instant: validated calls, a.tool and a.args
 	run(a.tool, a.args)
@@ -66,6 +72,12 @@ var sky = kl.Decide("WEATHER", new Dictionary<string, object> { ["season"] = "wi
 //   -> instant every frame, refreshed in the background: sky["sky"], sky["wind"]
 var item = await kl.Create("an item found in a cave", new Dictionary<string, object> { ["name"] = "Glowcap",
     ["value"] = new List<object> { 1, 50 } }, new Dictionary<string, object> { ["depth"] = 3 });   // ~1-2 s; count: 5 -> a list
+var plan = await kl.Create("a hut", new Dictionary<string, object> { ["x"] = new List<object> { 0, 40 } },
+    check: p => Convert.ToInt32(((IDictionary<string, object>)p!)["x"]) < 30 ? "" : "off the plot",
+    offline: new Dictionary<string, object> { ["x"] = 3 });   // your rules: fixed once; then yours (Chat, Decide, Act, Suggest too)
+await kl.Create("a town's parts", new List<object> { new Dictionary<string, object> { ["kind"] = new List<object> { "house", "well" } } },
+    each: part => Show("part", part!));      // each part as soon as it is written
+string shout = await kl.Remark("a lighthouse went up", "a fisherman");   // a passer-by's line, no character to declare
 kl.Character("ROVER", "the player's dog", new Dictionary<string, object> { ["tools"] = new Dictionary<string, object> {
     ["sit"] = new Dictionary<string, object>(), ["fetch"] = new Dictionary<string, object> { ["item"] = "stick" } } });
 foreach (var a in kl.Act("ROVER", new Dictionary<string, object> { ["order"] = typedText })) Run(a.Tool, a.Args);  // instant
@@ -96,6 +108,10 @@ const sky = kl.decide("WEATHER", { season: "winter", day: 12 }, { sky: ["sun", "
 //   -> { sky: "snow", wind: 0.7 }: instant every frame, refreshed in the background
 const item = await kl.create("an item found in a cave", { name: "Glowcap", value: [1, 50], story: "Found under a cold stone." }, { context: { depth: 3 } });
 //   -> one object like the example (~1-2 s); { count: 5 } -> an array of 5; { instant: true } -> from a pool
+const plan = await kl.create("a hut", { x: [0, 40] }, { check: (p) => (p.x < 30 ? "" : "off the plot"), offline: { x: 3 } });
+//   check: your rules ("" accepts; else why: fixed once), offline: yours; chat, decide, act, suggest take { check } too
+await kl.create("a town's parts", [{ kind: ["house", "well"] }], { each: (p) => show("part", p) });   // each part as written
+const shout = await kl.remark("a lighthouse went up", { who: "a fisherman" });   // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", { tools: { sit: {}, fetch: { item: "stick" } } });
 for (const a of kl.act("ROVER", { order: typedText })) run(a.tool, a.args);   // instant: validated calls
 await kl.tools({ open_door: { door: "north" } });   // the game's tools, once: characters name them, { tools: ["open_door"] }
@@ -124,6 +140,10 @@ local sky = kl:decide("WEATHER", { season = "winter", day = 12 }, { sky = { "sun
 --   -> instant table every frame, refreshed in the background
 kl:create("an item found in a cave", { name = "Glowcap", value = { 1, 50 } }, { context = { depth = 3 } }, function(item) found = item end)
 --   { count = 5 } -> a list of 5; the answer arrives in the callback (~1-2 s)
+kl:create("a hut", { x = { 0, 40 } }, { check = function(p) return p.x < 30 and "" or "off the plot" end,
+  offline = { x = 3 } }, function(plan) hut = plan end)   -- your rules: fixed once; then yours (chat, decide, act, suggest too)
+kl:create("a town's parts", { { kind = { "house", "well" } } }, { each = function(p) place(p) end })   -- each part as written
+kl:remark("a lighthouse went up", { who = "a fisherman" }, function(text) shout = text end)   -- a passer-by, no character
 kl:character("ROVER", "the player's dog", { tools = { sit = {}, fetch = { item = "stick" } } })
 for _, a in ipairs(kl:act("ROVER", { order = typed_text })) do run(a.tool, a.args) end   -- instant: validated calls
 kl:tools({ open_door = { door = "north" } })   -- the game's tools, once: characters name them, tools = { "open_door" }
@@ -149,6 +169,11 @@ let sky = kl.decide("WEATHER", obj! { "season" => "winter" }, obj! { "sky" => ve
 //   -> instant every frame, refreshed in the background
 let item = kl.create("an item found in a cave", obj! { "name" => "Glowcap", "value" => vec![1, 50] }, obj! { "depth" => 3 }, 0, false);
 //   blocking ~1-2 s (create_async off the frame); count 5 -> a list of 5
+let plan = kl.create_checked("a hut", obj! { "x" => vec![0, 40] }, obj! {},
+    |p: &Json| if p.get("x").as_f64() < 30.0 { String::new() } else { "off the plot".into() }, obj! { "x" => 3 });
+//   your rules ("" accepts; else why: fixed once), then yours; also chat_checked, decide_checked, act_checked
+kl.create_each("a town's parts", Json::Arr(vec![obj! { "kind" => vec!["house", "well"] }]), obj! {}, |p: &Json| show("part", &p.to_json()));
+let shout = kl.remark("a lighthouse went up", "a fisherman", Json::Null, &[], 0);   // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", obj! { "tools" => obj! { "sit" => obj! {}, "fetch" => obj! { "item" => "stick" } } });
 for a in kl.act("ROVER", obj! { "order" => typed_text.as_str() }) { run(&a.tool, &a.args); }   // instant: validated calls
 kl.tools(obj! { "open_door" => obj! { "door" => "north" } });   // the game's tools, once: characters name them
@@ -174,6 +199,11 @@ Map<String, Object> sky = kl.decide("WEATHER", map("season", "winter"), map("sky
 //   -> instant every frame, refreshed in the background
 kl.createAsync("an item found in a cave", map("name", "Glowcap", "value", list(1, 50)), map("depth", 3), 0)
   .thenAccept(item -> found = (Map<String, Object>) item);                    // ~1-2 s; count 5 -> a list of 5
+Object plan = kl.create("a hut", map("x", list(0, 40)), null,
+    p -> ((Number) ((Map<?, ?>) p).get("x")).intValue() < 30 ? "" : "off the plot", map("x", 3));   // your rules, fixed once
+//   chat, decide, act, suggest take a check too
+kl.create("a town's parts", list(map("kind", list("house", "well"))), null, 0, false, null, null, null, p -> show("part", p));
+String shout = kl.remark("a lighthouse went up", "a fisherman", null, null, 0);   // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", map("tools", map("sit", map(), "fetch", map("item", "stick"))));
 for (Kinloom.Action a : kl.act("ROVER", map("order", typedText))) run(a.tool, a.args);   // instant: validated calls
 kl.tools(map("open_door", map("door", "north")));   // the game's tools, once: characters name them, "tools", list("open_door")
@@ -199,6 +229,12 @@ kinloom::Json sky = kl.decide("WEATHER", obj({{"season", "winter"}}), obj({{"sky
 //   -> instant every frame, refreshed in the background
 auto item = kl.create_async("an item found in a cave", obj({{"name", "Glowcap"}, {"value", arr({1, 50})}}), obj({{"depth", 3}}));
 //   std::future (~1-2 s); count 5 -> a list of 5
+auto plan = kl.create_checked("a hut", obj({{"x", arr({0, 40})}}), obj({}),
+    [](const kinloom::Json& p) { return p["x"].num() < 30 ? std::string() : std::string("off the plot"); }, obj({{"x", 3}}));
+//   your rules ("" accepts; else why: fixed once), then yours; also chat_checked, decide_checked, act_checked
+kl.create("a town's parts", arr({obj({{"kind", arr({"house", "well"})}})}), obj({}), 0, false, {}, nullptr, kinloom::Json(),
+          [](const kinloom::Json& p) { show("part", p.dump()); });   // each part as soon as it is written
+std::string shout = kl.remark("a lighthouse went up", "a fisherman");   // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", obj({{"tools", obj({{"sit", obj({})}, {"fetch", obj({{"item", "stick"}})}})}}));
 for (auto& a : kl.act("ROVER", obj({{"order", typed_text}}))) run(a.tool, a.args);   // instant: validated calls
 kl.tools(obj({{"open_door", obj({{"door", "north"}})}}));   // the game's tools, once: characters name them
@@ -223,6 +259,9 @@ Any name: a character, a system ("WEATHER"), a group. The example is the shape o
 POST /v1/decide {"name": "WEATHER", "situation": {"season": "winter"}, "choices": {"sky": ["sun", "snow"], "wind": [0.0, 1.0]}}
      -> {"decision": {"sky": "snow", "wind": 0.7}}   instant; call it in the background and keep the last answer
 POST /v1/create {"what": "an item found in a cave", "example": {"name": "Glowcap", "value": [1, 50]}, "context": {"depth": 3}, "count": 0}
+     -> {"value": {...}, "source": "model" or "offline"}; "offline": your own answer; your rules refused it? send it back once:
+     {..., "refused": {"answer": <it>, "why": "off the plot"}} (chat too); "stream": true -> SSE {"item"} each, then {"done"}
+POST /v1/remark {"about": "a lighthouse went up", "who": "a fisherman"} -> {"text", "source"}   a passer-by's line
 POST /v1/character {"name": "ROVER", "personality": "the player's dog", "tools": {"sit": {}, "fetch": {"item": "stick"}}}
 POST /v1/act    {"name": "ROVER", "situation": {"order": "<typed text>"}}  -> {"actions": [{"tool", "args"}]}
 POST /v1/tools  {"tools": {"open_door": {"door": "north"}}}   the game's tools, once; a character names them: "tools": ["open_door"]

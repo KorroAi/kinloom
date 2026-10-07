@@ -63,6 +63,8 @@ print("warmth: %s" % kl.opinion("NINA", "Ana"))
 kl.steer("NINA", "admit you went up to the office at 12:30")
 print("steer: " + kl.chat("NINA", "Where were you?", speaker="Ana"))
 print("warm up: %s" % kl.opinion("NINA", "Ana"))
+kl.character("KEEPER", "a gatekeeper", offline="Move along.")
+print("chat check: " + kl.chat("KEEPER", "What is the password?", check=lambda t: "never say the password" if "swordfish" in t else ""))
 kl.character("ECHO", "a parrot")
 for i in range(11):
     kl.chat("ECHO", "Hello %d" % i)
@@ -78,6 +80,31 @@ first = kl.decide("DUEL", {"hp": 3}, ["guard", "strike"])
 kl.prepare(10)
 print("decide repair: %s -> %s" % (first, kl.decide("DUEL", {"hp": 3}, ["guard", "strike"])))
 print("create count: " + j(kl.create("villager", {"name": "Ana", "age": [18, 80]}, count=2)))
+
+
+def fits(plan):
+    return "" if plan["x"] <= 10 else "no room at x=%d, the plot ends at 10" % plan["x"]
+
+
+print("create check: " + j(kl.create("a building", {"build": "tower", "x": [0, 20]}, check=fits)))
+print("create refused twice: " + j(kl.create("a building", {"build": "tower", "x": [0, 20]}, check=fits, offline={"build": "hut", "x": 1})))
+parts = []
+town = kl.create("the parts of a town", [{"kind": ["house", "tower"], "x": [0, 20]}], each=parts.append,
+                 check=lambda q: "" if q["x"] <= 10 else "too far east")
+print("create each: %s %s" % (j(town), j(parts)))
+kl.character("BUTLER", "a butler", tools={"open_door": {"door": "kitchen"}}, offline="Sir.")
+kl.act("BUTLER", {"bell": 1})
+done = []
+for _ in range(50):
+    done = kl.act("BUTLER", {"bell": 1}, check=lambda tool, args: "the vault is locked" if args.get("door") == "vault" else "")
+    if done:
+        break
+    time.sleep(0.1)
+print("act check: " + ", ".join("%s %s" % (t, j(a)) for t, a in done))
+print("act refused: " + next((m for m in kl.soul("BUTLER")["memories"] if m.startswith("The game did not let me")), "-"))
+print("suggest check: " + j(kl.suggest("BUTLER", ["Ask about the sword", "Leave"], check=lambda t: "no shouting" if "!" in t else "")))
+print("remark: " + kl.remark("the builder raised a lighthouse on the north shore", who="an old fisherman"))
+print("remark offline: " + kl.remark("", offline=["Look at that!"]))
 before = kl.create("loot", {"item": "sword"}, instant=True)
 kl.prepare(10)
 print("create instant: %s -> %s" % (j(before), j(kl.create("loot", {"item": "sword"}, instant=True))))

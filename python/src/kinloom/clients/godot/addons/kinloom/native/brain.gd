@@ -42,6 +42,11 @@ const MIN_RUMOR := 0.1
 const CONFIG_KEYS := ["personality", "soul", "lines", "offline", "events", "tools", "max_words", "max_chars", "every", "language",
 	"group", "trust", "invent", "voice", "warmth", "secret_trust", "warm_up"]
 const MAX_STEER := 300
+const MAX_WHY := 300           # why the game refused a created answer (create's check), in characters
+const MAX_STREAMED := 200       # items of one list answer handed over as they come
+const MAX_ABOUT := 300          # characters of what a remark is about
+const REMARK_WORDS := 20
+const DEFAULT_WHO := "someone in the crowd"
 const REPLY_TIMEOUT := 8.0
 
 var hedge_after := 2.5
@@ -81,6 +86,9 @@ var _clips := {}   # name + label already journaled as too long
 var switches := 0
 var rises := {}
 var steers := {}                  # session|name -> what the game decided for the next reply (steer)
+var last_decided := {}            # session|name -> the last reply's actions (chat's check takes them back)
+var last_undo := {}               # session|name -> what the last reply changed inside (chat's check takes it back)
+var remark_turns := {}            # session|who -> offline remarks said in turn
 var reply_timeout := REPLY_TIMEOUT
 var events := 0
 var spreads := 0
@@ -230,6 +238,21 @@ static func _voice_from_env() -> Variant:
 
 
 # ---------------- plumbing ----------------
+
+## What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses.
+static func reason(verdict: Variant) -> String:
+	if verdict == null or (verdict is bool and verdict) or (verdict is String and verdict == ""):
+		return ""
+	if verdict is bool:
+		return "it breaks the game's rules"
+	var why := Py.squash(Py.clean(Py.text_of(verdict))).substr(0, MAX_WHY)
+	return why if why != "" else "refused"
+
+
+## What a character remembers when the game refused one of its actions (act's check).
+static func refused_note(tool: String, args: Variant, why: String) -> String:
+	return "The game did not let me " + tool + " " + Py.dumps(args, false) + ": " + why
+
 
 func _raise(message: String, type_error := false) -> void:
 	if _fault == "":
@@ -806,16 +829,20 @@ func _known(session: String, name: String, speaker: String, k := 6) -> Array:
 
 
 ## What changed inside after a reply: mood, feelings, memories, gesture, the actions decided while talking.
-func _inner(session: String, c, speaker: String, data: Variant) -> Array:
+## undo: filled with what to put back if the game refuses the reply (chat's check).
+func _inner(session: String, c, speaker: String, data: Variant, undo: Dictionary = {}) -> Array:
 	var i := Souls.inner_of_reply(data)
 	var key: String = session + SEP + c.name
+	undo["notes"] = []
 	if i.mood != null and _allowed(i.mood):
+		undo["mood"] = moods.get(key)
 		moods[key] = {"word": i.mood, "level": i.intensity, "t": clock()}
 	if i.feel != null and i.feel != 0:
 		var change: float = i.feel
 		if change > 0:
 			var now := wall()
 			var rkey := key + SEP + speaker
+			undo["rise"] = rises.get(rkey)
 			var rise: Array = rises.get(rkey, [now, 0.0, -1e18])
 			if now - rise[2] > Souls.NEW_TALK:
 				rise = [now, 0.0, rise[2]]
@@ -825,14 +852,18 @@ func _inner(session: String, c, speaker: String, data: Variant) -> Array:
 			if change < i.feel:
 				_log("refused", c.name, "feel: " + speaker + " already won " + Py.fixed(c.warm_up, 1, true) + " this conversation")
 		if change != 0:
-			feel(session, c.name, speaker, change)
+			var before := opinion(session, c.name, speaker)
+			undo["feel"] = feel(session, c.name, speaker, change) - before
 	if i.self != "" and _allowed(i.self):
 		memory.add(session, c.name, i.self, 0.9, {"about": Lines.SELF})
+		undo.notes.append(i.self)
 	if i.remember != "":
 		if _allowed(i.remember):
 			memory.add(session, c.name, i.remember, 0.8, {"about": speaker})
+			undo.notes.append(i.remember)
 		else:
 			_log("refused", c.name, "remember: blocked by the content filter")
+	undo["gesture"] = [gesture_seen.get(key), gestures.get(key)]
 	var fresh: bool = i.gesture != "" and _allowed(i.gesture) and not Souls.same_action(i.gesture, gesture_seen.get(key, ""))
 	gesture_seen[key] = Py.lower(i.gesture)
 	if fresh:
@@ -1161,9 +1192,10 @@ func _write_decision(session: String, c, shape, situation: Dictionary, choices: 
 	d.thinking = false
 
 
+## on_text: the answer's pieces as they come; used: a Callable, true when part of it was already used (then no repair).
 func _structured(kind: String, name: String, system: String, user: String, shape, foreground: bool, max_tokens := 500,
-		timeout := 0.0, images: Array = []) -> Variant:
-	var r: Dictionary = await _ask(kind, name, system, user, true, foreground, max_tokens, null, timeout, images)
+		timeout := 0.0, images: Array = [], on_text: Variant = null, used: Variant = null) -> Variant:
+	var r: Dictionary = await _ask(kind, name, system, user, true, foreground, max_tokens, on_text, timeout, images)
 	if not r.ok:
 		return null
 	var p: Array = shape.parse(r.text)
@@ -1172,6 +1204,8 @@ func _structured(kind: String, name: String, system: String, user: String, shape
 		return null
 	if p[0]:
 		return p[1]
+	if used is Callable and used.call():
+		return null
 	_log("repair", name, kind + ": " + str(p[2]))
 	if p[2] == Py.CUT:				  # stopped by the token limit: room to finish
 		max_tokens = mini(4000, max_tokens * 2)
@@ -1668,8 +1702,11 @@ func mind_names(session: String) -> Array:
 
 # ---------------- create ----------------
 
+## [value, "model" or "offline", streamed] (null after _raise). offline: the game's own offline answer; refused0:
+## {answer, why} the game refused last time (create's check). on_item: for a list answer, each item as soon as the model
+## has written it, returning false when the game refuses it (left out); streamed: how many items it already got.
 func create(session: String, what0: Variant, example: Variant, ctx: Variant = null, count: Variant = null, instant := false,
-		timeout := 0.0, image: Variant = null) -> Variant:
+		timeout := 0.0, image: Variant = null, offline: Variant = null, refused0: Variant = null, on_item: Variant = null) -> Variant:
 	if Py.truthy(count) and example is Array and example.size() == 1:
 		example = example[0]
 	var made: Array = ShapeLib.Shape.of(example)
@@ -1677,6 +1714,21 @@ func create(session: String, what0: Variant, example: Variant, ctx: Variant = nu
 		_raise(made[1])
 		return null
 	var shape = made[0]
+	var fallback = shape.default_value()
+	if offline != null:
+		var c: Array = shape.check(offline)
+		if not c[0]:
+			_raise("create: offline must be shaped like the example: " + str(c[2]))
+			return null
+		fallback = c[1]
+	var refused = null
+	if refused0 != null:
+		if not (refused0 is Dictionary) or not refused0.has("answer") or not (refused0.get("why") is String):
+			_raise('create: refused must be {"answer": the refused answer, "why": "the reason"}, got ' + Py.py_repr(refused0))
+			return null
+		var why := Py.squash(Py.clean(refused0.why)).substr(0, MAX_WHY)
+		if why != "":
+			refused = {"answer": refused0.answer, "why": why}
 	var what := Py.clean(Py.text_of(what0))
 	_clip_note(what.substr(0, MAX_WHAT), "what", what, MAX_WHAT, true)
 	_clip_note(what.substr(0, MAX_WHAT), "context", ctx)
@@ -1685,35 +1737,182 @@ func create(session: String, what0: Variant, example: Variant, ctx: Variant = nu
 	if instant:
 		if not pictures.is_empty():
 			_log("refused", what, "image: not used with instant=True (those items are made ahead)")
-		return _from_pool(session, what, shape, ctx)
+		var got: Array = _from_pool(session, what, shape, ctx)
+		return [got[1], "model", 0] if got[0] else [_copy(fallback), "offline", 0]
 	if Py.truthy(count):
 		var r := Lines.arg_num(count, "count")
 		if r[0] == null:
 			_raise(r[1])
 			return null
 		var n := clampi(int(r[0]), 1, 50)
-		var items: Array = await _create_many(session, what, shape, ctx, n, true, timeout, pictures)
+		var streamed := []
+		var gate := {"open": true}
+		var feed = _streamer(shape, on_item, streamed, n, gate) if on_item is Callable else null
+		var items: Array = await _create_many(session, what, shape, ctx, n, true, timeout, pictures, feed)
+		gate.open = false
+		if not streamed.is_empty():
+			items = streamed.duplicate()
+		var source := "offline" if items.is_empty() else "model"
 		while items.size() < n:
-			items.append(shape.default_value())
-		return items
+			items.append(_copy(fallback))
+		return [items, source, streamed.size()]
 	if provider == null:
-		return shape.default_value()
+		return [_copy(fallback), "offline", 0]
+	if refused != null:
+		_log("refused", what, "create: the game refused it: " + refused.why)
 	var system := Prompts.create_system(what, shape, _written())
-	var user := _context(session, null, what) + Prompts.context_block(ctx) + Prompts.picture_block(not pictures.is_empty())
-	var value = await _structured("create", what, system, user, shape, true, 1500, timeout, pictures)
+	var user := _context(session, null, what) + Prompts.context_block(ctx) + Prompts.picture_block(not pictures.is_empty()) + \
+		Prompts.refused_block(refused)
+	var kept := []
+	var gate := {"open": true}
+	var feed = _streamer(shape.item, on_item, kept, MAX_STREAMED, gate) if on_item is Callable and shape.kind == "list" else null
+	var used = (func() -> bool: return not kept.is_empty()) if feed != null else null
+	var value = await _structured("create", what, system, user, shape, true, 1500, timeout, pictures, feed, used)
+	gate.open = false
+	if not kept.is_empty():
+		value = kept.duplicate()
 	if value == null:
 		stats_of.offline_answers += 1
-		return shape.default_value()
+		return [_copy(fallback), "offline", 0]
 	_log("create", what, Py.dumps(value).substr(0, 300))
-	return value
+	return [value, "model", kept.size()]
 
 
-func _create_many(session: String, what: String, shape, ctx: Variant, count: int, foreground: bool, timeout := 0.0, pictures: Array = []) -> Array:
+## on_text for a list answer: each finished item, valid and allowed, goes to on_item at once (kept when accepted).
+## gate.open false (the call returned): a stream that goes on (a call given up on) hands nothing more over.
+func _streamer(item_shape, on_item: Callable, kept: Array, limit: int, gate: Dictionary) -> Callable:
+	var items = ShapeLib.Items.new()
+	return func(piece: String) -> void:
+		if not gate.open:
+			return
+		for t in items.feed(piece):
+			if kept.size() >= limit:
+				return
+			var p: Array = item_shape.parse(t)
+			if not p[0] or not _allowed(p[1]) or not on_item.call(p[1]):
+				continue
+			kept.append(p[1])
+
+
+## {text, source}: a short line said out loud by someone in the crowd (no character to declare) about what just
+## happened. offline: the game's own lines ({fact} placeholders), taken in turn when no model answers.
+func remark(session: String, about0: Variant, who0: Variant = null, facts0: Variant = null, offline: Variant = null,
+		max_chars: Variant = null) -> Dictionary:
+	if not (about0 is String):
+		_raise("remark: about must be a string (what just happened), got " + Py.py_repr(about0))
+		return {}
+	var about := Py.squash(Py.clean(about0)).substr(0, MAX_ABOUT)
+	var who := Py.squash(Py.clean(Py.text_of(who0) if Py.truthy(who0) else "")).substr(0, MAX_NAME)
+	if who == "":
+		who = DEFAULT_WHO
+	var facts := _mapping(facts0, "facts")
+	if _fault != "":
+		return {}
+	_clip_note(who, "facts", facts)
+	var given := []
+	var bad_lines := 'remark: offline must be a line or a list of lines, like ["Would you look at that!"], got '
+	if offline is String:
+		given = [offline]
+	elif offline is Array:
+		for x in offline:
+			if not (x is String):
+				_raise(bad_lines + Py.py_repr(offline))
+				return {}
+			given.append(x)
+	elif offline != null:
+		_raise(bad_lines + Py.py_repr(offline))
+		return {}
+	var limit := Lines.box_limit(max_chars)
+	if provider != null and about != "":
+		var r: Dictionary = await _ask("remark", who, Prompts.remark_system(who, _written(), limit),
+			_context(session, null, about) + Prompts.facts_block(facts) + Prompts.remark_user(about), true, true, 120)
+		var data = Py.find_json(r.text) if r.ok else null
+		var line = data.get("line") if data is Dictionary else null
+		var said := _valid_remark(line, facts, about, limit) if line is String else ""
+		if said != "":
+			_log("remark", who, said, {"about": about})
+			return {"text": said, "source": "model"}
+	var usable := []
+	for t in given:
+		var ok := true
+		for p in Lines.placeholders(t):
+			if not facts.has(p):
+				ok = false
+		if ok:
+			usable.append(t)
+	var spoken := ""
+	if not usable.is_empty():
+		var key: String = session + SEP + who
+		var turn: int = remark_turns.get(key, 0)
+		remark_turns[key] = turn + 1
+		_trim(remark_turns)
+		spoken = Stream.fit_chars(Lines.fill(usable[turn % usable.size()], facts), limit)
+	stats_of.offline_answers += 1
+	_log("remark", who, spoken, {"about": about, "source": "offline"})
+	if spoken == "":
+		_tell_empty(session, who, "remark", "remark by " + who + " answered \"\" (give it offline=[...] lines, said when no model answers)")
+	return {"text": spoken, "source": "offline"}
+
+
+## The remark as said: one short line, the filter passed, no numbers the game did not give; else "".
+func _valid_remark(line: String, facts: Dictionary, about: String, limit: int) -> String:
+	var t := Py.strip(Py.strip(Py.clean(line)).lstrip('"').rstrip('"'))
+	if t == "" or not _allowed(t) or Py.re(Lines.META).search(t) != null or Py.re(Lines.PROMPTISH).search(t) != null or t.contains("{"):
+		return ""
+	if not Lines.bad_numbers(t, Lines.allowed_numbers([facts, about])).is_empty():
+		return ""
+	return Stream.cap(t, REMARK_WORDS, limit)
+
+
+## The reply the game refused: out of the conversation, the memory and the actions waiting for act().
+func _take_back(session: String, c, speaker: String, message: String, answer: String) -> void:
+	var h: Array = history.get(session + SEP + c.name + SEP + speaker, [])
+	if not h.is_empty() and h[-1][0] == c.name and h[-1][1] == answer:
+		h.pop_back()
+		if message != "" and not h.is_empty() and h[-1][0] == speaker and h[-1][1] == message:
+			h.pop_back()
+	var said: Array = said_by.get(session + SEP + c.name, [])
+	if not said.is_empty() and said[-1] == answer:
+		said.pop_back()
+	for a in last_decided.get(session + SEP + c.name, []):
+		a.taken = true
+	last_decided.erase(session + SEP + c.name)
+	var key: String = session + SEP + c.name
+	var undo: Dictionary = last_undo.get(key, {})
+	last_undo.erase(key)
+	if undo.has("mood"):
+		_put(moods, key, undo.mood)
+	if undo.has("rise"):
+		_put(rises, key + SEP + speaker, undo.rise)
+	if undo.has("gesture"):
+		_put(gesture_seen, key, undo.gesture[0])
+		_put(gestures, key, undo.gesture[1])
+	if undo.get("feel", 0.0) != 0.0:       # the feeling it moved, the memories it wrote: not kept either
+		feel(session, c.name, speaker, -undo.feel)
+	for note in undo.get("notes", []):
+		memory.take_back(session, c.name, note)
+	if message != "":
+		memory.take_back(session, c.name, speaker + " said: " + message.substr(0, 120) + " / I answered: " + answer.substr(0, 160))
+
+
+static func _put(table: Dictionary, key: String, value: Variant) -> void:
+	if value == null:
+		table.erase(key)
+	else:
+		table[key] = value
+
+
+static func _copy(v: Variant) -> Variant:
+	return v.duplicate(true) if v is Array or v is Dictionary else v
+
+
+func _create_many(session: String, what: String, shape, ctx: Variant, count: int, foreground: bool, timeout := 0.0, pictures: Array = [],
+		on_text: Variant = null) -> Array:
 	if provider == null:
 		return []
 	var system := Prompts.create_many_system(what, shape, count, _written())
 	var user := _context(session, null, what) + Prompts.context_block(ctx) + Prompts.picture_block(not pictures.is_empty())
-	var r: Dictionary = await _ask("create", what, system, user, true, foreground, mini(4000, 200 + 150 * count), null, timeout, pictures)
+	var r: Dictionary = await _ask("create", what, system, user, true, foreground, mini(4000, 200 + 150 * count), on_text, timeout, pictures)
 	if not r.ok:
 		return []
 	var data = Py.find_json(r.text)
@@ -1729,7 +1928,8 @@ func _create_many(session: String, what: String, shape, ctx: Variant, count: int
 	return items
 
 
-func _from_pool(session: String, what: String, shape, ctx: Variant) -> Variant:
+## [true, an item made ahead] or [false, null] when none is ready yet.
+func _from_pool(session: String, what: String, shape, ctx: Variant) -> Array:
 	var key: String = session + SEP + what + SEP + shape.signature()
 	if not pools.has(key):
 		pools[key] = {"items": [], "filling": false, "failures": 0}
@@ -1740,7 +1940,7 @@ func _from_pool(session: String, what: String, shape, ctx: Variant) -> Variant:
 	if pool.items.size() < 2 and not pool.filling and pool.failures < 3 and provider != null:
 		pool.filling = true
 		_background(_fill_pool.bind(session, what, shape, ctx, pool))
-	return item if has_item else shape.default_value()
+	return [has_item, item]
 
 
 func _fill_pool(session: String, what: String, shape, ctx: Variant, pool: Dictionary) -> void:
@@ -1753,8 +1953,10 @@ func _fill_pool(session: String, what: String, shape, ctx: Variant, pool: Dictio
 # ---------------- chat ----------------
 
 ## {text, source, actions}. stream: a Callable given each piece of the reply as it is written (null: no streaming).
+## refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of it, its
+## actions) and asked again knowing why; drop: taken back and answered offline (refused twice).
 func chat(session: String, name: Variant, message0: Variant, facts0: Variant = null, speaker0: Variant = "player", stream: Variant = null,
-		timeout := 0.0, max_chars: Variant = null, image: Variant = null) -> Dictionary:
+		timeout := 0.0, max_chars: Variant = null, image: Variant = null, refused0: Variant = null, drop := false) -> Dictionary:
 	var c = char_of(session, name)
 	var began := Http.now()
 	var pictures: Array = _pictures(c.name, image) if image != null else []
@@ -1763,6 +1965,17 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 	var message := Py.clean(Py.text_of(message0) if Py.truthy(message0) else "").substr(0, 1000)
 	var sp = Lines.name_of(speaker0)
 	var speaker: String = sp if sp != null and sp != "" else "player"
+	var refused = null
+	if refused0 != null:
+		if not (refused0 is Dictionary) or not refused0.has("answer") or not (refused0.get("why") is String):
+			_raise('create: refused must be {"answer": the refused answer, "why": "the reason"}, got ' + Py.py_repr(refused0))
+			return {}
+		var rwhy := Py.squash(Py.clean(refused0.why)).substr(0, MAX_WHY)
+		if rwhy != "":
+			refused = {"answer": refused0.answer, "why": rwhy}
+	if refused != null:
+		_take_back(session, c, speaker, message, Py.text_of(refused.answer))
+		_log("refused", c.name, "chat: the game refused the reply: " + refused.why)
 	var facts := _mapping(facts0, "facts")
 	if _fault != "":
 		return {}
@@ -1796,7 +2009,7 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 		source = "prepared"
 		if stream is Callable:
 			stream.call(reply)
-	elif provider != null:
+	elif provider != null and not drop:
 		var m := _mood(session, c)
 		var system := Prompts.chat_system(c, _lang(c, true), _card_lines(c), lore(session))
 		var mine_said := []
@@ -1812,7 +2025,7 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 			Prompts.message_block(speaker, message) + Prompts.box_block(box)
 		var allowed := Lines.allowed_numbers([facts, st, message, steer, c.personality, Souls.texts(c.card),
 			memory.recall(session, [c.name, "world"], message), _known(session, c.name, speaker)])
-		var repair := ""
+		var repair := "" if refused == null else "\n\n" + Prompts.refused_block(refused)
 		var flow := {"streamed": false}
 		var recent: Array = said_by.get(session + SEP + c.name, [])
 		var mine: Array = recent.slice(maxi(0, recent.size() - 6))
@@ -1918,7 +2131,12 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 			if not found.is_empty():
 				inner = (inner if inner is Dictionary else {}).duplicate()
 				inner["do"] = found
-		decided = _inner(session, c, speaker, inner)
+		var undo := {}
+		decided = _inner(session, c, speaker, inner, undo)
+		last_decided[session + SEP + c.name] = decided
+		last_undo[session + SEP + c.name] = undo
+		_trim(last_decided)
+		_trim(last_undo)
 		if source == "prepared":
 			_prepare_greeting(session, c)
 	elif reply == null:
@@ -2741,7 +2959,8 @@ func _verb(verb: String, body: Dictionary, session: String) -> Array:
 			if typeof(body.get("message")) != TYPE_STRING:
 				return _err(400, "missing 'message' (\"\" when the character speaks first)")
 			var speaker = body.get("speaker") if Py.truthy(body.get("speaker")) else "player"
-			var s: Dictionary = await chat(session, name, body.message, facts, speaker, null, 0.0, body.get("max_chars"), image)
+			var s: Dictionary = await chat(session, name, body.message, facts, speaker, null, 0.0, body.get("max_chars"), image,
+				body.get("refused"), Py.truthy(body.get("drop")))
 			if _fault != "":
 				return [200, {}]
 			var out := {"text": s.text, "declared": is_declared(session, name)}
@@ -2777,8 +2996,20 @@ func _verb(verb: String, body: Dictionary, session: String) -> Array:
 				return _err(400, miss)
 			if not body.has("example"):
 				return _err(400, "missing 'example' (an example answer: it is also the offline answer)")
-			var value = await create(session, body.what, body.example, body.get("context"), body.get("count"), Py.truthy(body.get("instant")), 0.0, image)
-			return [200, {"value": value}]
+			var made = await create(session, body.what, body.example, body.get("context"), body.get("count"), Py.truthy(body.get("instant")), 0.0, image,
+				body.get("offline"), body.get("refused"))
+			if made == null:
+				return [200, {}]          # handle() answers 400 with the fault
+			return [200, {"value": made[0], "source": made[1], "streamed": made[2]}]
+		"remark":
+			if typeof(body.get("about")) != TYPE_STRING:
+				return _err(400, "missing 'about' (what just happened, as text)")
+			if facts != null and not (facts is Dictionary):
+				return _err(400, "'facts' must be an object {name: value}")
+			var s: Dictionary = await remark(session, body.about, body.get("who"), facts, body.get("offline"), body.get("max_chars"))
+			if _fault != "":
+				return [200, {}]
+			return [200, {"text": s.text, "source": s.source}]
 		"tools":
 			if not body.has("tools"):
 				return [200, {"tools": tools(session)}]
@@ -2949,7 +3180,8 @@ func chat_stream(session: String, body: Dictionary, on_piece: Callable) -> Array
 	_fault_type = false
 	var speaker = body.get("speaker") if Py.truthy(body.get("speaker")) else "player"
 	var image = body.get("image") if Py.truthy(body.get("image")) else null
-	var s: Dictionary = await chat(session, body.get("name"), body.get("message"), body.get("facts"), speaker, on_piece, 0.0, body.get("max_chars"), image)
+	var s: Dictionary = await chat(session, body.get("name"), body.get("message"), body.get("facts"), speaker, on_piece, 0.0, body.get("max_chars"), image,
+		body.get("refused"), Py.truthy(body.get("drop")))
 	if _fault != "":
 		var why := "chat: a field has the wrong type (" + _fault + ")" if _fault_type else "chat: " + _fault
 		_fault = ""

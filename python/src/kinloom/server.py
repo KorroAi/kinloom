@@ -48,7 +48,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 MAX_BODY = 1024 * 1024
-VERBS = ["character", "say", "chat", "decide", "act", "create", "event", "remember", "state", "mind", "report", "think", "reward", "explain",
+VERBS = ["character", "say", "chat", "decide", "act", "create", "remark", "event", "remember", "state", "mind", "report", "think", "reward", "explain",
          "meet", "spread", "knows", "opinion", "opinions", "feel", "reputation", "soul", "lore", "speak", "listen", "tools",
          "prepare", "suggest", "converse", "inspect", "save", "load", "steer"]
 MAX_AUDIO_BODY = 12 * 1024 * 1024     # /v1/listen carries a recording, /v1/chat and /v1/create a picture (base64)
@@ -208,7 +208,7 @@ def handle(brain, verb, body, session):
                 raise ApiError(400, "missing 'message' (\"\" when the character speaks first)")
             speaker = body.get("speaker") or "player"
             text = brain.chat(session, name, body["message"], _facts(body), speaker, max_chars=body.get("max_chars"),
-                              image=_image(body))
+                              image=_image(body), refused=body.get("refused"), drop=bool(body.get("drop")))
             return dict({"text": text, "declared": brain.is_declared(session, name)}, **_feelings(brain, session, name, speaker),
                         **_reply_extra(text, body))
         if verb == "lore":
@@ -230,8 +230,15 @@ def handle(brain, verb, body, session):
             _need(body, "what")
             if "example" not in body:
                 raise ApiError(400, "missing 'example' (an example answer: it is also the offline answer)")
-            return {"value": brain.create(session, body["what"], body["example"], body.get("context"), body.get("count"),
-                                          bool(body.get("instant")), image=_image(body))}
+            value, source = brain.create_sourced(session, body["what"], body["example"], body.get("context"), body.get("count"),
+                                                 bool(body.get("instant")), image=_image(body), offline=body.get("offline"),
+                                                 refused=body.get("refused"))
+            return {"value": value, "source": source}
+        if verb == "remark":
+            if not isinstance(body.get("about"), str):
+                raise ApiError(400, "missing 'about' (what just happened, as text)")
+            line = brain.remark(session, body["about"], body.get("who"), _facts(body), body.get("offline"), body.get("max_chars"))
+            return {"text": line, "source": line.source}
         if verb == "tools":
             if "tools" not in body:
                 return {"tools": brain.tools(session)}
@@ -384,7 +391,6 @@ def _local_host(host_header):
 
 
 # may call a model, or wait for one (prepare): limited for players (a leaked player token must not tie up the server)
-MODEL_VERBS = {"say", "chat", "decide", "act", "create", "speak", "listen", "prepare", "suggest", "converse"}
 PREPARE_MAX = 30.0                    # seconds a request may wait in /v1/prepare
 
 
@@ -488,7 +494,7 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
 
     def talks(verb, body):
         """The verbs that usually start model work (the talk budget); the rest poll (decide, act, reads)."""
-        if verb in ("chat", "create", "suggest", "converse", "mind", "speak", "listen", "prepare"):
+        if verb in ("chat", "create", "remark", "suggest", "converse", "mind", "speak", "listen", "prepare"):
             return True
         if verb == "say":
             return bool(body.get("fresh"))
@@ -763,6 +769,9 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             if verb == "chat" and body.get("stream"):
                 self._stream_chat(body, session)
                 return
+            if verb == "create" and body.get("stream"):
+                self._stream_create(body, session)
+                return
             try:
                 if verb == "load" and player:
                     body = dict(body, data=verified(body.get("data")))
@@ -816,12 +825,46 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             speaker = body.get("speaker") or "player"
             try:
                 text = brain.chat(session, body["name"], body["message"], facts, speaker, stream=piece,
-                                  max_chars=body.get("max_chars"), image=image)
+                                  max_chars=body.get("max_chars"), image=image, refused=body.get("refused"),
+                                  drop=bool(body.get("drop")))
                 done = dict({"done": True, "text": text}, **_feelings(brain, session, body["name"], speaker),
                             **_reply_extra(text, body))
             except Exception as e:  # the stream is open: it still ends with a "done" event, never a cut connection
                 brain._log("error", "server", "chat (stream) failed: %s: %s" % (type(e).__name__, e))
                 done = {"done": True, "text": "", "source": "offline", "error": "internal error in chat (see the kinloom serve log)"}
+            with lock:
+                try:
+                    self._sse(done)
+                except OSError:
+                    pass
+
+        def _stream_create(self, body, session):
+            """create with its items as server-sent events ({"item"} each, then {"done", "value", "source"})."""
+            if not isinstance(body.get("what"), str) or "example" not in body:
+                self._send(400, {"error": "missing 'what' or 'example' (an example answer: it is also the offline answer)"})
+                return
+            try:
+                image = _image(body)
+            except ApiError as e:
+                self._send(e.status, {"error": str(e), "code": e.code})
+                return
+            self._sse_start()
+            lock = threading.Lock()
+
+            def item(value):
+                with lock:
+                    try:
+                        self._sse({"item": value})
+                    except OSError:
+                        pass
+            try:
+                value, source = brain.create_sourced(session, body["what"], body["example"], body.get("context"),
+                                                     body.get("count"), bool(body.get("instant")), image=image,
+                                                     offline=body.get("offline"), refused=body.get("refused"), each=item)
+                done = {"done": True, "value": value, "source": source}
+            except Exception as e:  # the stream is open: it still ends with a "done" event
+                brain._log("error", "server", "create (stream) failed: %s: %s" % (type(e).__name__, e))
+                done = {"done": True, "error": "create failed: %s" % e}
             with lock:
                 try:
                     self._sse(done)

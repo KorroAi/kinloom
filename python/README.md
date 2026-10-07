@@ -147,7 +147,7 @@ The core is two calls: `character` (who, with a `soul`) and `chat` (talk). The r
 | `decide(name, situation, choices)` | a validated choice, e.g. `{"strategy": ["attack", "block"], "aggression": [0.0, 1.0]}` | **never** (refreshed in the background) | first option, middle of a range |
 | `act(name, situation)` | the character uses the tools you gave it, validated | **never** | nothing happens |
 | `tools({...})` | the game's tools, declared once: characters name them (`tools=["open_door"]` or `"all"`) | no | – |
-| `create(what, example, context, count, instant)` | content shaped like the example; `count=50` for many, `instant=True` from a pool; `image=` a picture to look at | yes / **instant** | the example |
+| `create(what, example, context, count, instant)` | content shaped like the example; `count=50` for many, `instant=True` from a pool; `image=` a picture to look at; `each=fn` gets a list's items as the model writes them | yes / **instant** | the example, or your `offline=` |
 | `prepare(timeout)` | for a loading screen: waits until souls and first lines are written | yes | ready at once |
 | `event(text, about)` | characters remember what happened | no | stored anyway |
 | `speak(name, text)` | the text said aloud in the character's voice (WAV, cached per line) | yes (~0.1-2 s) | the system's voice, else `None` (show the text) |
@@ -156,8 +156,15 @@ The core is two calls: `character` (who, with a `soul`) and `chat` (talk). The r
 | `converse(a, b, about)` | two characters talk together (one model call, 2 to 8 lines); both remember it | ~1-2 s | `[]` |
 | `save()` / `load(text)` | everything Kinloom knows about this session (memories, feelings, bonds, moods, conversations, lore, learned minds) as one string for the game's own save slot, and back | no | what is known locally |
 | `inspect()` | a snapshot for a debug overlay: each character's mood, feelings, last words, memories, waiting actions; each mind's generation | no | what is known locally |
+| `remark(about, who=)` | one short line from someone in the crowd about what just happened (no character to declare); numbers only from your facts and what happened | ~1 s | your `offline=` lines, in turn |
 
 Plus `soul(name, speaker)` (card, mood, bonds, memories), `state({...})` (facts every call sees) and `remember(name, note)`.
+
+**The game's rules on every call**: `check=` on `create`, `chat`, `decide`, `act` and `suggest` is a function that
+returns `""` (or `None`, `True`) to accept and a reason (or `False`) to refuse. A refused answer goes back to the model
+once with the reason, then your offline answer is used; a refused reply is taken back first (its words, the memories
+and feelings it changed, its actions); a refused decision is not used and the next ones know why; a refused action is
+not run and the character remembers it; a refused suggestion becomes its example. A check that raises refuses.
 
 ```python
 kl = Kinloom(models={"background": "a-cheaper-model"}, rating="teen")   # or "models" / "rating" in kinloom.json
@@ -265,7 +272,7 @@ kinloom speak "Hello there." [--name Mira --voice "low, warm"]           # hear 
 kinloom init [folder]        # detect the engine, drop the client, write AGENTS.md, plus the files and
                              # /kinloom commands of the agents found here (installed or already used: Claude Code + skill,
                              # Gemini, Cursor, Copilot, Windsurf, aider, opencode; --agents all: every one), and KINLOOM.md
-                             # (34 patterns); a person at a terminal gets 3 short questions (and the model, when a
+                             # (39 patterns); a person at a terminal gets 3 short questions (and the model, when a
                              # coding agent is installed: a key or its plan)
 kinloom try VEGA "over-excited commentator" --event overtake --facts '{"who": "BLAZE"}'   # hear it first
 kinloom serve                # the local server engines talk to (a dashboard at http://localhost:7717 if you want one)

@@ -45,6 +45,28 @@ export interface Action {
 }
 /** A picture the model looks at: a Blob, canvas.toDataURL(), an ArrayBuffer, a typed array or base64. */
 export type Picture = Blob | ArrayBuffer | ArrayBufferView | string;
+/** The game's own rules for an answer: null, "" or true accept it; a reason (text) or false refuses it. */
+export type Check = (answer: any) => string | boolean | null | undefined;
+/** The game's rules for an action: (tool, args) -> "" or why it is refused. */
+export type ActCheck = (tool: string, args: Record<string, any>) => string | boolean | null | undefined;
+/** What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses. */
+export declare function reason(verdict: unknown): string;
+/** What a character remembers when the game refused one of its actions (act's check). */
+export declare function refusedNote(tool: string, args: unknown, why: string): string;
+/** The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+ * {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements. */
+export declare class Items {
+    private buf;
+    private i;
+    private stack;
+    private str;
+    private esc;
+    private level;
+    private start;
+    private done;
+    feed(piece: string): string[];
+    private static emit;
+}
 export interface Prepared {
     ready: boolean;
     waiting: number;
@@ -156,6 +178,10 @@ export declare class Kinloom {
     private decisions;
     private actions;
     private sources;
+    private lastDo;
+    private decideRefused;
+    private decideOk;
+    private remarkTurns;
     private downUntil;
     private failures;
     private limitedUntil;
@@ -195,7 +221,18 @@ export declare class Kinloom {
      * message "": the speaker came up to them, they speak first. onPiece(text): the reply as it is written (streaming).
      * What they decide to do while talking comes out of act(name, {}, false), at once.
      * image: a picture with the message (a Blob, canvas.toDataURL(), an ArrayBuffer, base64), for a model that sees. */
-    chat(name: string, message: string, facts?: Facts, speaker?: string, onPiece?: ((text: string) => void) | null, image?: Picture | null): Promise<string>;
+    chat(name: string, message: string, facts?: Facts, speaker?: string, onPiece?: ((text: string) => void) | null, image?: Picture | null, { check }?: {
+        check?: Check | null;
+    }): Promise<string>;
+    private chatOnce;
+    /** A short line from someone in the crowd about what just happened (no character to declare), ~1 s.
+     * who: who says it ("an old fisherman"); offline: your own lines ({fact} placeholders), said in turn without a model. */
+    remark(about: string, { who, facts, offline, maxChars }?: {
+        who?: string;
+        facts?: Facts;
+        offline?: string | string[] | null;
+        maxChars?: number;
+    }): Promise<string>;
     /** Who the character is and feels: {card, mood: {word, level}, bonds: {speaker: {talks, feeling}}, memories,
      * conversation (with speaker)}. null when the server is not running. */
     /** World facts every character takes as true and never contradicts (one per item). Returns how many were kept
@@ -205,7 +242,9 @@ export declare class Kinloom {
     /** What the player could say now to name, for games without a keyboard: one reply per example, in its order, each
      * keeping that example's intent, written for this moment ("Ask about her past" -> "So, the king's sword?"). The
      * examples are the offline answer, so index i always means the same choice. */
-    suggest(name: string, examples: string[], speaker?: string, facts?: Facts): Promise<string[]>;
+    suggest(name: string, examples: string[], speaker?: string, facts?: Facts, { check }?: {
+        check?: Check | null;
+    }): Promise<string[]>;
     /** What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it
      * in the character's voice, even a secret of their card. Used by the next chat only; "" takes it back. */
     steer(name: string, text: string): Promise<void>;
@@ -225,22 +264,37 @@ export declare class Kinloom {
     private stream;
     /** Instant: the latest decision shaped like `choices` (refreshed in the background): an object of choices gives an
      * object, a list of options gives one of them. */
-    decide<T extends Record<string, Example> | Example[]>(name: string, situation: Facts, choices: T): T extends Example[] ? any : Record<keyof T, any>;
+    decide<T extends Record<string, Example> | Example[]>(name: string, situation: Facts, choices: T, { check }?: {
+        check?: Check | null;
+    }): T extends Example[] ? any : Record<keyof T, any>;
+    private decided;
     /** Instant: tool calls chosen since the last call (on their own, or while talking), as [{tool, args}].
      * think false: only what they decided while talking (no model call of their own). */
-    act(name: string, situation?: Facts, think?: boolean): Action[];
+    act(name: string, situation?: Facts, think?: boolean, { check }?: {
+        check?: ActCheck | null;
+    }): Action[];
     /** How often decide/act ask: at once in native mode (the brain keeps its own pace); through a relay, a quarter of
      * the character's `every` (8 s by default: every 2 s), never more than 4 times a second. */
     private pollMs;
     private actionsOf;
     /** Content shaped like the example (which is also the offline answer). count > 0 gives a list; instant: from a ready
-     * pool; image: a picture the model looks at (a Blob, a data: URL, an ArrayBuffer, base64). */
-    create<T extends Example>(what: string, example: T, { context, count, instant, image }?: {
+     * pool; image: a picture the model looks at (a Blob, a data: URL, an ArrayBuffer, base64).
+     * check(answer): the game's own rules. null, "" or true accept the answer; a reason (text) or false refuses it: the
+     * model hears the reason once, then the offline answer is used (with count/instant, refused items are replaced).
+     * offline: the game's own offline answer, shaped like the example (one item of it with count). each(item): every
+     * item of a list answer as soon as it is ready (native: as the model writes it), refused items left out. */
+    create<T extends Example>(what: string, example: T, { context, count, instant, image, check, offline, each }?: {
         context?: Facts;
         count?: number;
         instant?: boolean;
         image?: Picture | null;
+        check?: Check | null;
+        offline?: unknown;
+        each?: ((item: any) => void) | null;
     }): Promise<any>;
+    /** One create request, then the game's check: a list item by item (in native mode as the model writes, each item
+     * handed to each() at once), anything else whole (refused: sent back once with its reason). */
+    private created;
     /** What the game can do, declared once: {open_door: {door: "north"}, give: {item: "sword"}}. Characters use them by
      * name: character(name, "", { tools: ["open_door"] }) or tools: "all"; act() returns the calls. Returns the names. */
     tools(tools: Record<string, Record<string, Example>>): Promise<string[]>;
@@ -473,7 +527,14 @@ export declare const prompts: {
     writeIn(language: string): string;
     size(c: Persona): string;
     head(task: string, c: Persona, language: string): string;
+    /** obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones
+     * matter most): the last values are shortened first, then replaced by "(cut)". Anything else is cut. */
     clip(obj: unknown, limit?: number): string;
+    /** A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted. */
+    short(v: unknown): unknown;
+    /** Someone in the crowd (no declared character) says one line about what just happened. */
+    remarkSystem(who: string, language: string, chars?: number | null): string;
+    remarkUser(about: string): string;
     feeling(v: number): string;
     context(notes: string[], state: unknown, feelings?: Record<string, number> | null): string;
     factsBlock(facts: Record<string, unknown> | null): string;
@@ -500,6 +561,11 @@ export declare const prompts: {
     bondBlock(speaker: string, bond: {
         talks: number;
     } | null, since: string, feelingValue: number, known: string[], moodWord: string, moodStrength: string, who?: string, secrets?: boolean, secretTrust?: number): string;
+    /** The game refused the last answer (create's check): its reason, once, with the answer it refused. */
+    refusedBlock(refused: {
+        answer: unknown;
+        why: string;
+    } | null): string;
     /** What the game decided for this reply (steer): the model makes it happen, in the character's words. */
     steerBlock(steer: string): string;
     repair(error: string): string;
@@ -549,6 +615,8 @@ export declare class Memory {
     private read;
     add(session: string, scope: string, text: string, importance?: number, meta?: Record<string, any>): void;
     notes(session: string, scope: string): Note[];
+    /** Removes the latest note with exactly this text (a reply the game refused is not remembered). */
+    takeBack(session: string, scope: string, text: string): void;
     annotate(session: string, scope: string, eid: string, meta: Record<string, any>): void;
     get(section: string, key: string): any;
     put(section: string, key: string, value: any): void;
@@ -862,6 +930,9 @@ export declare class Brain {
     private greetingBusy;
     private bonds;
     private clips;
+    private lastDecided;
+    private remarkTurns;
+    private lastUndo;
     private said;
     private switches;
     private rises;
@@ -932,6 +1003,7 @@ export declare class Brain {
     validLine(line0: string, factNames: Set<string> | null, c: Persona): [boolean, string | null];
     private refill;
     decide(session: string, name: unknown, situation0: unknown, choices: any, every?: unknown): any;
+    /** onText: the answer's pieces as they come; used(): true when part of it was already used (then no repair). */
     private structured;
     private voiceOf;
     speak(session: string, name: unknown, text0: unknown): Promise<{
@@ -955,10 +1027,24 @@ export declare class Brain {
     private saveMind;
     mindReport(session: string, name: unknown): Record<string, any> | null;
     mindNames(session: string): string[];
-    create(session: string, what0: unknown, example: any, context?: unknown, count?: unknown, instant?: boolean, timeout?: number | null, image?: unknown): Promise<any>;
+    /** [value, "model" or "offline", how many items onItem already got]. offline: the game's own offline answer;
+     * refused: {answer, why} the game refused. onItem(item): for a list answer, every item as soon as the model has
+     * written it; false when the game refuses it (it is then left out). */
+    create(session: string, what0: unknown, example: any, context?: unknown, count?: unknown, instant?: boolean, timeout?: number | null, image?: unknown, offline?: unknown, refused0?: unknown, onItem?: ((item: any) => boolean) | null): Promise<[any, string, number]>;
+    /** onText for a list answer: each finished item, valid and allowed, goes to onItem at once (kept when accepted). */
+    private streamer;
     private createMany;
     private fromPool;
-    chat(session: string, name: unknown, message0: unknown, facts0?: unknown, speaker0?: unknown, stream?: ((piece: string) => void) | null, timeout?: number | null, maxChars?: unknown, image?: unknown): Promise<Said>;
+    /** refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of it, its
+     * actions) and asked again knowing why; drop: taken back and answered offline (refused twice). */
+    chat(session: string, name: unknown, message0: unknown, facts0?: unknown, speaker0?: unknown, stream?: ((piece: string) => void) | null, timeout?: number | null, maxChars?: unknown, image?: unknown, refused0?: unknown, drop?: boolean): Promise<Said>;
+    /** The reply the game refused: out of the conversation, the memory and the actions waiting for act(). */
+    private takeBack;
+    /** A short line said out loud by someone in the crowd (no character to declare) about what just happened.
+     * offline: the game's own lines ({fact} placeholders), taken in turn when no model answers. */
+    remark(session: string, about0: unknown, who0?: unknown, facts0?: unknown, offline?: unknown, maxChars?: unknown): Promise<Said>;
+    /** The remark as said: one short line, the filter passed, no numbers the game did not give; else "". */
+    private validRemark;
     /** budget: seconds for everything here (the asking again included). */
     private deeds;
     private nextOffline;

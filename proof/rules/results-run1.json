@@ -1,0 +1,328 @@
+{
+ "model": "deepseek/deepseek-v4.1-flash",
+ "free_tiles": 16,
+ "town": [
+  "Old Well",
+  "Oak",
+  "Tavern"
+ ],
+ "rows": [
+  {
+   "mode": "plain",
+   "request": "a huge castle with four towers",
+   "plan": {
+    "name": "Huge Castle",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A huge castle with four towers."
+   },
+   "calls": 1,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a grand cathedral next to the harbour",
+   "plan": {
+    "name": "Grand Cathedral",
+    "width": 12,
+    "depth": 8,
+    "near": "Harbour",
+    "say": "A grand cathedral of pale stone rises beside the harbour, its tall spire catching the salt wind and its bells echoing across the water."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 96 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a market square by the old mill",
+   "plan": {
+    "name": "Market Square",
+    "width": 5,
+    "depth": 5,
+    "near": "Old Mill",
+    "say": "Stalls and wagons crowd the cobbles beside the old mill."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 25 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a giant statue of the founder",
+   "plan": {
+    "name": "Founder's Colossus",
+    "width": 12,
+    "depth": 12,
+    "near": "Old Well",
+    "say": "A towering statue of the town's founder, gazing out over the square."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 144 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a cozy cottage near the well",
+   "plan": {
+    "name": "Cottage",
+    "width": 6,
+    "depth": 5,
+    "near": "Old Well",
+    "say": "A cozy cottage."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 30 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a lighthouse by the docks",
+   "plan": {
+    "name": "Lighthouse",
+    "width": 3,
+    "depth": 3,
+    "near": "Old Well",
+    "say": "A tall lighthouse by the docks, guiding ships to shore."
+   },
+   "calls": 1,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a big barn next to the farm",
+   "plan": {
+    "name": "Big Barn",
+    "width": 6,
+    "depth": 5,
+    "near": "Old Well",
+    "say": "A big red barn next to the farm, full of hay and animals."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 30 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a second tavern next to the tavern",
+   "plan": {
+    "name": "Second Tavern",
+    "width": 5,
+    "depth": 4,
+    "near": "Tavern",
+    "say": "A second tavern stands beside the first, its sign freshly painted."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 20 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a palace for the queen",
+   "plan": {
+    "name": "Queen's Palace",
+    "width": 9,
+    "depth": 9,
+    "near": "Old Well",
+    "say": "A grand palace where the queen holds court."
+   },
+   "calls": 1,
+   "fits": false,
+   "why": "it takes 81 tiles and only 16 are free: make it at most 16 tiles",
+   "source": "model"
+  },
+  {
+   "mode": "plain",
+   "request": "a tiny shrine by the oak",
+   "plan": {
+    "name": "Tiny Shrine",
+    "width": 2,
+    "depth": 2,
+    "near": "Oak",
+    "say": "A tiny shrine, its mossy roof tucked beneath the oak's broad branches."
+   },
+   "calls": 1,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a huge castle with four towers",
+   "plan": {
+    "name": "Castle of Four Towers",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A huge castle with four towers."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a grand cathedral next to the harbour",
+   "plan": {
+    "name": "Grand Cathedral",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A grand cathedral next to the harbour."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a market square by the old mill",
+   "plan": {
+    "name": "Market Square",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A bustling market square by the old mill, where merchants hawk their wares."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a giant statue of the founder",
+   "plan": {
+    "name": "Statue of the Founder",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A giant stone figure of the town's founder, gazing out over the square."
+   },
+   "calls": 1,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a cozy cottage near the well",
+   "plan": {
+    "name": "Cozy Cottage",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A cozy cottage tucked beside the old well."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a lighthouse by the docks",
+   "plan": {
+    "name": "Lighthouse",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A tall lighthouse by the docks, its beam sweeping the harbor."
+   },
+   "calls": 1,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a big barn next to the farm",
+   "plan": {
+    "name": "Barn",
+    "width": 4,
+    "depth": 4,
+    "near": "Oak",
+    "say": "A red barn next to the farm."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a second tavern next to the tavern",
+   "plan": {
+    "name": "Second Tavern",
+    "width": 4,
+    "depth": 4,
+    "near": "Tavern",
+    "say": "A second tavern, right next to the first. The ale never stops flowing."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a palace for the queen",
+   "plan": {
+    "name": "Queen's Palace",
+    "width": 4,
+    "depth": 4,
+    "near": "Old Well",
+    "say": "A grand palace for the queen."
+   },
+   "calls": 2,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  },
+  {
+   "mode": "check",
+   "request": "a tiny shrine by the oak",
+   "plan": {
+    "name": "Tiny Shrine",
+    "width": 2,
+    "depth": 2,
+    "near": "Oak",
+    "say": "A tiny shrine by the oak."
+   },
+   "calls": 1,
+   "fits": true,
+   "why": "",
+   "source": "model"
+  }
+ ],
+ "summary": {
+  "plain": {
+   "requests": 10,
+   "fit the rules": 3,
+   "model answers that fit": 3,
+   "offline (refused twice or no answer)": 0,
+   "calls": 10
+  },
+  "check": {
+   "requests": 10,
+   "fit the rules": 10,
+   "model answers that fit": 10,
+   "offline (refused twice or no answer)": 0,
+   "calls": 17
+  }
+ },
+ "billed_usd": 0.0
+}

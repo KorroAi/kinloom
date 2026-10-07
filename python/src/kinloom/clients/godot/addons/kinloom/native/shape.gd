@@ -167,6 +167,18 @@ class Shape:
 					return [false, null, "%s must be at most %d characters" % [path, max_len]]
 				return [true, v, null]
 			"list":
+				if value is Dictionary:
+					# JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+					var lists := []
+					for x in value.values():
+						if x is Array:
+							lists.append(x)
+					if not lists.is_empty():
+						value = lists[0]          # the first list, as items stream it (Items)
+					elif item.kind == "object":
+						var one: Array = item.check(value, path + "[0]")
+						if one[0]:
+							return [true, [one[1]], null]
 				if not (value is Array):
 					return [false, null, path + " must be a list"]
 				if value.size() > MAX_LIST:
@@ -249,3 +261,55 @@ class Shape:
 
 	func signature() -> String:
 		return Py.dumps(example, true, true)
+
+## The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+## {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements.
+class Items:
+	var buf := ""
+	var i := 0
+	var start := 0
+	var level := -1
+	var stack: Array = []
+	var in_string := false
+	var escape := false
+	var done := false
+
+	func feed(piece: String) -> Array:
+		var out := []
+		if done or piece == "":
+			return out
+		buf += piece
+		while i < buf.length():
+			var ch := buf[i]
+			if in_string:
+				if escape:
+					escape = false
+				elif ch == "\\":
+					escape = true
+				elif ch == '"':
+					in_string = false
+			elif ch == '"':
+				in_string = true
+			elif ch == "[" or ch == "{":
+				stack.append(ch)
+				if ch == "[" and level == -1 and (stack.size() == 1 or (stack.size() == 2 and stack[0] == "{")):
+					level = stack.size()
+					start = i + 1
+			elif ch == "]" or ch == "}":
+				if ch == "]" and level != -1 and stack.size() == level:
+					_emit(buf.substr(start, i - start), out)
+					done = true
+					i += 1
+					return out
+				if not stack.is_empty():
+					stack.pop_back()
+			elif ch == "," and level != -1 and stack.size() == level:
+				_emit(buf.substr(start, i - start), out)
+				start = i + 1
+			i += 1
+		return out
+
+	static func _emit(text: String, out: Array) -> void:
+		var t := Py.strip(text)
+		if t != "":
+			out.append(t)

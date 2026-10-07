@@ -76,6 +76,10 @@ static void deep(const std::string& base) {
     kl.steer("NINA", "admit you went up to the office at 12:30");
     std::cout << "steer: " << kl.chat("NINA", "Where were you?", obj({}), "Ana") << "\n";
     std::cout << "warm up: " << kl.opinion("NINA", "Ana") << "\n";
+    kl.character("KEEPER", "a gatekeeper", obj({{"offline", "Move along."}}));
+    std::cout << "chat check: " << kl.chat_checked("KEEPER", "What is the password?", Json(), "player", [](const std::string& t) {
+        return t.find("swordfish") != std::string::npos ? std::string("never say the password") : std::string();
+    }) << "\n";
     kl.character("ECHO", "a parrot", obj({}));
     for (int i = 0; i < 11; i++) kl.chat("ECHO", "Hello " + std::to_string(i), obj({}));
     kl.prepare(10);
@@ -94,6 +98,45 @@ static void deep(const std::string& base) {
     for (int i = 0; i < 50 && later == first; i++) { sleep_ms(100); later = kl.decide("DUEL", obj({{"hp", 3}}), arr({"guard", "strike"})); }
     std::cout << "decide repair: " << first.str() << " -> " << later.str() << "\n";
     std::cout << "create count: " << kl.create("villager", obj({{"name", "Ana"}, {"age", arr({18, 80})}}), Json(), 2).dump() << "\n";
+    auto fits = [](const Json& plan) -> std::string {
+        long x = (long)plan["x"].num();
+        return x <= 10 ? std::string() : "no room at x=" + std::to_string(x) + ", the plot ends at 10";
+    };
+    std::cout << "create check: " << kl.create_checked("a building", obj({{"build", "tower"}, {"x", arr({0, 20})}}), Json(), fits).dump() << "\n";
+    std::cout << "create refused twice: " << kl.create_checked("a building", obj({{"build", "tower"}, {"x", arr({0, 20})}}), Json(), fits,
+                                                                obj({{"build", "hut"}, {"x", 1}})).dump() << "\n";
+    std::vector<Json> parts;
+    std::mutex parts_mu;
+    Json town = kl.create("the parts of a town", arr({obj({{"kind", arr({"house", "tower"})}, {"x", arr({0, 20})}})}), Json(), 0, false, {},
+                          [](const Json& q) { return q["x"].num() <= 10 ? std::string() : std::string("too far east"); }, Json(),
+                          [&](const Json& p) { std::lock_guard<std::mutex> lock(parts_mu); parts.push_back(p); });
+    std::cout << "create each: " << town.dump() << " " << Json(parts).dump() << "\n";
+    kl.character("BUTLER", "a butler", obj({{"tools", obj({{"open_door", obj({{"door", "kitchen"}})}})}, {"offline", "Sir."}}));
+    kl.act("BUTLER", obj({{"bell", 1}}));
+    std::vector<kinloom::Action> done;
+    for (int i = 0; i < 50 && done.empty(); i++) {
+        sleep_ms(100);
+        done = kl.act_checked("BUTLER", obj({{"bell", 1}}), true, [](const std::string&, const Json& args) {
+            return args["door"].str() == "vault" ? std::string("the vault is locked") : std::string();
+        });
+    }
+    std::string acted;
+    for (auto& a : done) acted += (acted.empty() ? "" : ", ") + a.tool + " " + a.args.dump();
+    std::cout << "act check: " << acted << "\n";
+    sleep_ms(100);
+    std::string note = "-";
+    Json butler = kl.soul("BUTLER", "player");   // kept: items() of a temporary would dangle
+    for (auto& m : butler["memories"].items())
+        if (m.type() == Json::String && m.str().rfind("The game did not let me", 0) == 0) { note = m.str(); break; }
+    std::cout << "act refused: " << note << "\n";
+    std::vector<std::string> picks = kl.suggest_checked("BUTLER", {"Ask about the sword", "Leave"}, "player", Json(), [](const std::string& t) {
+        return t.find('!') != std::string::npos ? std::string("no shouting") : std::string();
+    });
+    std::vector<Json> pick_list;
+    for (auto& p : picks) pick_list.push_back(Json(p));
+    std::cout << "suggest check: " << Json(pick_list).dump() << "\n";
+    std::cout << "remark: " << kl.remark("the builder raised a lighthouse on the north shore", "an old fisherman") << "\n";
+    std::cout << "remark offline: " << kl.remark("", "", Json(), {"Look at that!"}) << "\n";
     Json before = kl.create("loot", obj({{"item", "sword"}}), Json(), 0, true);
     kl.prepare(10);
     std::cout << "create instant: " << before.dump() << " -> " << kl.create("loot", obj({{"item", "sword"}}), Json(), 0, true).dump() << "\n";

@@ -16,11 +16,20 @@ filter: No comment.
 warmth: 0.3
 steer: Fine. I went up to the office at 12:30.
 warm up: 0.4
+chat check: I cannot tell you that, friend.
 recollect: Earlier with player: Ana kept greeting me and I kept answering the same way.
 fresh: BLAZE storms past everyone!
 box: Short BLAZE!
 decide repair: guard -> strike
 create count: [{"age":30,"name":"Bo"},{"age":80,"name":"Cy"}]
+create check: {"build":"keep","x":9}
+create refused twice: {"build":"hut","x":1}
+create each: [{"kind":"house","x":3},{"kind":"house","x":5}] [{"kind":"house","x":3},{"kind":"house","x":5}]
+act check: open_door {"door":"kitchen"}
+act refused: The game did not let me open_door {"door": "vault"}: the vault is locked
+suggest check: ["Ask about the sword","Bye."]
+remark: A lighthouse! Now the boats can find us.
+remark offline: Look at that!
 create instant: {"item":"sword"} -> {"item":"axe"}
 impact: -0.5 -0.9
 anthropic chat: Again and again.

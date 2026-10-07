@@ -61,6 +61,10 @@ var _reward_at := 0.0
 var _flushing := false
 var _tools = null                 # the game's tools, sent again after a restart
 var _brain = null                 # the native brain (native and offline modes); null in relay mode
+var _last_do := {}                # name -> the actions of its last reply (chat's check takes them back)
+var _decide_refused := {}         # decision key -> {decision, why}: the game's last refusal
+var _decide_ok := {}              # decision key -> the last decision the game accepted
+var _remark_turns := {}
 
 
 func _init() -> void:
@@ -224,11 +228,38 @@ func _set_source(name: String, r: Variant) -> void:
 ## act(name, {}, false) at once. image: a picture with the message (an Image, e.g.
 ## get_viewport().get_texture().get_image(), PNG/JPEG bytes, or base64), for a model that sees. on_piece: called with
 ## each piece of the reply as it is written (native mode streams; relay mode gives the whole reply once).
-func chat(name: String, message: String, facts := {}, speaker := "player", image: Variant = null, on_piece := Callable()) -> String:
+## check: the game's rules for what is said, a Callable taking the reply: null, "" or true accept it; a reason (text) or
+## false refuses it: the reply is taken back (words, memory, actions) and asked again once knowing why, then the
+## offline reply is used (on_piece then gets the reply once, at the end).
+func chat(name: String, message: String, facts := {}, speaker := "player", image: Variant = null, on_piece := Callable(),
+		check: Variant = null) -> String:
 	var body := {"name": name, "message": message, "facts": facts, "speaker": speaker, "do": true}
 	var picture := _image_b64(image)
 	if picture != "":
 		body["image"] = picture
+	if not (check is Callable):
+		return await _chat_once(name, body, on_piece)
+	var text: String = await _chat_once(name, body, Callable())
+	for drop in [false, true]:
+		if source(name) == "offline":
+			break
+		var why := Brain.reason(check.call(text))
+		if why == "":
+			break
+		var taken: Array = _last_do.get(name, [])
+		var p := _pending(name)
+		# this reply's own actions only (an equal one from an earlier reply stays)
+		p.ready = p.ready.filter(func(a): return not taken.any(func(t): return is_same(t, a)))
+		var again := body.duplicate()
+		again["refused"] = {"answer": text, "why": why}
+		again["drop"] = drop
+		text = await _chat_once(name, again, Callable())
+	if on_piece.is_valid() and text != "":
+		on_piece.call(text)
+	return text
+
+
+func _chat_once(name: String, body: Dictionary, on_piece: Callable) -> String:
 	var r = null
 	if _brain != null and on_piece.is_valid():
 		var got: Array = await _brain.chat_stream(session, _plain(body), on_piece)
@@ -241,12 +272,14 @@ func chat(name: String, message: String, facts := {}, speaker := "player", image
 			on_piece.call(str(r["text"]))
 	_set_source(name, r)
 	if r == null:
+		_last_do.erase(name)
 		var o = _chars.get(name, {}).get("offline", "")
 		if o is Array:                                  # several offline replies: one of them
 			return str(o.pick_random()) if o.size() > 0 else ""
 		return str(o)
 	_redeclare(name, r)
 	var decided = r.get("do", [])
+	_last_do[name] = decided if decided is Array else []
 	if decided is Array and decided.size() > 0:
 		_pending(name).ready.append_array(decided)
 	return str(r.get("text", ""))
@@ -260,9 +293,28 @@ func _pending(name: String) -> Dictionary:
 
 ## Instant: the latest decision shaped like `choices` (the model refreshes it in the background). choices: an object
 ## of examples ({"strategy": ["attack", "block"], "aggression": [0.0, 1.0]}) gives an object; a list of options gives
-## one of them.
-func decide(name: String, situation: Dictionary, choices: Variant) -> Variant:
+## one of them. check: the game's rules, a Callable taking the decision: a decision it refuses (it returns why) is not
+## used (the last accepted one is, else the default) and the next decisions are made knowing why.
+func decide(name: String, situation: Dictionary, choices: Variant, check: Variant = null) -> Variant:
 	var key := name + "|" + JSON.stringify(choices)
+	if not (check is Callable):
+		return _decide_now(key, name, situation, choices)
+	var sit := situation.duplicate()
+	if _decide_refused.has(key):
+		sit["the game refused your last decision"] = _decide_refused[key]
+	var value = _decide_now(key, name, sit, choices)
+	var why := Brain.reason(check.call(_copy(value)))
+	if why == "":
+		_decide_refused.erase(key)
+		_decide_ok[key] = _copy(value)
+		_cap(_decide_ok)
+		return value
+	_decide_refused[key] = {"decision": _copy(value), "why": why}
+	_cap(_decide_refused)
+	return _copy(_decide_ok[key]) if _decide_ok.has(key) else default_of(choices)
+
+
+func _decide_now(key: String, name: String, situation: Dictionary, choices: Variant) -> Variant:
 	if not _decisions.has(key):
 		_decisions[key] = {"value": default_of(choices), "pending": false, "at": -1.0}
 	var d: Dictionary = _decisions[key]
@@ -287,15 +339,58 @@ func soul(name: String, speaker := "player") -> Variant:
 
 
 ## What the player could say now to name, for games without a keyboard: one reply per example, in its order, each
-## keeping that example's intent, written for this moment. The examples are the offline answer.
-func suggest(name: String, examples: Array, speaker := "player", facts := {}) -> Array:
+## keeping that example's intent, written for this moment. The examples are the offline answer. check: the game's
+## rules, a Callable taking a reply: a reply it refuses is replaced by its example.
+func suggest(name: String, examples: Array, speaker := "player", facts := {}, check: Variant = null) -> Array:
 	var r = await _post("suggest", {"name": name, "examples": examples, "speaker": speaker, "facts": facts}, timeout)
 	if r is Dictionary and r.get("replies") is Array:
 		var out := []
 		for x in r.replies:
 			out.append(Py.text_of(x))
+		if check is Callable:
+			for i in mini(out.size(), examples.size()):
+				if Brain.reason(check.call(out[i])) != "":
+					out[i] = str(examples[i])
 		return out
 	return examples.duplicate()
+
+
+## A short line from someone in the crowd about what just happened (no character to declare), ~1 s. who: who says it
+## ("an old fisherman", "" for anyone); offline: your own lines ({fact} placeholders), said in turn without a model.
+func remark(about: String, who := "", facts := {}, offline: Array = [], max_chars := 0) -> String:
+	var body := {"about": about, "facts": facts}
+	if who != "":
+		body["who"] = who
+	if not offline.is_empty():
+		body["offline"] = offline
+	if max_chars > 0:
+		body["max_chars"] = max_chars
+	var r = await _post("remark", body, timeout)
+	if r is Dictionary and r.get("text") is String:
+		return r.text
+	var usable := []
+	for t in offline:
+		var ok := true
+		for m in _placeholder.search_all(str(t)):
+			if not facts.has(m.get_string(1)):
+				ok = false
+		if ok:
+			usable.append(str(t))
+	if usable.is_empty():
+		return ""
+	var key := Py.squash(Py.clean(who)).substr(0, 48)      # as the brain names who speaks
+	if key == "":
+		key = "someone in the crowd"
+	var turn: int = _remark_turns.get(key, 0)
+	_remark_turns[key] = turn + 1
+	_cap(_remark_turns)
+	return Brain.Stream.fit_chars(Brain.Lines.fill(usable[turn % usable.size()], facts), clampi(max_chars, 10, 2000) if max_chars > 0 else 0)
+
+
+## The oldest entries go once a table passes 2000 (decisions refused or accepted, remarks in turn).
+static func _cap(table: Dictionary) -> void:
+	while table.size() > 2000:
+		table.erase(table.keys()[0])
 
 
 ## What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it in
@@ -332,10 +427,22 @@ func load_state(data: String) -> bool:
 
 ## Instant: the tool calls the character chose since the last call (on its own, or while talking), as
 ## [{"tool": ..., "args": {...}}]. think false: only what it decided while talking (no model call of its own).
-func act(name: String, situation := {}, think := true) -> Array:
+## check: the game's rules, a Callable taking (tool, args): an action it refuses (it returns why) is not returned, and
+## the character remembers why.
+func act(name: String, situation := {}, think := true, check: Variant = null) -> Array:
 	var a: Dictionary = _pending(name)
 	var ready: Array = a.ready
 	a.ready = []
+	if check is Callable:
+		var kept := []
+		for action in ready:
+			var tool := str(action.get("tool", ""))
+			var why := Brain.reason(check.call(tool, _copy(action.get("args", {}))))
+			if why == "":
+				kept.append(action)
+			else:
+				_fire("remember", {"name": name, "note": Brain.refused_note(tool, action.get("args", {}), why), "importance": 0.6})
+		ready = kept
 	var now := Time.get_ticks_msec() / 1000.0
 	if not a.pending and now - a.at >= _poll_s(name):
 		a.pending = true
@@ -348,25 +455,112 @@ func act(name: String, situation := {}, think := true) -> Array:
 
 ## Content shaped like the example (which is also the offline answer). count > 0 returns a list; instant = from a ready
 ## pool; image: a picture the model looks at (an Image, PNG/JPEG bytes, or base64).
-func create(what: String, example: Variant, context := {}, count := 0, instant := false, image: Variant = null) -> Variant:
+## check: the game's own rules, a Callable taking the answer: null, "" or true accept it; a reason (text) or false
+## refuses it, and the model hears the reason once before the offline answer is used (with count/instant, refused items
+## are replaced). offline: the game's own offline answer, shaped like the example. each: a Callable given every item of a
+## list answer as soon as it is ready (native mode: as the model writes it), refused items left out.
+func create(what: String, example: Variant, context := {}, count := 0, instant := false, image: Variant = null,
+		check: Variant = null, offline: Variant = null, each: Variant = null) -> Variant:
 	if count > 0 and example is Array and example.size() == 1:
 		example = example[0]            # [item] with count: count items like it
+	var fallback = default_of(example)
+	var made: Array = Brain.ShapeLib.Shape.of(example)
+	var listed: bool = count > 0 or (made[0] != null and made[0].kind == "list")
+	if offline != null:
+		var c: Array = made[0].check(offline) if made[0] != null else [false, null, made[1]]
+		if c[0]:
+			fallback = c[1]
+		else:
+			push_error("Kinloom create: offline must be shaped like the example: %s (the example is used)" % c[2])
 	var body := {"what": what, "example": example, "context": context, "instant": instant}
 	var picture := _image_b64(image)
 	if picture != "":
 		body["image"] = picture
 	if count > 0:
 		body["count"] = count
-	var r = await _post("create", body, 2.0 if instant else timeout)
+	if offline != null:
+		body["offline"] = fallback
+	return await _created(body, count, instant, check, fallback, true, each, listed)
+
+
+## One create request, then the game's check: a list item by item (in native mode as the model writes, each item
+## handed to each at once), anything else whole (refused: sent back once with its reason).
+func _created(body: Dictionary, count: int, instant: bool, check: Variant, fallback: Variant, retry: bool, each: Variant = null,
+		listed := false) -> Variant:
+	var r = null
+	if _brain != null and each is Callable and listed:
+		# native: the brain hands over each item as the model writes it
+		var hook := func(x: Variant) -> bool:
+			if check is Callable and _why_of(check, x) != "":
+				return false
+			each.call(_copy(x))
+			return true
+		var b := _plain(body)
+		_brain._fault = ""
+		var made = await _brain.create(session, b.get("what"), b.get("example"), b.get("context"), b.get("count"), Py.truthy(b.get("instant")),
+			0.0, b.get("image"), b.get("offline"), b.get("refused"), hook)
+		if made == null:
+			push_warning("[kinloom] create: " + str(_brain._fault))
+			_brain._fault = ""
+		else:
+			r = {"value": made[0], "source": made[1], "streamed": made[2]}
+	else:
+		r = await _post("create", body, 2.0 if instant else timeout)
 	if r == null or not r.has("value"):
-		var fallback = default_of(example)
 		if count > 0:
 			var many := []
 			for i in count:
-				many.append(fallback)
-			return many
-		return fallback
-	return r["value"]
+				many.append(_copy(fallback))
+			return _deliver(each, listed, many)
+		return _deliver(each, listed, _copy(fallback))
+	var value = r["value"]
+	var offline_answer := str(r.get("source", "")) == "offline"
+	if listed and value is Array:
+		var streamed := int(r.get("streamed", 0))
+		if streamed > 0:          # checked and handed over already; the rest is the offline filling
+			if each is Callable:
+				for i in range(mini(streamed, value.size()), value.size()):
+					each.call(_copy(value[i]))
+			return value
+		var items := []
+		for x in value:
+			if not (check is Callable) or offline_answer or _why_of(check, x) == "":
+				items.append(x)
+		if count > 0:
+			while items.size() < count:
+				items.append(_copy(fallback))
+		elif items.is_empty():
+			return _deliver(each, listed, _copy(fallback))
+		return _deliver(each, listed, items)
+	if not (check is Callable) or offline_answer:
+		return _deliver(each, listed, value)
+	var why := _why_of(check, value)
+	if why == "":
+		return _deliver(each, listed, value)
+	if not retry or instant:
+		return _deliver(each, listed, _copy(fallback))
+	var again := body.duplicate()
+	again["refused"] = {"answer": value, "why": why}
+	return await _created(again, 0, false, check, fallback, false, each, listed)
+
+
+static func _deliver(each: Variant, listed: bool, value: Variant) -> Variant:
+	if each is Callable:
+		if listed and value is Array:
+			for x in value:
+				each.call(_copy(x))
+		else:
+			each.call(_copy(value))
+	return value
+
+
+## Why the game's check refuses an answer ("" when it accepts it).
+static func _why_of(check: Callable, value: Variant) -> String:
+	return Brain.reason(check.call(_copy(value)))
+
+
+static func _copy(v: Variant) -> Variant:
+	return v.duplicate(true) if v is Array or v is Dictionary else v
 
 
 ## What the game can do, declared once: {"open_door": {"door": "north"}}. Characters use them by name (options

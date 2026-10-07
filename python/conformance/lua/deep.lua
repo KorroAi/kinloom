@@ -53,6 +53,10 @@ out("warmth: " .. num(kl:opinion("NINA", "Ana")))
 kl:steer("NINA", "admit you went up to the office at 12:30")
 out("steer: " .. kl:chat("NINA", "Where were you?", {}, nil, "Ana"))
 out("warm up: " .. num(kl:opinion("NINA", "Ana")))
+kl:character("KEEPER", "a gatekeeper", { offline = "Move along." })
+out("chat check: " .. kl:chat("KEEPER", "What is the password?", {}, nil, "player", nil, nil, function(t)
+  return t:find("swordfish", 1, true) and "never say the password" or ""
+end))
 kl:character("ECHO", "a parrot")
 for i = 0, 10 do kl:chat("ECHO", "Hello " .. i) end
 kl:prepare(10)
@@ -77,6 +81,39 @@ for _ = 1, 50 do
 end
 out("decide repair: " .. first .. " -> " .. later)
 out("create count: " .. j(kl:create("villager", O({ name = "Ana", age = { 18, 80 } }, { "name", "age" }), { count = 2 })))
+local function fits(plan)
+  if plan.x <= 10 then return "" end
+  return "no room at x=" .. math.floor(plan.x) .. ", the plot ends at 10"
+end
+out("create check: " .. j(kl:create("a building", O({ build = "tower", x = { 0, 20 } }, { "build", "x" }), { check = fits })))
+out("create refused twice: " .. j(kl:create("a building", O({ build = "tower", x = { 0, 20 } }, { "build", "x" }),
+  { check = fits, offline = O({ build = "hut", x = 1 }, { "build", "x" }) })))
+local parts = {}
+local town = kl:create("the parts of a town", { O({ kind = { "house", "tower" }, x = { 0, 20 } }, { "kind", "x" }) },
+  { check = function(q) return q.x <= 10 and "" or "too far east" end, each = function(p) parts[#parts + 1] = p end })
+out("create each: " .. j(town) .. " " .. j(parts))
+kl:character("BUTLER", "a butler", { tools = { open_door = { door = "kitchen" } }, offline = "Sir." })
+kl:act("BUTLER", { bell = 1 })
+local done = {}
+for _ = 1, 50 do
+  done = kl:act("BUTLER", { bell = 1 }, true, function(_, args) return args.door == "vault" and "the vault is locked" or "" end)
+  if #done > 0 then break end
+  SLEEP(0.1)
+  kl:update()
+end
+local acted = {}
+for _, a in ipairs(done) do acted[#acted + 1] = a.tool .. " " .. j(a.args) end
+out("act check: " .. table.concat(acted, ", "))
+local note = "-"
+for _, m in ipairs(kl:soul("BUTLER").memories) do
+  if m:sub(1, 23) == "The game did not let me" then note = m; break end
+end
+out("act refused: " .. note)
+out("suggest check: " .. j(kl:suggest("BUTLER", { "Ask about the sword", "Leave" }, "player", {}, nil, function(t)
+  return t:find("!", 1, true) and "no shouting" or ""
+end)))
+out("remark: " .. kl:remark("the builder raised a lighthouse on the north shore", { who = "an old fisherman" }))
+out("remark offline: " .. kl:remark("", { offline = { "Look at that!" } }))
 local before = kl:create("loot", { item = "sword" }, { instant = true })
 kl:prepare(10)
 out("create instant: " .. j(before) .. " -> " .. j(kl:create("loot", { item = "sword" }, { instant = true })))

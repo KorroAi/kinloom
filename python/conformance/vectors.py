@@ -88,7 +88,11 @@ for text in ['{"a": 1}', 'Sure! ```json\n{"lines": ["x"]}\n``` hope it helps', '
 for example, text in [({"say": "Done.", "actions": [{"op": "build"}]}, '{"say": "ok", "actions": [{"op": "build"}, {"op": "bu'),
                       ({"say": "Done.", "actions": [{"op": "build"}]}, 'Here: {"say": "ok", "actions": []}'),
                       ({"name": "Glowcap"}, "no json here"), ({"name": "Glowcap"}, '```json\n{"name": "Mossb'),
-                      (["a", "b"], '"b"'), ([{"n": 1}], '[{"n": 2}, {"n": 3')]:
+                      (["a", "b"], '"b"'), ([{"n": 1}], '[{"n": 2}, {"n": 3'),
+                      # JSON mode: a list wrapped once in an object, or one item alone; two lists stay an error
+                      ([{"n": 1}], '{"list": [{"n": 2}, {"n": 3}]}'), ([{"n": 1}], '{"stalls": [{"n": 4}], "note": "x"}'),
+                      ([{"n": 1}], '{"n": 5}'), ([{"n": 1}], '{"a": [{"n": 1}], "b": [{"n": 2}]}'), (["x"], '{"tags": ["a", "b"]}'),
+                      (["x"], '{"tag": "a"}'), ([{"n": 1}], '{"other": 1}')]:
     ok, value, error = Shape.of(example).parse(text)
     add("parse", [example, text], {"ok": ok, "value": value, "error": error})
 
@@ -332,6 +336,35 @@ add("prompt", ["bond_block", None, ["Ana", {"talks": 2}, "an hour ago", 0.5, [],
 add("prompt", ["steer_block", None, ["admit you went up to the office at 12:30"]], prompts.steer_block("admit you went up to the office at 12:30"))
 add("prompt", ["steer_block", None, [""]], prompts.steer_block(""))
 add("prompt", ["steer_block", None, ["  a  very " + "long " * 80 + "steer  "]], prompts.steer_block("  a  very " + "long " * 80 + "steer  "))
+# a context too long keeps its keys (prompts._clip), the crowd's lines, the game's verdicts
+BIG = {"request": "a lighthouse on the north shore", "kit": "k" * 3000, "town": ["House %d" % i for i in range(200)],
+       "nested": {"f%d" % i: "v" * 20 for i in range(30)}, "gold": 40, "small": {"a": [1, 2]}}
+for ctx in [BIG, {"first": "keep me", **{"k%d" % i: "y" * 60 for i in range(80)}}, ["x" * 50] * 100, "z" * 5000,
+            {"only": "é" * 4500}, {"a": [1, 2, 3, 4, 5], "b": "c" * 3990}]:
+    add("prompt", ["context_block", None, [ctx]], prompts.context_block(ctx))
+    if isinstance(ctx, dict):
+        add("prompt", ["facts_block", None, [ctx]], prompts.facts_block(ctx))
+add("prompt", ["remark_system", None, ["an old fisherman", "English", None]], prompts.remark_system("an old fisherman", "English"))
+add("prompt", ["remark_system", None, ["someone in the crowd", "French", 60]], prompts.remark_system("someone in the crowd", "French", 60))
+add("prompt", ["remark_user", None, ["the builder raised a lighthouse"]], prompts.remark_user("the builder raised a lighthouse"))
+from kinloom.brain import reason, refused_note  # noqa: E402
+from kinloom.shapes import Items  # noqa: E402
+for verdict in [None, True, False, "", "  too   far\n east ", "x" * 400, 5]:
+    add("reason", [verdict], reason(verdict))
+add("refused_note", ["open_door", {"door": "vault", "n": 2}, "the vault is locked"],
+    refused_note("open_door", {"door": "vault", "n": 2}, "the vault is locked"))
+for text in ['[{"a": 1}, {"a": "x,]}"}, 3]', '{"items": [{"a": 1}, {"a": "x,]}\\"q"}, 3]}', '```json\n{"items": [ {"a": 1} ,{"a": "x,]}"},3 ] }\n```',
+             '{"say": "hi", "parts": ["a", "b"], "more": ["c"]}', '[{"kind": "house", "x": 1}, {"kind": "hou', '"no list"', '[]', '[ "\u00e9t\u00e9" , 2.5 ]']:
+    for size in (1, 3, 1000):
+        pieces = [text[i:i + size] for i in range(0, len(text), size)]
+        items, got = Items(), []
+        for piece in pieces:
+            got += items.feed(piece)
+        add("items", [pieces], got)
+
+for refused in [None, {"answer": {"build": "tower", "x": 17, "name": "Tour étoile"}, "why": "no room at x=17, the plot ends at 10"},
+                {"answer": ["a", 2, True, None], "why": "too many"}, {"answer": "x" * 2000, "why": "too long"}]:
+    add("prompt", ["refused_block", None, [refused]], prompts.refused_block(refused))
 for spec in [{"name": "A"}, {"name": "B", "warmth": 0.45, "secret_trust": 0.2, "warm_up": 0.1},
              {"name": "C", "warmth": 5, "secret_trust": -3, "warm_up": 9}, {"name": "D", "warmth": "0.5", "warm_up": -1}]:
     c = char(spec)

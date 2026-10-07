@@ -47,6 +47,9 @@ console.log(`warmth: ${await kl.opinion("NINA", "Ana")}`);
 await kl.steer("NINA", "admit you went up to the office at 12:30");
 console.log("steer: " + (await kl.chat("NINA", "Where were you?", {}, "Ana")));
 console.log(`warm up: ${await kl.opinion("NINA", "Ana")}`);
+kl.character("KEEPER", "a gatekeeper", { offline: "Move along." });
+console.log("chat check: " + (await kl.chat("KEEPER", "What is the password?", {}, "player", null, null,
+  { check: (t) => (t.includes("swordfish") ? "never say the password" : "") })));
 kl.character("ECHO", "a parrot");
 for (let i = 0; i < 11; i++) await kl.chat("ECHO", "Hello " + i);
 await kl.prepare(10);
@@ -63,6 +66,26 @@ let later = first;
 for (let i = 0; i < 50 && later === first; i++) { await sleep(100); later = kl.decide("DUEL", { hp: 3 }, ["guard", "strike"]); }
 console.log(`decide repair: ${first} -> ${later}`);
 console.log("create count: " + j(await kl.create("villager", { name: "Ana", age: [18, 80] }, { count: 2 })));
+const fits = (plan) => plan.x <= 10 ? "" : `no room at x=${plan.x}, the plot ends at 10`;
+console.log("create check: " + j(await kl.create("a building", { build: "tower", x: [0, 20] }, { check: fits })));
+console.log("create refused twice: " + j(await kl.create("a building", { build: "tower", x: [0, 20] }, { check: fits, offline: { build: "hut", x: 1 } })));
+const parts = [];
+const town = await kl.create("the parts of a town", [{ kind: ["house", "tower"], x: [0, 20] }],
+  { each: (p) => parts.push(p), check: (q) => (q.x <= 10 ? "" : "too far east") });
+console.log(`create each: ${j(town)} ${j(parts)}`);
+kl.character("BUTLER", "a butler", { tools: { open_door: { door: "kitchen" } }, offline: "Sir." });
+kl.act("BUTLER", { bell: 1 });
+let done = [];
+for (let i = 0; i < 50 && !done.length; i++) {
+  await sleep(100);
+  done = kl.act("BUTLER", { bell: 1 }, true, { check: (tool, args) => (args.door === "vault" ? "the vault is locked" : "") });
+}
+console.log("act check: " + done.map((a) => `${a.tool} ${j(a.args)}`).join(", "));
+await sleep(100);
+console.log("act refused: " + ((await kl.soul("BUTLER")).memories.find((m) => m.startsWith("The game did not let me")) ?? "-"));
+console.log("suggest check: " + j(await kl.suggest("BUTLER", ["Ask about the sword", "Leave"], "player", {}, { check: (t) => (t.includes("!") ? "no shouting" : "") })));
+console.log("remark: " + (await kl.remark("the builder raised a lighthouse on the north shore", { who: "an old fisherman" })));
+console.log("remark offline: " + (await kl.remark("", { offline: ["Look at that!"] })));
 const before = await kl.create("loot", { item: "sword" }, { instant: true });
 await kl.prepare(10);
 console.log(`create instant: ${j(before)} -> ${j(await kl.create("loot", { item: "sword" }, { instant: true }))}`);

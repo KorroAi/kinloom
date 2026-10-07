@@ -311,6 +311,9 @@ fn deep(base: &str) {
     kl.steer("NINA", "admit you went up to the office at 12:30");
     println!("steer: {}", kl.chat_as("NINA", "Where were you?", obj! {}, "Ana"));
     println!("warm up: {}", kl.opinion("NINA", "Ana"));
+    kl.character("KEEPER", "a gatekeeper", obj! { "offline" => "Move along." });
+    println!("chat check: {}", kl.chat_checked("KEEPER", "What is the password?", Json::Null, "player",
+                                               |t: &str| if t.contains("swordfish") { "never say the password".to_string() } else { String::new() }));
     kl.character("ECHO", "a parrot", obj! {});
     for i in 0..11 {
         kl.chat("ECHO", &format!("Hello {}", i), obj! {});
@@ -337,6 +340,39 @@ fn deep(base: &str) {
     }
     println!("decide repair: {} -> {}", first.as_str(), later.as_str());
     println!("create count: {}", kl.create("villager", obj! { "name" => "Ana", "age" => vec![18, 80] }, Json::Null, 2, false).to_json());
+    let fits = |plan: &Json| -> String {
+        let x = plan.get("x").as_f64() as i64;
+        if x <= 10 { String::new() } else { format!("no room at x={}, the plot ends at 10", x) }
+    };
+    println!("create check: {}", kl.create_checked("a building", obj! { "build" => "tower", "x" => vec![0, 20] }, Json::Null, fits, Json::Null).to_json());
+    println!("create refused twice: {}", kl.create_checked("a building", obj! { "build" => "tower", "x" => vec![0, 20] }, Json::Null, fits,
+                                                          obj! { "build" => "hut", "x" => 1 }).to_json());
+    let parts = std::sync::Arc::new(std::sync::Mutex::new(Vec::<Json>::new()));
+    let sink = parts.clone();
+    let town = kl.create_full("the parts of a town", Json::Arr(vec![obj! { "kind" => vec!["house", "tower"], "x" => vec![0, 20] }]), Json::Null, 0, false, &[],
+                              Some(std::sync::Arc::new(|q: &Json| if q.get("x").as_f64() <= 10.0 { String::new() } else { "too far east".to_string() })),
+                              Json::Null, Some(std::sync::Arc::new(move |p: &Json| sink.lock().unwrap().push(p.clone()))));
+    println!("create each: {} {}", town.to_json(), Json::Arr(parts.lock().unwrap().clone()).to_json());
+    kl.character("BUTLER", "a butler", obj! { "tools" => obj! { "open_door" => obj! { "door" => "kitchen" } }, "offline" => "Sir." });
+    kl.act("BUTLER", obj! { "bell" => 1 });
+    let mut done = Vec::new();
+    for _ in 0..50 {
+        sleep(Duration::from_millis(100));
+        done = kl.act_checked("BUTLER", obj! { "bell" => 1 }, true,
+                              |_tool: &str, args: &Json| if args.get("door").as_str() == "vault" { "the vault is locked".to_string() } else { String::new() });
+        if !done.is_empty() {
+            break;
+        }
+    }
+    println!("act check: {}", done.iter().map(|a| format!("{} {}", a.tool, a.args.to_json())).collect::<Vec<_>>().join(", "));
+    sleep(Duration::from_millis(100));
+    let butler = kl.soul("BUTLER", "player").unwrap_or(Json::Null);
+    let note = butler.get("memories").as_array().iter().map(|m| m.as_str().to_string()).find(|m| m.starts_with("The game did not let me"));
+    println!("act refused: {}", note.unwrap_or_else(|| "-".to_string()));
+    println!("suggest check: {}", Json::from(kl.suggest_checked("BUTLER", &["Ask about the sword", "Leave"], "player", Json::Null,
+                                                                |t: &str| if t.contains('!') { "no shouting".to_string() } else { String::new() })).to_json());
+    println!("remark: {}", kl.remark("the builder raised a lighthouse on the north shore", "an old fisherman", Json::Null, &[], 0));
+    println!("remark offline: {}", kl.remark("", "", Json::Null, &["Look at that!"], 0));
     let before = kl.create("loot", obj! { "item" => "sword" }, Json::Null, 0, true);
     kl.prepare(10.0);
     println!("create instant: {} -> {}", before.to_json(), kl.create("loot", obj! { "item" => "sword" }, Json::Null, 0, true).to_json());

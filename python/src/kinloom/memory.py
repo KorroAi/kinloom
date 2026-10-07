@@ -90,6 +90,20 @@ class Memory:
             self._dirty = True
         self._schedule_save()
 
+    def take_back(self, session, scope, text):
+        """Removes the latest note with exactly this text (a reply the game refused is not remembered)."""
+        text = " ".join(str(text).split())[:MAX_NOTE]
+        with self._lock:
+            notes = self._notes.get((session, scope), [])
+            for i in range(len(notes) - 1, -1, -1):
+                if notes[i]["text"] == text:
+                    del notes[i]
+                    self._dirty = True
+                    break
+            else:
+                return
+        self._schedule_save()
+
     def notes(self, session, scope):
         """Copies of the notes of a scope, oldest first."""
         with self._lock:

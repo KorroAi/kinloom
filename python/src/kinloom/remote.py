@@ -18,7 +18,7 @@ import urllib.request
 
 from . import media as _media
 from . import voice as _voice
-from .shapes import clean_text
+from .shapes import Shape, clean_text
 
 DOWN = 2.0              # seconds a server that did not answer is left alone (offline answers meanwhile)
 MAX_DOWN = 10.0         # a server still not there is left alone longer each time: 2, 4, 8, then 10 s
@@ -64,6 +64,7 @@ class RemoteBrain:
         self._lock = threading.Lock()
         self._journal = collections.deque(maxlen=200)
         self._waiting = {}                                       # (session, name) -> [_Action] decided in replies
+        self._last_decided = {}                                  # (session, name) -> [_Action] of the last reply
         self.listeners = []
 
     # ---------------- transport ----------------
@@ -75,7 +76,7 @@ class RemoteBrain:
         self._down_until = time.monotonic() + wait
         return wait
 
-    def _request(self, session, verb, body, timeout, stream=None):
+    def _request(self, session, verb, body, timeout, stream=None, items=None):
         if time.monotonic() < self._down_until:
             return None
         if time.monotonic() >= self._up_until and not _reach(self.url):
@@ -90,26 +91,28 @@ class RemoteBrain:
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
         data = dict(body, session=session)
-        if stream is not None:
+        if stream is not None or items is not None:
             data["stream"] = True
         req = urllib.request.Request(self.url + "/v1/" + verb, data=json.dumps(data).encode("utf-8"), method="POST",
                                      headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=timeout) as r:
                 self._up_until, self._failures = time.monotonic() + UP, 0
-                if stream is None:
-                    return json.loads(r.read().decode("utf-8"))
+                if (stream is None and items is None) or "json" in (r.headers.get("Content-Type") or ""):
+                    return json.loads(r.read().decode("utf-8"))   # an older server answers a stream request whole
                 done = None
                 for raw in r:
                     line = raw.decode("utf-8", "replace").strip()
                     if not line.startswith("data:"):
                         continue
                     ev = json.loads(line[5:].strip())
-                    if ev.get("piece"):
+                    if ev.get("piece") and stream is not None:
                         try:
                             stream(ev["piece"])
                         except Exception:  # a game callback must never break the call
                             pass
+                    if "item" in ev and items is not None:
+                        items(ev["item"])
                     if ev.get("done"):
                         done = ev
                 return done
@@ -212,23 +215,29 @@ class RemoteBrain:
             body["image"] = p.uri
 
     def chat(self, session, name, message, facts=None, speaker="player", stream=None, timeout=None, max_chars=None,
-             image=None):
+             image=None, refused=None, drop=False):
         from .brain import Line, _Action, _TAKE, MAX_WAITING
         body = {"name": name, "message": message or "", "facts": facts or {}, "speaker": speaker, "do": True}
         if max_chars:
             body["max_chars"] = max_chars
+        if refused is not None:
+            body["refused"], body["drop"] = refused, bool(drop)
+            with self._lock, _TAKE:          # what the refused reply decided is taken back here too
+                for a in self._last_decided.pop((session, clean_text(str(name))), []):
+                    a.taken = True
         self._picture(body, image)
         self._ready(session, name)
         r = self._request(session, "chat", body, timeout or self.timeout, stream=stream)
         if r is not None:
             self._ready(session, name, r)
         if r is None or not isinstance(r.get("text"), str):
-            return self.local.chat(session, name, message, facts, speaker, stream, None, max_chars)
+            return self.local.chat(session, name, message, facts, speaker, stream, None, max_chars, drop=refused is not None)
         decided = [_Action(a["tool"], a["args"]) for a in (r.get("do") or [])
                    if isinstance(a, dict) and isinstance(a.get("tool"), str) and isinstance(a.get("args"), dict)]
-        if decided:       # the server hands them over once: they wait here for the reply's .do or act()
-            with self._lock, _TAKE:
-                key = (session, clean_text(str(name)))
+        with self._lock, _TAKE:
+            key = (session, clean_text(str(name)))
+            self._last_decided[key] = list(decided)  # a refused reply takes back its own actions, never older ones
+            if decided:   # the server hands them over once: they wait here for the reply's .do or act()
                 waiting = [a for a in self._waiting.get(key, []) if not a.taken]
                 self._waiting[key] = waiting[-MAX_WAITING:] + decided
         return Line(r["text"], r.get("source") if r.get("source") in ("model", "prepared", "offline") else "model", decided)
@@ -268,7 +277,7 @@ class RemoteBrain:
             self._bg.submit(refresh)
         return d[0]
 
-    def act(self, session, name, situation=None, think=True):
+    def act(self, session, name, situation=None, think=True, check=None):
         self._ready(session, name)
         r = self._request(session, "act", {"name": name, "situation": situation, "think": think}, 3.0)
         if r is not None:
@@ -280,17 +289,27 @@ class RemoteBrain:
             for a in waiting:
                 a.taken = True
         if r is None:
-            return self._run(session, name, mine) + self.local.act(session, name, situation, think)
-        return self._run(session, name, mine + list(r.get("actions") or []))
+            return self._run(session, name, mine, check) + self.local.act(session, name, situation, think, check)
+        return self._run(session, name, mine + list(r.get("actions") or []), check)
 
-    def _run(self, session, name, actions):
-        """Runs the game's Python tool functions; returns the actions that went through."""
+    def _run(self, session, name, actions, check=None):
+        """Runs the game's Python tool functions (the actions its check refuses are told to the character instead);
+        returns the actions that went through."""
+        from .brain import judged, refused_note
         c = self.local._characters.get((session, clean_text(str(name))))
         functions = dict(c.functions) if c is not None else {}
         done = []
         for a in actions:
             if not isinstance(a, dict) or not isinstance(a.get("tool"), str) or not isinstance(a.get("args"), dict):
                 continue
+            if check is not None:
+                why, error = judged(check, a["tool"], dict(a["args"]))
+                if error:
+                    self._note("act: the game's check failed: " + error)
+                if why:
+                    self.remember(session, name, refused_note(a["tool"], a["args"], why), 0.6)
+                    self._note("act: the game refused %s: %s" % (a["tool"], why))
+                    continue
             fn = functions.get(a["tool"])
             if fn is not None:
                 try:
@@ -306,12 +325,68 @@ class RemoteBrain:
         r = self._request(session, "soul", {"name": name, "speaker": speaker}, 3.0)
         return r if isinstance(r, dict) and "mood" in r else self.local.soul(session, name, speaker)
 
-    def create(self, session, what, example, context=None, count=None, instant=False, timeout=None, image=None):
-        body = {"what": what, "example": example, "context": context, "count": count, "instant": instant}
+    def create(self, session, what, example, context=None, count=None, instant=False, timeout=None, image=None,
+               check=None, offline=None, refused=None, retry=True, each=None):
+        """The server's model; the game's check runs here (a list item by item, as the server streams it to each()),
+        and a refused answer goes back with its reason once."""
+        if count and isinstance(example, list) and len(example) == 1:
+            example = example[0]
+        listed = bool(count) or Shape.of(example).kind == "list"
+        item_example = example if count else (example[0] if listed and example else example)
+        fallback_item = (lambda: self.local.create(session, what, item_example, offline=offline)) if count else None
+        body = {"what": what, "example": example, "context": context, "count": count, "instant": instant,
+                "offline": offline, "refused": refused}
         body = {k: v for k, v in body.items() if v is not None}
         self._picture(body, image)
-        r = self._request(session, "create", body, timeout or self.timeout)
-        return r["value"] if r and "value" in r else self.local.create(session, what, example, context, count, instant)
+        streamed = []
+
+        def item(x):
+            if check is not None and self.local._why(check, x, what, quiet=True):
+                return                               # refused: left out (count fills with the offline answer at the end)
+            if not count or len(streamed) < count:
+                streamed.append(x)
+                self.local._give(each, x, what)
+        r = self._request(session, "create", body, timeout or self.timeout, items=item if each is not None and listed else None)
+        if not (r and "value" in r):
+            if streamed:
+                return streamed
+            return self.local.create(session, what, example, context, count, instant, check=check, offline=offline, each=each)
+        value = r["value"]
+        if streamed:
+            fills = [fallback_item() for _ in range(count - len(streamed))] if count else []
+            for x in fills:
+                self.local._give(each, x, what)
+            return streamed + fills
+        if check is not None and r.get("source") != "offline":
+            if listed and isinstance(value, list):
+                if count:
+                    value = [x for x in value if not self.local._why(check, x, what, quiet=True)]
+                    value += [fallback_item() for _ in range(count - len(value))]
+                else:
+                    value = [x for x in value if not self.local._why(check, x, what, quiet=True)] or \
+                        self.local.create(session, what, example, offline=offline)
+            elif instant:
+                if self.local._why(check, value, what, quiet=True):
+                    value = self.local.create(session, what, example, offline=offline)
+            else:
+                why = self.local._why(check, value, what, quiet=True)
+                if why and retry:
+                    return self.create(session, what, example, context, None, False, timeout, image, check, offline,
+                                       {"answer": value, "why": why}, retry=False, each=each)
+                if why:
+                    value = self.local.create(session, what, example, offline=offline)
+        if each is not None:
+            for x in (value if listed and isinstance(value, list) else [value]):
+                self.local._give(each, x, what)
+        return value
+
+    def remark(self, session, about, who=None, facts=None, offline=None, max_chars=None):
+        from .brain import Line
+        body = {"about": about, "who": who, "facts": facts or {}, "offline": offline, "max_chars": max_chars}
+        r = self._request(session, "remark", {k: v for k, v in body.items() if v is not None}, self.timeout)
+        if r and isinstance(r.get("text"), str):
+            return Line(r["text"], r.get("source") if r.get("source") in ("model", "offline") else "model")
+        return self.local.remark(session, about, who, facts, offline, max_chars)
 
     def speak(self, session, name, text, timeout=None):
         """The server's voice (its key); the player's system voice when it has none or cannot be reached."""

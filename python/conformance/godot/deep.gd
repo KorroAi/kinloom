@@ -68,6 +68,9 @@ func _ready() -> void:
 	await kl.steer("NINA", "admit you went up to the office at 12:30")
 	out("steer: " + await kl.chat("NINA", "Where were you?", {}, "Ana"))
 	out("warm up: %s" % Py.repr(await kl.opinion("NINA", "Ana")))
+	kl.character("KEEPER", "a gatekeeper", {"offline": "Move along."})
+	out("chat check: " + await kl.chat("KEEPER", "What is the password?", {}, "player", null, Callable(),
+		func(t): return "never say the password" if "swordfish" in t else ""))
 	kl.character("ECHO", "a parrot", {})
 	for i in 11:
 		await kl.chat("ECHO", "Hello %d" % i)
@@ -94,6 +97,36 @@ func _ready() -> void:
 		later = kl.decide("DUEL", {"hp": 3}, ["guard", "strike"])
 	out("decide repair: %s -> %s" % [first, later])
 	out("create count: " + j(await kl.create("villager", {"name": "Ana", "age": [18, 80]}, {}, 2)))
+	var fits := func(plan): return "" if int(plan.x) <= 10 else "no room at x=%d, the plot ends at 10" % int(plan.x)
+	out("create check: " + j(await kl.create("a building", {"build": "tower", "x": [0, 20]}, {}, 0, false, null, fits)))
+	out("create refused twice: " + j(await kl.create("a building", {"build": "tower", "x": [0, 20]}, {}, 0, false, null, fits, {"build": "hut", "x": 1})))
+	var parts := []
+	var town = await kl.create("the parts of a town", [{"kind": ["house", "tower"], "x": [0, 20]}], {}, 0, false, null,
+		func(q): return "" if int(q.x) <= 10 else "too far east", null, func(p): parts.append(p))
+	out("create each: %s %s" % [j(town), j(parts)])
+	kl.character("BUTLER", "a butler", {"tools": {"open_door": {"door": "kitchen"}}, "offline": "Sir."})
+	kl.act("BUTLER", {"bell": 1})
+	var done := []
+	for i in 50:
+		await get_tree().create_timer(0.1).timeout
+		done = kl.act("BUTLER", {"bell": 1}, true, func(_tool, args): return "the vault is locked" if args.get("door") == "vault" else "")
+		if not done.is_empty():
+			break
+	var acted := []
+	for a in done:
+		acted.append(str(a.tool) + " " + j(a.args))
+	out("act check: " + ", ".join(acted))
+	await get_tree().create_timer(0.1).timeout
+	var note := "-"
+	for m in (await kl.soul("BUTLER", "player")).memories:
+		if str(m).begins_with("The game did not let me"):
+			note = str(m)
+			break
+	out("act refused: " + note)
+	out("suggest check: " + j(await kl.suggest("BUTLER", ["Ask about the sword", "Leave"], "player", {},
+		func(t): return "no shouting" if "!" in t else "")))
+	out("remark: " + await kl.remark("the builder raised a lighthouse on the north shore", "an old fisherman"))
+	out("remark offline: " + await kl.remark("", "", {}, ["Look at that!"]))
 	var before = await kl.create("loot", {"item": "sword"}, {}, 0, true)
 	await kl.prepare(10.0)
 	out("create instant: %s -> %s" % [j(before), j(await kl.create("loot", {"item": "sword"}, {}, 0, true))])

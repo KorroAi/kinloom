@@ -69,6 +69,10 @@ def test_cli_add(tmp_path, capsys):
     ("keep characters consistent with our world canon", "lore + invent=false"),
     ("characters should speak their lines aloud", "speak + listen"),
     ("let the player talk to the guard with the microphone", "speak + listen"),
+    ("the player types what to build and the game checks it fits the plot", "create + check + offline"),
+    ("spectators react when the player finishes a building", "remark"),
+    ("show the loot pieces appearing one by one as they are generated", "create + each"),
+    ("the guide must never give spoilers about the ending", "create + check + offline"),
 ])
 def test_any_request_goes_to_the_right_call(request_text, expected):
     from kinloom.recipe import recipe
@@ -105,6 +109,8 @@ def test_a_request_in_other_words_gets_the_exact_calls_of_the_game_language(engi
     ("boss chooses attacks", "boss phases"),
     ("dynamic difficulty", "a director"),
     ("summary after each match", "a post-match recap"),
+    ("a wish that grants an item if the game allows it", "a wish granted"),
+    ("daily challenges for the player", "daily decrees"),
 ])
 def test_the_closest_pattern_belongs_to_the_request(request_text, pattern):
     from kinloom.recipe import recipe

@@ -261,7 +261,7 @@ def calls(lang):
 
 def brief(engine="python", client_path=None, folder="."):
     """What every agent reads in every session (AGENTS.md, CLAUDE.md...): the workflow and the rules, about 2 KB.
-    The full reference (every call, 34 patterns) stays in KINLOOM.md and the Claude skill, read when needed."""
+    The full reference (every call, 39 patterns) stays in KINLOOM.md and the Claude skill, read when needed."""
     from .add import LANGUAGE
     language, setup, code = _engine_doc(engine, client_path, folder)
     lang = LANGUAGE.get(engine, "http")

@@ -103,6 +103,16 @@ class Memory:
 			notes.append_array(by_worth)
 		changed()
 
+	## Removes the latest note with exactly this text (a reply the game refused is not remembered).
+	func take_back(session: String, scope: String, text: Variant) -> void:
+		var t := Py.head(Py.squash(Py.text_of(text)), MAX_NOTE)
+		var notes := _peek(session, scope)
+		for i in range(notes.size() - 1, -1, -1):
+			if notes[i].text == t:
+				notes.remove_at(i)
+				changed()
+				return
+
 	## Copies of the notes of a scope, oldest first.
 	func notes(session: String, scope: String) -> Array:
 		var out := []

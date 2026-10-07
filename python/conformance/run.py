@@ -71,7 +71,7 @@ def cpp_cmd(port):
     exe = os.path.join(tempfile.mkdtemp(), "scenario.exe")
     link = ["-lws2_32"] if os.name == "nt" else ["-pthread"]
     subprocess.run(cxx + ["-std=c++17", "-Wall", "-Wextra", "-Werror=all", "-O1", os.path.join(HERE, "cpp", "scenario.cpp"), "-o", exe]
-                   + link, check=True, timeout=300, capture_output=True)
+                   + link, check=True, timeout=600, capture_output=True)
     return [exe, str(port)]
 
 

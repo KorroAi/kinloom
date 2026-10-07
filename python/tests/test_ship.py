@@ -171,7 +171,7 @@ def test_pictures_over_http(server):  # noqa: F811
     call(url, "/v1/character", {"name": "Mira", "personality": "a smith"})
     b64 = base64.b64encode(PNG).decode()
     assert call(url, "/v1/chat", {"name": "Mira", "message": "look", "image": b64})[1]["text"] == "Seen."
-    assert call(url, "/v1/create", {"what": "x", "example": {"what": "?"}, "image": "data:image/png;base64," + b64})[1] == {"value": {"what": "map"}}
+    assert call(url, "/v1/create", {"what": "x", "example": {"what": "?"}, "image": "data:image/png;base64," + b64})[1] == {"value": {"what": "map"}, "source": "model"}
     assert call(url, "/v1/chat", {"name": "Mira", "message": "look", "image": 5})[0] == 400
     big = "A" * (2 * 1024 * 1024)            # bigger than a plain request, smaller than a picture request may be
     status, body, _ = call(url, "/v1/chat", {"name": "Mira", "message": "look", "image": big})

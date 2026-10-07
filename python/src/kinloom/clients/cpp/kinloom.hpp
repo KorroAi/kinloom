@@ -2597,6 +2597,56 @@ inline Json find_json(const std::string& text) {
 /// True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that.
 inline bool cut_off(const std::string& text) { return find_json(text).is_null() && unclosed(py::strip(text)) != std::string::npos; }
 
+/// The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+/// {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements.
+class Items {
+public:
+    std::vector<std::string> feed(const std::string& piece) {
+        std::vector<std::string> out;
+        if (done_ || piece.empty()) return out;
+        buf_ += piece;
+        while (i_ < buf_.size()) {
+            char ch = buf_[i_];
+            if (string_) {
+                if (escape_) escape_ = false;
+                else if (ch == '\\') escape_ = true;
+                else if (ch == '"') string_ = false;
+            } else if (ch == '"') {
+                string_ = true;
+            } else if (ch == '[' || ch == '{') {
+                stack_.push_back(ch);
+                if (ch == '[' && level_ == 0 && (stack_.size() == 1 || (stack_.size() == 2 && stack_[0] == '{'))) {
+                    level_ = stack_.size();
+                    start_ = i_ + 1;
+                }
+            } else if (ch == ']' || ch == '}') {
+                if (ch == ']' && level_ != 0 && stack_.size() == level_) {
+                    emit(buf_.substr(start_, i_ - start_), out);
+                    done_ = true;
+                    i_++;
+                    return out;
+                }
+                if (!stack_.empty()) stack_.pop_back();
+            } else if (ch == ',' && level_ != 0 && stack_.size() == level_) {
+                emit(buf_.substr(start_, i_ - start_), out);
+                start_ = i_ + 1;
+            }
+            i_++;
+        }
+        return out;
+    }
+
+private:
+    static void emit(const std::string& t0, std::vector<std::string>& out) {
+        std::string t = py::strip(t0);
+        if (!t.empty()) out.push_back(t);
+    }
+    std::string buf_;
+    size_t i_ = 0, start_ = 0, level_ = 0;   // level_ 0: no list found yet
+    std::string stack_;
+    bool string_ = false, escape_ = false, done_ = false;
+};
+
 }  // namespace text
 
 // ---------------- shapes by example: the developer shows an example answer; Kinloom validates against it ----------------
@@ -2765,6 +2815,18 @@ struct Shape {
             return true;
         }
         if (kind == "list") {
+            if (value.type() == Json::Object) {
+                // JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+                const Json* first = nullptr;
+                for (auto& kv : value.fields())
+                    if (kv.second.type() == Json::Array) { first = &kv.second; break; }
+                if (first) return check(*first, path, out, err);   // the first list, as items stream it (Items)
+                if (item[0].kind == "object") {
+                    Json v;
+                    std::string why;
+                    if (item[0].check(value, path + "[0]", v, why)) { out = Json(std::vector<Json>{v}); return true; }
+                }
+            }
             if (value.type() != Json::Array) { err = path + " must be a list"; return false; }
             if (value.items().size() > MAX_LIST) { err = path + " must have at most " + std::to_string(MAX_LIST) + " items"; return false; }
             std::vector<Json> items;
@@ -3767,9 +3829,48 @@ inline std::string head(const std::string& task, const Persona& c, const std::st
 
 constexpr size_t CLIP = 4000;  // characters of facts, situation, context or state the model reads (more is cut, and journaled)
 
+/// A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted.
+inline Json short_value(const Json& v) {
+    if (v.type() == Json::String && py::len(v.str()) > 80) return Json(py::head(v.str(), 80) + "...");
+    if (v.type() == Json::Array && v.items().size() > 3) {
+        std::vector<Json> out(v.items().begin(), v.items().begin() + 3);
+        out.push_back(Json("(" + std::to_string(v.items().size() - 3) + " more)"));
+        return Json(out);
+    }
+    if (v.type() == Json::Object && py::len(py::dumps_text(v)) > 200) return Json("(" + std::to_string(v.fields().size()) + " fields)");
+    return v;
+}
+
+/// obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones matter
+/// most): the last values are shortened first, then replaced by "(cut)". Anything else is cut.
 inline std::string clip(const Json& obj, size_t limit = CLIP) {
     std::string t = py::dumps_text(obj);
-    return py::len(t) <= limit ? t : py::head(t, limit) + "...";
+    if (py::len(t) <= limit) return t;
+    if (obj.type() == Json::Object && !obj.fields().empty()) {
+        std::vector<std::string> keys, pairs;   // '"key": value', as the whole object writes it
+        auto pair = [](const std::string& k, const Json& v) { return py::dumps_text(Json(k)) + ": " + py::dumps_text(v); };
+        size_t size = 0;
+        for (auto& kv : obj.fields()) {
+            keys.push_back(kv.first);
+            pairs.push_back(pair(kv.first, kv.second));
+            size += py::len(pairs.back()) + 2;   // with the braces and the ", " between pairs
+        }
+        auto joined = [&pairs]() {
+            std::string s = "{";
+            for (size_t i = 0; i < pairs.size(); i++) s += (i ? ", " : "") + pairs[i];
+            return s + "}";
+        };
+        for (int cut = 0; cut < 2; cut++) {
+            for (size_t i = keys.size(); i-- > 0;) {
+                std::string fresh = pair(keys[i], cut ? Json("(cut)") : short_value(obj[keys[i]]));
+                size = size + py::len(fresh) - py::len(pairs[i]);
+                pairs[i] = fresh;
+                if (size <= limit) return joined();
+            }
+        }
+        t = joined();
+    }
+    return py::head(t, limit) + "...";
 }
 
 inline const char* feeling(double v) { return v <= -0.6 ? "hates" : v < -0.1 ? "distrusts" : v >= 0.6 ? "trusts deeply" : v > 0.1 ? "likes" : ""; }
@@ -3821,6 +3922,24 @@ inline std::string picture_block(size_t pictures, const std::string& speaker) {
     if (!pictures) return "";
     if (!speaker.empty()) return "A picture comes with this moment: what " + speaker + " shows you, or what you see right now. Look at it.\n";
     return "A picture comes with this request: look at it and use what it shows.\n";
+}
+
+/// Someone in the crowd (no declared character) says one line about what just happened.
+inline std::string remark_system(const std::string& who, const std::string& language, size_t chars = 0) {
+    return "Kinloom task: remark\nYou are " + who + " in a video game world. Something just happened in front of you.\n"
+           "Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words" +
+           (chars ? " and at most " + std::to_string(chars) + " characters" : std::string()) + ".\n"
+           "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.\n" +
+           write_in(language) + "\n" + DATA + "\nAnswer as JSON: {\"line\": \"what you say\"}";
+}
+
+inline std::string remark_user(const std::string& about) { return "What just happened: " + about + "\nSay your line now."; }
+
+/// The game refused the last answer (create's check): its reason, once, with the answer it refused.
+inline std::string refused_block(const Json& refused) {
+    if (refused.is_null()) return "";
+    return "The game refused your last answer: " + refused["why"].str() + "\nThe refused answer: " + clip(refused["answer"], 1500) +
+           "\nAnswer again: keep what was fine, fix that.\n";
 }
 
 /// What the game decided for this reply (steer): the model makes it happen, in the character's words.
@@ -4213,6 +4332,21 @@ public:
                 list = kept;
             }
             dirty_ = true;
+        }
+        schedule();
+    }
+
+    /// Removes the latest note with exactly this text (a reply the game refused is not remembered).
+    void take_back(const std::string& session, const std::string& scope, const std::string& text0) {
+        std::string text = py::head(py::squash(text0), 300);
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            auto it = notes_.find(session + std::string(1, '\0') + scope);
+            if (it == notes_.end()) return;
+            auto& list = it->second;
+            for (size_t i = list.size(); i-- > 0;) {
+                if (list[i]["text"].str() == text) { list.erase(list.begin() + (long)i); dirty_ = true; break; }
+            }
         }
         schedule();
     }
@@ -6489,7 +6623,22 @@ struct Said {
 };
 
 constexpr size_t MAX_WHAT = 500;  // characters of create's `what` (more is cut, and journaled)
+constexpr size_t MAX_WHY = 300;   // why the game refused a created answer (create's check), in characters
 constexpr size_t MAX_NAME = 48, MAX_EVENT = 160, MAX_LINE = 140, MAX_REPLY = 400, MAX_TOOLS = 100;
+constexpr size_t MAX_STREAMED = 200;   // items of one list answer handed over as they come
+
+/// What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses.
+inline std::string reason(const Json& verdict) {
+    if (verdict.is_null() || (verdict.type() == Json::Bool && verdict.boolean()) || (verdict.type() == Json::String && verdict.str().empty())) return "";
+    if (verdict.type() == Json::Bool) return "it breaks the game's rules";
+    std::string why = py::head(py::squash(text::clean(py::text(verdict))), MAX_WHY);
+    return why.empty() ? "refused" : why;
+}
+
+/// What a character remembers when the game refused one of its actions (act's check).
+inline std::string refused_note(const std::string& tool, const Json& args, const std::string& why) {
+    return "The game did not let me " + tool + " " + py::dumps_text(args) + ": " + why;
+}
 
 inline std::string event_key(const Json& e) { return py::head(text::clean(py::text(e)), MAX_EVENT); }
 
@@ -6830,6 +6979,16 @@ constexpr size_t MAX_CHARACTERS = 5000, MAX_WAITING = 50, MAX_SPEAKERS = 500, BA
 static const char* const DEFAULT_LANGUAGE = "English";
 constexpr double GAMMA = 0.8, COMPOUND = 0.4, HEARSAY = 0.5, RUMOR_DECAY = 0.8, MIN_RUMOR = 0.1;
 
+/// What a reply changed inside, to put back if the game refuses it (chat's check).
+struct Undo {
+    bool has_mood = false, mood_was = false, has_rise = false, rise_was = false, has_gesture = false, seen_was = false, shown_was = false;
+    Json mood;
+    std::array<double, 3> rise{};
+    std::string seen, shown;
+    double feel = 0;
+    std::vector<std::string> notes;
+};
+
 class Brain : public std::enable_shared_from_this<Brain> {
 public:
     double hedge_after = 2.5, stall_after = 3.0, inner_grace = 1.5;
@@ -7015,6 +7174,9 @@ private:
         return true;
     }
     std::unordered_map<std::string, std::string> steers_;     // session|name -> what the game decided for the next reply
+    std::unordered_map<std::string, std::vector<Act>> last_decided_;   // chat's check: the last reply's actions, taken back
+    std::unordered_map<std::string, Undo> last_undo_;                  // and what it changed inside
+    std::unordered_map<std::string, size_t> remark_turns_;             // offline remarks said in turn
     double reply_timeout_ = 8.0;                              // kinloom.json "reply_timeout"
     std::unordered_set<std::string> empty_told_;
     std::deque<Json> journal_;
@@ -7811,11 +7973,20 @@ private:
     }
 
     std::vector<Act> inner(const std::string& session, const Character& c, const std::string& speaker, const Json& data) {
+        Undo undo;
+        return inner(session, c, speaker, data, undo);
+    }
+
+    std::vector<Act> inner(const std::string& session, const Character& c, const std::string& speaker, const Json& data, Undo& undo) {
         souls::Inner i = souls::inner_of_reply(data);
         std::string key = k2(session, c->name);
         if (i.has_mood && allowed_text(i.mood)) {
             double t = clock();
             std::lock_guard<std::mutex> lock(mu_);
+            auto was = moods_.find(key);
+            undo.has_mood = true;
+            undo.mood_was = was != moods_.end();
+            if (undo.mood_was) undo.mood = was->second;
             moods_[key] = obj({{"word", i.mood}, {"level", i.intensity}, {"t", t}});
         }
         if (i.has_feel && i.feel != 0) {
@@ -7826,6 +7997,9 @@ private:
                     double now = wall();
                     std::string rkey = k3(session, c->name, speaker);
                     auto it = rises_.find(rkey);
+                    undo.has_rise = true;
+                    undo.rise_was = it != rises_.end();
+                    if (undo.rise_was) undo.rise = it->second;
                     std::array<double, 3> r = it != rises_.end() ? it->second : std::array<double, 3>{now, 0.0, -1e18};
                     double start = r[0], gained = r[1];
                     if (now - r[2] > souls::NEW_TALK) { start = now; gained = 0.0; }
@@ -7834,16 +8008,31 @@ private:
                 }
                 if (change < i.feel) log("refused", c->name, "feel: " + speaker + " already won " + py::fixed(c->warm_up, 1, true) + " this conversation");
             }
-            if (change != 0) feel_value(session, c->name, speaker, change);
+            if (change != 0) {
+                double before = opinion(session, Json(c->name), Json(speaker));
+                undo.feel = feel_value(session, c->name, speaker, change) - before;
+            }
         }
-        if (!i.self.empty() && allowed_text(i.self)) memory_->add(session, c->name, i.self, 0.9, obj({{"about", lines::SELF}}));
+        if (!i.self.empty() && allowed_text(i.self)) {
+            memory_->add(session, c->name, i.self, 0.9, obj({{"about", lines::SELF}}));
+            undo.notes.push_back(i.self);
+        }
         if (!i.remember.empty()) {
-            if (allowed_text(i.remember)) memory_->add(session, c->name, i.remember, 0.8, obj({{"about", speaker}}));
-            else log("refused", c->name, "remember: blocked by the content filter");
+            if (allowed_text(i.remember)) {
+                memory_->add(session, c->name, i.remember, 0.8, obj({{"about", speaker}}));
+                undo.notes.push_back(i.remember);
+            } else log("refused", c->name, "remember: blocked by the content filter");
         }
         bool gesture_ok = !i.gesture.empty() && allowed_text(i.gesture);
         {
             std::lock_guard<std::mutex> lock(mu_);
+            undo.has_gesture = true;
+            auto seen0 = gesture_seen_.find(key);
+            auto shown0 = gestures_.find(key);
+            undo.seen_was = seen0 != gesture_seen_.end();
+            if (undo.seen_was) undo.seen = seen0->second;
+            undo.shown_was = shown0 != gestures_.end();
+            if (undo.shown_was) undo.shown = shown0->second;
             auto it = gesture_seen_.find(key);
             std::string seen = it != gesture_seen_.end() ? it->second : "";
             bool fresh = gesture_ok && !souls::same_action(i.gesture, seen);
@@ -8249,7 +8438,14 @@ public:
 private:
     bool structured(const std::string& kind, const std::string& name, const std::string& system, const std::string& user, const Shape& shape, bool foreground,
                     size_t max_tokens, double timeout, const std::vector<Picture>& images, Json& out) {
-        ModelReply r = call(kind, name, system, user, true, foreground, max_tokens, nullptr, timeout, images);
+        return structured_stream(kind, name, system, user, shape, foreground, max_tokens, timeout, images, nullptr, nullptr, out);
+    }
+
+    /// on_text: the answer's pieces as they come; used(): true when part of it was already used (then no repair).
+    bool structured_stream(const std::string& kind, const std::string& name, const std::string& system, const std::string& user, const Shape& shape,
+                           bool foreground, size_t max_tokens, double timeout, const std::vector<Picture>& images, std::shared_ptr<OnText> on_text,
+                           const std::function<bool()>& used, Json& out) {
+        ModelReply r = call(kind, name, system, user, true, foreground, max_tokens, on_text, timeout, images);
         if (!r.ok) return false;
         std::string err;
         Json v;
@@ -8258,6 +8454,7 @@ private:
             out = v;
             return true;
         }
+        if (used && used()) return false;
         log("repair", name, kind + ": " + err);
         if (err == text::CUT) max_tokens = std::min((size_t)4000, max_tokens * 2);  // stopped by the token limit: room to finish
         r = call(kind, name, system, user + prompts::repair(err), true, foreground, max_tokens, nullptr, timeout, images);
@@ -8837,12 +9034,29 @@ public:
 
     // ---------------- create ----------------
 
+    /// out = the answer, source = "model" or "offline". offline: the game's own offline answer; refused0: {answer, why}
+    /// the game refused last time (create's check).
+    /// on_item: for a list answer, every item as soon as the model has written it; false when the game refuses it (left
+    /// out). streamed: how many items on_item already got.
     bool create(const std::string& session, const Json& what0, const Json& example0, const Json& context, const Json& count, bool instant, double timeout, const Json& image,
-                Json& out, Bad& bad) {
+                const Json& offline, const Json& refused0, Json& out, std::string& source, Bad& bad, size_t* streamed = nullptr,
+                const std::function<bool(const Json&)>& on_item = nullptr) {
+        if (streamed) *streamed = 0;
         Json example = py::truthy(count) && example0.type() == Json::Array && example0.items().size() == 1 ? example0.items()[0] : example0;
         Shape shape;
         std::string err;
         if (!Shape::of(example, shape, err)) return bad_arg(bad, err);
+        Json fallback = shape.default_value();
+        if (!offline.is_null() && !shape.check(offline, "value", fallback, err))
+            return bad_arg(bad, "create: offline must be shaped like the example: " + err);
+        Json refused;
+        if (!refused0.is_null()) {
+            if (refused0.type() != Json::Object || !refused0.has("answer") || refused0["why"].type() != Json::String)
+                return bad_arg(bad, "create: refused must be {\"answer\": the refused answer, \"why\": \"the reason\"}, got " + py::py_repr(refused0));
+            std::string why = py::head(py::squash(text::clean(refused0["why"].str())), MAX_WHY);
+            if (!why.empty()) refused = obj({{"answer", refused0["answer"]}, {"why", why}});
+        }
+        source = "offline";
         std::string what = text::clean(py::text(what0));
         clip_note(py::head(what, MAX_WHAT), "what", Json(what), MAX_WHAT, true);
         clip_note(py::head(what, MAX_WHAT), "context", context);
@@ -8850,43 +9064,201 @@ public:
         auto pics = image.is_null() ? std::vector<Picture>{} : pictures(what, image);
         if (instant) {
             if (!pics.empty()) log("refused", what, "image: not used with instant=True (those items are made ahead)");
-            out = from_pool(session, what, shape, context);
+            if (from_pool(session, what, shape, context, out)) source = "model";
+            else out = fallback;
             return true;
         }
         if (py::truthy(count)) {
             double n;
             if (!arg_num(count, "count", n, bad)) return false;
             size_t k = (size_t)clampi(n, 1, 50);
-            auto items = create_many(session, what, shape, context, k, true, timeout, pics);
-            while (items.size() < k) items.push_back(shape.default_value());
+            auto st = std::make_shared<ItemStream>();
+            auto feed = on_item ? streamer(shape, on_item, st, k) : nullptr;
+            auto items = create_many(session, what, shape, context, k, true, timeout, pics, feed);
+            std::vector<Json> kept = st->close();
+            if (!kept.empty()) items = kept;
+            if (streamed) *streamed = kept.size();
+            if (!items.empty()) source = "model";
+            while (items.size() < k) items.push_back(fallback);
             out = Json(items);
             return true;
         }
-        if (!provider_) { out = shape.default_value(); return true; }
+        if (!provider_) { out = fallback; return true; }
+        if (!refused.is_null()) log("refused", what, "create: the game refused it: " + refused["why"].str());
         std::string system = prompts::create_system(what, shape, written());
-        std::string user = context_text(session, what) + prompts::context_block(context) + prompts::picture_block(pics.size(), "");
+        std::string user = context_text(session, what) + prompts::context_block(context) + prompts::picture_block(pics.size(), "") +
+                           prompts::refused_block(refused);
         Json value;
-        if (!structured("create", what, system, user, shape, true, 1500, timeout, pics, value)) {
+        auto st = std::make_shared<ItemStream>();
+        std::shared_ptr<OnText> feed = on_item && shape.kind == "list" && !shape.item.empty() ? streamer(shape.item[0], on_item, st, MAX_STREAMED) : nullptr;
+        bool got = structured_stream("create", what, system, user, shape, true, 1500, timeout, pics, feed,
+                                     feed ? std::function<bool()>([st]() { return st->any(); }) : nullptr, value);
+        std::vector<Json> kept = st->close();
+        if (!kept.empty()) { value = Json(kept); got = true; }
+        if (!got) {
             count_offline();
-            out = shape.default_value();
+            out = fallback;
             return true;
         }
         log("create", what, py::head(py::dumps(value), 300));
         out = value;
+        source = "model";
+        if (streamed) *streamed = kept.size();
+        return true;
+    }
+
+    /// A short line said out loud by someone in the crowd (no character to declare) about what just happened.
+    /// offline: the game's own lines ({fact} placeholders), taken in turn when no model answers.
+    bool remark(const std::string& session, const Json& about0, const Json& who0, const Json& facts0, const Json& offline, const Json& max_chars,
+                Said& out, Bad& bad) {
+        if (about0.type() != Json::String) return bad_arg(bad, "remark: about must be a string (what just happened), got " + py::py_repr(about0));
+        std::string about = py::head(py::squash(text::clean(about0.str())), 300);
+        std::string who = py::head(py::squash(text::clean(who0.is_null() ? std::string() : py::text(who0))), MAX_NAME);
+        if (who.empty()) who = "someone in the crowd";
+        Json facts;
+        if (!mapping(facts0, "facts", facts, bad)) return false;
+        clip_note(who, "facts", facts);
+        std::vector<std::string> lines_given;
+        if (offline.type() == Json::String) lines_given.push_back(offline.str());
+        else if (offline.type() == Json::Array) {
+            for (auto& x : offline.items()) {
+                if (x.type() != Json::String)
+                    return bad_arg(bad, "remark: offline must be a line or a list of lines, like [\"Would you look at that!\"], got " + py::py_repr(offline));
+                lines_given.push_back(x.str());
+            }
+        } else if (!offline.is_null())
+            return bad_arg(bad, "remark: offline must be a line or a list of lines, like [\"Would you look at that!\"], got " + py::py_repr(offline));
+        size_t limit = box_limit(max_chars);
+        if (provider_ && !about.empty()) {
+            ModelReply r = call("remark", who, prompts::remark_system(who, written(), limit),
+                                context_text(session, about) + prompts::facts_block(facts) + prompts::remark_user(about), true, true, 120, nullptr, -1, {});
+            Json data = r.ok ? text::find_json(r.text) : Json();
+            std::string said = data.type() == Json::Object && data["line"].type() == Json::String ? valid_remark(data["line"].str(), facts, about, limit) : "";
+            if (!said.empty()) {
+                log("remark", who, said, obj({{"about", about}}));
+                out = Said{};
+                out.text = said;
+                out.source = "model";
+                return true;
+            }
+        }
+        std::vector<std::string> usable;
+        for (auto& t : lines_given) {
+            bool ok = true;
+            for (auto& p : lines::placeholders(t)) if (!facts.has(p)) ok = false;
+            if (ok) usable.push_back(t);
+        }
+        std::string spoken;
+        if (!usable.empty()) {
+            size_t turn;
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                turn = remark_turns_[k2(session, who)]++;
+                cap(remark_turns_);
+            }
+            spoken = souls::fit_chars(lines::fill(usable[turn % usable.size()], facts), limit);
+        }
+        count_offline();
+        log("remark", who, spoken, obj({{"about", about}, {"source", "offline"}}));
+        if (spoken.empty()) tell_empty(session, who, "remark", "remark by " + who + " answered \"\" (give it offline=[...] lines, said when no model answers)");
+        out = Said{};
+        out.text = spoken;
+        out.source = "offline";
         return true;
     }
 
 private:
     void count_offline() { count("offline_answers"); }
+
+    /// The oldest-ish entries go once a table passes MAX_KEYS (remarks in turn, the last replies' take-back data).
+    template <class V>
+    static void cap(std::unordered_map<std::string, V>& table) {
+        while (table.size() > MAX_KEYS) table.erase(table.begin());
+    }
+
+    /// A list answer as it streams: the items kept so far. close() (the call returned) ends it: a stream that goes on (a
+    /// call given up on, still writing on the provider's thread) hands nothing more over, and the game's callbacks are
+    /// never called after create returned.
+    struct ItemStream {
+        std::mutex mu;
+        bool open = true;
+        std::vector<Json> kept;
+        text::Items items;
+        bool any() { std::lock_guard<std::mutex> lock(mu); return !kept.empty(); }
+        std::vector<Json> close() { std::lock_guard<std::mutex> lock(mu); open = false; return kept; }
+    };
+
+    /// on_text for a list answer: each finished item, valid and allowed, goes to on_item at once (kept when accepted).
+    std::shared_ptr<OnText> streamer(const Shape& item_shape, std::function<bool(const Json&)> on_item, std::shared_ptr<ItemStream> st, size_t limit) {
+        std::weak_ptr<Brain> self = weak_from_this();
+        Shape shape = item_shape;
+        return std::make_shared<OnText>([self, st, shape, on_item, limit](const std::string& piece) {
+            std::lock_guard<std::mutex> lock(st->mu);
+            if (!st->open) return;
+            auto me = self.lock();
+            if (!me) return;
+            for (auto& t : st->items.feed(piece)) {
+                if (st->kept.size() >= limit) return;
+                Json v;
+                std::string err;
+                if (!shape.parse(t, v, err) || !me->allowed(v) || !on_item(v)) continue;
+                st->kept.push_back(v);
+            }
+        });
+    }
+
+    /// The remark as said: one short line, the filter passed, no numbers the game did not give; else "".
+    std::string valid_remark(const std::string& line, const Json& facts, const std::string& about, size_t limit) {
+        std::string t = py::strip(py::strip_chars(py::strip(text::clean(line)), "\""));
+        if (t.empty() || !allowed_text(t) || lines::META().is_match(t) || lines::PROMPTISH().is_match(t) || t.find('{') != std::string::npos) return "";
+        auto allowed_nums = lines::allowed_numbers({facts, Json(about)});
+        for (auto& m : lines::NUMBER().all(t)) if (!lines::number_ok(m, allowed_nums)) return "";
+        return souls::cap(t, 20, limit);
+    }
+
+    /// The reply the game refused: out of the conversation, the memory and the actions waiting for act().
+    void take_back(const std::string& session, const Character& c, const std::string& speaker, const std::string& message, const std::string& answer) {
+        Undo undo;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            auto h = history_.find(k3(session, c->name, speaker));
+            if (h != history_.end() && !h->second.empty() && h->second.back().first == c->name && h->second.back().second == answer) {
+                h->second.pop_back();
+                if (!message.empty() && !h->second.empty() && h->second.back().first == speaker && h->second.back().second == message) h->second.pop_back();
+            }
+            auto s = said_.find(k2(session, c->name));
+            if (s != said_.end() && !s->second.empty() && s->second.back() == answer) s->second.pop_back();
+            auto acts = last_decided_.find(k2(session, c->name));
+            if (acts != last_decided_.end()) {
+                for (auto& a : acts->second) a->taken = true;
+                last_decided_.erase(acts);
+            }
+            auto u = last_undo_.find(k2(session, c->name));
+            if (u != last_undo_.end()) {
+                undo = u->second;
+                last_undo_.erase(u);
+                std::string key = k2(session, c->name), rkey = k3(session, c->name, speaker);
+                if (undo.has_mood) { if (undo.mood_was) moods_[key] = undo.mood; else moods_.erase(key); }
+                if (undo.has_rise) { if (undo.rise_was) slot(rises_, rise_order_, rkey) = undo.rise; else rises_.erase(rkey); }
+                if (undo.has_gesture) {
+                    if (undo.seen_was) gesture_seen_[key] = undo.seen; else gesture_seen_.erase(key);
+                    if (undo.shown_was) gestures_[key] = undo.shown; else gestures_.erase(key);
+                }
+            }
+        }
+        if (undo.feel != 0) feel_value(session, c->name, speaker, -undo.feel);   // the feeling it moved, the memories it wrote
+        for (auto& note : undo.notes) memory_->take_back(session, c->name, note);
+        if (!message.empty()) memory_->take_back(session, c->name, speaker + " said: " + py::head(message, 120) + " / I answered: " + py::head(answer, 160));
+    }
     std::string context_text(const std::string& session, const std::string& query) { return context(session, nullptr, query, true); }
 
     std::vector<Json> create_many(const std::string& session, const std::string& what, const Shape& shape, const Json& context, size_t count, bool foreground, double timeout,
-                                  const std::vector<Picture>& pics) {
+                                  const std::vector<Picture>& pics, std::shared_ptr<OnText> on_text = nullptr) {
         std::vector<Json> items;
         if (!provider_) return items;
         std::string system = prompts::create_many_system(what, shape, count, written());
         std::string user = context_text(session, what) + prompts::context_block(context) + prompts::picture_block(pics.size(), "");
-        ModelReply r = call("create", what, system, user, true, foreground, std::min((size_t)4000, 200 + 150 * count), nullptr, timeout, pics);
+        ModelReply r = call("create", what, system, user, true, foreground, std::min((size_t)4000, 200 + 150 * count), on_text, timeout, pics);
         if (!r.ok) return items;
         Json data = text::find_json(r.text);
         std::vector<Json> raw = data.type() == Json::Object ? data["items"].items() : data.items();
@@ -8900,9 +9272,9 @@ private:
         return items;
     }
 
-    Json from_pool(const std::string& session, const std::string& what, const Shape& shape, const Json& context) {
+    /// An item made ahead (false when none is ready yet).
+    bool from_pool(const std::string& session, const std::string& what, const Shape& shape, const Json& context, Json& item) {
         std::string key = k3(session, what, shape.signature());
-        Json item;
         bool has = false, low;
         {
             std::lock_guard<std::mutex> lock(mu_);
@@ -8922,7 +9294,7 @@ private:
                 pool.items.insert(pool.items.end(), items.begin(), items.end());
             });
         }
-        return has ? item : shape.default_value();
+        return has;
     }
 
     // ---------------- chat ----------------
@@ -8939,14 +9311,27 @@ private:
     };
 
 public:
+    /// refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of it, its
+    /// actions) and asked again knowing why; drop: taken back and answered offline (refused twice).
     bool chat(const std::string& session, const Json& name, const Json& message0, const Json& facts0, const Json& speaker0, std::shared_ptr<OnText> stream, double timeout,
-              const Json& max_chars, const Json& image, Said& out, Bad& bad) {
+              const Json& max_chars, const Json& image, Said& out, Bad& bad, const Json& refused0 = Json(), bool drop = false) {
         Character c = character(session, name);
         auto began = std::chrono::steady_clock::now();
         auto pics = image.is_null() ? std::vector<Picture>{} : pictures(c->name, image);
         size_t limit = box_limit(max_chars) ? box_limit(max_chars) : c->max_chars;
         std::string message = py::head(text::clean(message0.is_null() ? std::string() : py::text(message0)), 1000);
         std::string speaker = name_or(speaker0, "player");
+        Json refused;
+        if (!refused0.is_null()) {
+            if (refused0.type() != Json::Object || !refused0.has("answer") || refused0["why"].type() != Json::String)
+                return bad_arg(bad, "create: refused must be {\"answer\": the refused answer, \"why\": \"the reason\"}, got " + py::py_repr(refused0));
+            std::string why = py::head(py::squash(text::clean(refused0["why"].str())), MAX_WHY);
+            if (!why.empty()) refused = obj({{"answer", refused0["answer"]}, {"why", why}});
+        }
+        if (!refused.is_null()) {
+            take_back(session, c, speaker, message, py::text(refused["answer"]));
+            log("refused", c->name, "chat: the game refused the reply: " + refused["why"].str());
+        }
         Json facts;
         if (!mapping(facts0, "facts", facts, bad)) return false;
         clip_note(c->name, "facts", facts);
@@ -9006,7 +9391,7 @@ public:
             inner_data = greeting.second;
             source = "prepared";
             if (stream) (*stream)(reply);
-        } else if (provider_) {
+        } else if (provider_ && !drop) {
             auto mood = mood_of(session, *c);
             Persona persona = c->persona();
             std::string system = prompts::chat_system(persona, lang(*c, true), card_lines(*c), lore(session), "chat");
@@ -9023,7 +9408,7 @@ public:
             auto recalled = memory_->recall(session, {c->name, "world"}, message, 6, true);
             auto nums = lines::allowed_numbers({facts, st, Json(message), Json(steer), Json(c->personality()), souls::texts(card), py::list_of(recalled),
                                                 py::list_of(known_notes)});
-            std::string repair;
+            std::string repair = refused.is_null() ? std::string() : "\n\n" + prompts::refused_block(refused);
             auto streamed = std::make_shared<std::atomic<bool>>(false);
             std::vector<std::string> mine;
             {
@@ -9154,7 +9539,15 @@ public:
                 auto found = deeds(*c, speaker, message, reply, std::max(1.5, left));
                 if (!found.empty()) inner_data.fields_mut()["do"] = Json(found);
             }
-            decided = inner(session, c, speaker, inner_data);
+            Undo undo;
+            decided = inner(session, c, speaker, inner_data, undo);
+            {
+                std::lock_guard<std::mutex> lock(mu_);
+                last_decided_[k2(session, c->name)] = decided;
+                last_undo_[k2(session, c->name)] = undo;
+                cap(last_decided_);
+                cap(last_undo_);
+            }
             if (source == "prepared") prepare_greeting(session, c);  // the next stranger's, with the mood this one left
         } else if (!has_reply) {
             has_inner = false;
@@ -10056,7 +10449,8 @@ public:
             const Json& image = body["image"];
             if (!image.is_null() && image.type() != Json::String) return fail(400, "'image' must be base64 or a data URI (PNG, JPEG, GIF, WebP)");
             Said s;
-            if (!chat(session, name, body["message"], facts, Json(speaker), nullptr, -1, body["max_chars"], image.type() == Json::String && image.str().empty() ? Json() : image, s, bad))
+            if (!chat(session, name, body["message"], facts, Json(speaker), nullptr, -1, body["max_chars"], image.type() == Json::String && image.str().empty() ? Json() : image, s, bad,
+                      body["refused"], py::truthy(body["drop"])))
                 return fail_bad();
             out = obj({{"text", s.text}, {"declared", is_declared(session, name)}});
             merge(out, feelings(session, name, speaker));
@@ -10094,10 +10488,21 @@ public:
             const Json& image = body["image"];
             if (!image.is_null() && image.type() != Json::String) return fail(400, "'image' must be base64 or a data URI (PNG, JPEG, GIF, WebP)");
             Json v;
+            std::string source;
+            size_t streamed = 0;
             if (!create(session, body["what"], body["example"], body["context"], body["count"], py::truthy(body["instant"]), -1,
-                        image.type() == Json::String && image.str().empty() ? Json() : image, v, bad))
+                        image.type() == Json::String && image.str().empty() ? Json() : image, body["offline"], body["refused"], v, source, bad, &streamed))
                 return fail_bad();
-            out = obj({{"value", v}});
+            out = obj({{"value", v}, {"source", source}, {"streamed", (long long)streamed}});
+            return true;
+        }
+        if (verb == "remark") {
+            if (body["about"].type() != Json::String) return fail(400, "missing 'about' (what just happened, as text)");
+            Json facts;
+            if (!facts_ok(facts)) return fail(400, "'facts' must be an object {name: value}");
+            Said s;
+            if (!remark(session, body["about"], body["who"], facts, body["offline"], body["max_chars"], s, bad)) return fail_bad();
+            out = obj({{"text", s.text}, {"source", s.source}});
             return true;
         }
         if (verb == "tools") {
@@ -10293,7 +10698,8 @@ public:
         std::string speaker = speaker_of(body);
         Said s;
         Bad bad;
-        if (!chat(session, body["name"], body["message"], body["facts"], Json(speaker), on_piece, -1, body["max_chars"], body["image"], s, bad)) {
+        if (!chat(session, body["name"], body["message"], body["facts"], Json(speaker), on_piece, -1, body["max_chars"], body["image"], s, bad, body["refused"],
+                  py::truthy(body["drop"]))) {
             status = 400;
             error = bad.type ? "chat: a field has the wrong type (" + bad.message + ")" : "chat: " + bad.message;
             return false;
@@ -10376,6 +10782,9 @@ inline bool prompt(const std::string& name, const Json& spec, const std::vector<
         out = prompts::bond_block(text_of(arg(0)), arg(1).is_null() ? -1 : (long long)arg(1)["talks"].num(), text_of(arg(2)), arg(3).num(), py::strings(arg(4)), text_of(arg(5)),
                                   text_of(arg(6)), text_of(arg(7)), arg(8).boolean(), arg(9).is_null() ? souls::SECRET_TRUST : arg(9).num());
     else if (name == "steer_block") out = prompts::steer_block(text_of(arg(0)));
+    else if (name == "remark_system") out = prompts::remark_system(text_of(arg(0)), text_of(arg(1)), arg(2).is_null() ? 0 : (size_t)arg(2).num());
+    else if (name == "remark_user") out = prompts::remark_user(text_of(arg(0)));
+    else if (name == "refused_block") out = prompts::refused_block(arg(0));
     else if (name == "deeds_user") out = prompts::deeds_user(text_of(arg(0)), text_of(arg(1)), text_of(arg(2)), text_of(arg(3)));
     else if (name == "soul_user") out = prompts::soul_user(text_of(arg(0)), py::strings(arg(1)));
     else if (name == "repair") out = prompts::repair(text_of(arg(0)));
@@ -10446,6 +10855,14 @@ inline bool run(const std::string& fn, const std::vector<Json>& a, Json& out, st
     else if (fn == "worn") { auto r = souls::worn(py::strings(arg(0))); out = arr({py::list_of(r.first), Json(r.second)}); }
     else if (fn == "drop_narrated") { auto r = souls::drop_narrated(text_of(arg(0)), text_of(arg(1)), py::strings(arg(2))); out = arr({Json(r.first), Json(r.second)}); }
     else if (fn == "inner") out = souls::inner_of_reply(arg(0)).to_json();
+    else if (fn == "reason") out = Json(reason(arg(0)));
+    else if (fn == "refused_note") out = Json(refused_note(arg(0).str(), arg(1), arg(2).str()));
+    else if (fn == "items") {
+        text::Items it;
+        std::vector<Json> got;
+        for (auto& p : arg(0).items()) for (auto& t : it.feed(p.str())) got.push_back(Json(t));
+        out = Json(got);
+    }
     else if (fn == "card") out = souls::card(arg(0), text_of(arg(1)));
     else if (fn == "describe_card") out = py::list_of(souls::describe(arg(0)));
     else if (fn == "mood_now") { auto r = souls::mood_now(arg(0), arg(1).num(), text_of(arg(2))); out = arr({Json(r.first), Json(r.second)}); }
@@ -10745,25 +11162,46 @@ public:
         Json body = obj({{"name", name}, {"message", message}, {"facts", facts}, {"speaker", speaker}, {"do", true}});
         if (!image.empty()) body.fields_mut()["image"] = base64_encode(image);
         bool ok = on_piece ? stream(body, std::move(on_piece), r) : post(in_, "chat", body, chat_timeout_ms, r);
-        set_source(name, ok, r);
-        if (!ok) {
-            std::lock_guard<std::mutex> lock(in_->mu);
-            auto it = in_->chars.find(name);
-            if (it == in_->chars.end()) return "";
-            const Json& offline = it->second["offline"];
-            if (offline.type() == Json::Array) {
-                const auto& many = offline.items();
-                return many.empty() ? "" : many[std::uniform_int_distribution<size_t>(0, many.size() - 1)(in_->rng)].str();
+        return chat_answer(name, ok, r);
+    }
+
+    /// The game's own rules for an answer: "" accepts it; any other text is why the game refuses it.
+    using Check = std::function<std::string(const Json&)>;
+
+    /// The game's rules for what is said: "" accepts it; any other text is why the game refuses it.
+    using TextCheck = std::function<std::string(const std::string&)>;
+
+    /// chat with the game's rules for what is said: `check` returns "" to accept the reply, or why it refuses it; a refused
+    /// reply is taken back (words, memory, actions) and asked again once knowing why, then the offline reply is used.
+    std::string chat_checked(const std::string& name, const std::string& message, const Json& facts, const std::string& speaker, const TextCheck& check) {
+        Json body = obj({{"name", name}, {"message", message}, {"facts", facts.is_null() ? obj({}) : facts}, {"speaker", speaker}, {"do", true}});
+        Json r;
+        std::string text = chat_answer(name, post(in_, "chat", body, chat_timeout_ms, r), r);
+        for (bool drop : {false, true}) {
+            if (source(name) == "offline" || !check) break;
+            std::string why = judged([&]() { return check(text); });
+            if (why.empty()) break;
+            {
+                std::lock_guard<std::mutex> lock(in_->mu);
+                auto tag = in_->last_do.find(name);
+                if (tag != in_->last_do.end()) {
+                    // this reply's own actions only (an equal one from an earlier reply stays)
+                    Pending& p = in_->actions[name];
+                    std::vector<Action> ready;
+                    std::vector<uint64_t> tags;
+                    for (size_t i = 0; i < p.ready.size(); i++)
+                        if (p.tags[i] != tag->second) { ready.push_back(p.ready[i]); tags.push_back(p.tags[i]); }
+                    p.ready.swap(ready);
+                    p.tags.swap(tags);
+                }
             }
-            return offline.str();
+            Json again = body;
+            again.fields_mut()["refused"] = obj({{"answer", text}, {"why", why}});
+            again.fields_mut()["drop"] = drop;
+            Json r2;
+            text = chat_answer(name, post(in_, "chat", again, chat_timeout_ms, r2), r2);
         }
-        redeclare(name, r);
-        if (!r["do"].items().empty()) {
-            std::lock_guard<std::mutex> lock(in_->mu);
-            Pending& p = in_->actions[name];
-            for (auto& a : r["do"].items()) p.ready.push_back(Action{a["tool"].str(), a["args"]});
-        }
-        return r["text"].str();
+        return text;
     }
 
     std::future<std::string> chat_async(const std::string& name, const std::string& message, const Json& facts = obj({})) {
@@ -10807,6 +11245,31 @@ public:
         return value;
     }
 
+    /// decide with the game's rules: a decision `check` refuses (it returns why) is not used (the last accepted one is,
+    /// else the default) and the next decisions are made knowing why.
+    Json decide_checked(const std::string& name, const Json& situation, const Json& choices, const Check& check) {
+        std::string key = name + "|" + choices.dump();
+        Json sit = situation.is_null() ? obj({}) : situation.type() == Json::Object ? situation : obj({{"situation", situation}});
+        {
+            std::lock_guard<std::mutex> lock(in_->mu);
+            auto it = in_->decide_refused.find(key);
+            if (it != in_->decide_refused.end()) sit.fields_mut()["the game refused your last decision"] = it->second;
+        }
+        Json value = decide(name, sit, choices);
+        std::string why = check ? judged([&]() { return check(value); }) : "";
+        std::lock_guard<std::mutex> lock(in_->mu);
+        if (why.empty()) {
+            in_->decide_refused.erase(key);
+            in_->decide_ok[key] = value;
+            cap(in_->decide_ok);
+            return value;
+        }
+        in_->decide_refused[key] = obj({{"decision", value}, {"why", why}});
+        cap(in_->decide_refused);
+        auto ok = in_->decide_ok.find(key);
+        return ok != in_->decide_ok.end() ? ok->second : default_of(choices);
+    }
+
     /// Who the character is and feels: card, mood {word, level}, bonds {speaker: {talks, feeling}}, memories,
     /// conversation (with speaker). A null Json when the server is not running.
     /// World facts every character takes as true and never contradicts. Returns how many were kept (0 offline).
@@ -10834,6 +11297,44 @@ public:
             return out;
         }
         return examples;
+    }
+
+    /// suggest with the game's rules: a reply `check` refuses (it returns why) is replaced by its example.
+    std::vector<std::string> suggest_checked(const std::string& name, const std::vector<std::string>& examples, const std::string& speaker, const Json& facts,
+                                             const TextCheck& check) {
+        auto out = suggest(name, examples, speaker, facts);
+        if (!check) return out;
+        for (size_t i = 0; i < out.size() && i < examples.size(); i++)
+            if (!judged([&]() { return check(out[i]); }).empty()) out[i] = examples[i];
+        return out;
+    }
+
+    /// A short line from someone in the crowd about what just happened (no character to declare), ~1 s. who: who says it
+    /// ("an old fisherman", "" for anyone); offline: your own lines ({fact} placeholders), said in turn without a model.
+    std::string remark(const std::string& about, const std::string& who = "", const Json& facts = obj({}), const std::vector<std::string>& offline = {},
+                       int max_chars = 0) {
+        Json f = facts.is_null() ? obj({}) : facts;
+        Json body = obj({{"about", about}, {"facts", f}});
+        if (!who.empty()) body.fields_mut()["who"] = who;
+        if (!offline.empty()) body.fields_mut()["offline"] = native::py::list_of(offline);
+        if (max_chars > 0) body.fields_mut()["max_chars"] = max_chars;
+        Json r;
+        if (post(in_, "remark", body, chat_timeout_ms, r) && r["text"].type() == Json::String) return r["text"].str();
+        std::vector<std::string> usable;
+        for (auto& t : offline) {
+            bool ok = true;
+            for (auto& p : native::lines::placeholders(t)) ok = ok && f.has(p);
+            if (ok) usable.push_back(t);
+        }
+        if (usable.empty()) return "";
+        size_t turn;
+        {
+            std::lock_guard<std::mutex> lock(in_->mu);
+            std::string key = native::py::head(native::py::squash(native::text::clean(who)), 48);   // as the brain names who speaks
+            turn = in_->remark_turns[key.empty() ? "someone in the crowd" : key]++;
+            cap(in_->remark_turns);
+        }
+        return native::souls::fit_chars(native::lines::fill(usable[turn % usable.size()], f), max_chars > 0 ? (size_t)std::max(10, std::min(2000, max_chars)) : 0);
     }
 
     /// What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it in
@@ -10880,6 +11381,7 @@ public:
             std::lock_guard<std::mutex> lock(in_->mu);
             Pending& p = in_->actions[name];
             ready.swap(p.ready);
+            p.tags.clear();
             auto now = clock::now();
             due = !p.busy && (p.at == clock::time_point{} || now - p.at >= poll_every(*in_, name));
             if (due) { p.busy = true; p.at = now; }
@@ -10892,27 +11394,138 @@ public:
                 std::lock_guard<std::mutex> lock(in->mu);
                 Pending& p = in->actions[name];
                 if (ok)
-                    for (auto& a : r["actions"].items()) p.ready.push_back(Action{a["tool"].str(), a["args"]});
+                    for (auto& a : r["actions"].items()) { p.ready.push_back(Action{a["tool"].str(), a["args"]}); p.tags.push_back(0); }
                 p.busy = false;
             }).detach();
         }
         return ready;
     }
 
+    /// act with the game's rules: `check(tool, args)` returns "" to allow the action; a refused one is not returned, and
+    /// the character remembers why.
+    std::vector<Action> act_checked(const std::string& name, const Json& situation, bool think, const std::function<std::string(const std::string&, const Json&)>& check) {
+        std::vector<Action> kept;
+        for (auto& a : act(name, situation, think)) {
+            std::string why = check ? judged([&]() { return check(a.tool, a.args); }) : "";
+            if (why.empty()) { kept.push_back(a); continue; }
+            auto in = in_;
+            Json body = obj({{"name", name}, {"note", native::refused_note(a.tool, a.args, why)}, {"importance", 0.6}});
+            std::thread([in, body]() { Json r; post(in, "remember", body, 3000, r); }).detach();
+        }
+        return kept;
+    }
+
+    /// Each item of a list answer, as soon as the model has written it.
+    using Each = std::function<void(const Json&)>;
+
     /// Content shaped like the example (which is also the offline answer). count > 0 returns a list; instant = from a pool;
-    /// image: a picture the model looks at (PNG, JPEG, GIF or WebP bytes).
+    /// image: a picture the model looks at (PNG, JPEG, GIF or WebP bytes). check: the game's own rules; a refused answer
+    /// goes back to the model once with the reason, then the offline answer is used (with count/instant, refused items are
+    /// replaced). offline: the game's own offline answer, shaped like the example (null Json: the example). each: every
+    /// item of a list answer as soon as it is ready (native: as the model writes it), refused items left out.
     Json create(const std::string& what, const Json& given, const Json& context = obj({}), int count = 0, bool instant = false,
-                const std::vector<unsigned char>& image = {}) {
+                const std::vector<unsigned char>& image = {}, const Check& check = nullptr, const Json& offline = Json(), const Each& each = nullptr) {
         const Json example = count > 0 && given.items().size() == 1 ? given.items()[0] : given;   // [item] + count: count items
+        Json fallback = default_of(example);
+        native::Shape shape;
+        std::string shape_err;
+        bool shaped = native::Shape::of(example, shape, shape_err);
+        if (!offline.is_null()) {
+            std::string err = shape_err;
+            Json v;
+            if (shaped && shape.check(offline, "value", v, err)) fallback = v;
+            else std::fprintf(stderr, "[kinloom] create: offline must be shaped like the example: %s (the example is used)\n", err.c_str());
+        }
         Json body = obj({{"what", what}, {"example", example}, {"context", context}, {"instant", instant}});
         if (!image.empty()) body.fields_mut()["image"] = base64_encode(image);
         if (count > 0) body.fields_mut()["count"] = count;
-        Json r;
-        if (post(in_, "create", body, instant ? 2000 : chat_timeout_ms, r) && !r["value"].is_null()) return r["value"];
-        Json d = default_of(example);
-        if (count <= 0) return d;
-        return Json(std::vector<Json>((size_t)count, d));
+        if (!offline.is_null()) body.fields_mut()["offline"] = fallback;
+        return created(body, count, instant, check, fallback, true, each, count > 0 || (shaped && shape.kind == "list"));
     }
+
+    /// create with the game's rules and its own offline answer (see create).
+    Json create_checked(const std::string& what, const Json& example, const Json& context, const Check& check, const Json& offline = Json()) {
+        return create(what, example, context, 0, false, {}, check, offline);
+    }
+
+    /// One create request, then the game's check: a list item by item (in native mode as the model writes, each item
+    /// handed to each at once), anything else whole (refused: sent back once with its reason).
+    Json created(const Json& body, int count, bool instant, const Check& check, const Json& fallback, bool retry, const Each& each = nullptr, bool listed = false) {
+        Json r;
+        bool ok;
+        if (in_->brain && each && listed) {
+            // native: the brain hands over each item as the model writes it
+            std::function<bool(const Json&)> hook = [check, each](const Json& x) {
+                if (check && !why_of(check, x).empty()) return false;
+                give(each, x);
+                return true;
+            };
+            Json v;
+            std::string source;
+            native::Bad bad;
+            size_t streamed = 0;
+            ok = in_->brain->create(in_->session, body["what"], body["example"], body["context"], body["count"], native::py::truthy(body["instant"]), -1,
+                                    body["image"], body["offline"], body["refused"], v, source, bad, &streamed, hook);
+            if (ok) r = obj({{"value", v}, {"source", source}, {"streamed", (long long)streamed}});
+            else std::fprintf(stderr, "[kinloom] create: %s\n", bad.message.c_str());
+        } else {
+            ok = post(in_, "create", body, instant ? 2000 : chat_timeout_ms, r);
+        }
+        if (!ok || r["value"].is_null()) return deliver(each, listed, count > 0 ? Json(std::vector<Json>((size_t)count, fallback)) : fallback);
+        Json value = r["value"];
+        bool offline_answer = r["source"].str() == "offline";
+        if (listed && value.type() == Json::Array) {
+            size_t streamed = r["streamed"].is_null() ? 0 : (size_t)r["streamed"].num();
+            if (streamed > 0) {   // checked and handed over already; the rest is the offline filling
+                if (each) for (size_t i = std::min(streamed, value.items().size()); i < value.items().size(); i++) give(each, value.items()[i]);
+                return value;
+            }
+            std::vector<Json> items;
+            for (auto& x : value.items()) if (!check || offline_answer || why_of(check, x).empty()) items.push_back(x);
+            if (count > 0) while (items.size() < (size_t)count) items.push_back(fallback);
+            else if (items.empty()) return deliver(each, listed, fallback);
+            return deliver(each, listed, Json(items));
+        }
+        if (!check || offline_answer) return deliver(each, listed, value);
+        std::string why = why_of(check, value);
+        if (why.empty()) return deliver(each, listed, value);
+        if (!retry || instant) return deliver(each, listed, fallback);
+        Json again = body;
+        again.fields_mut()["refused"] = obj({{"answer", value}, {"why", why}});
+        return created(again, 0, false, check, fallback, false, each, listed);
+    }
+
+    static Json deliver(const Each& each, bool listed, const Json& value) {
+        if (each) {
+            if (listed && value.type() == Json::Array) for (auto& x : value.items()) give(each, x);
+            else give(each, value);
+        }
+        return value;
+    }
+
+    /// Hands one item to the game's each; one that throws is told on stderr, never carried into Kinloom.
+    static void give(const Each& each, const Json& item) {
+        KINLOOM_TRY { each(item); }
+        KINLOOM_CATCH({ std::fprintf(stderr, "[kinloom] create: each failed\n"); })
+    }
+
+    /// reason(verdict()); a check that throws refuses ("the game's check failed"), never breaking the call.
+    static std::string judged(const std::function<std::string()>& verdict) {
+        std::string said;
+        bool failed = true;
+        KINLOOM_TRY { said = verdict(); failed = false; }
+        KINLOOM_CATCH({ std::fprintf(stderr, "[kinloom] the game's check failed\n"); })
+        return failed ? std::string("the game's check failed") : native::reason(Json(said));
+    }
+
+    /// The oldest entries go once a facade table passes 2000 (decisions refused or accepted, remarks in turn).
+    template <class V>
+    static void cap(std::map<std::string, V>& table) {
+        while (table.size() > 2000) table.erase(table.begin());
+    }
+
+    /// Why the game's check refuses an answer ("" when it accepts it).
+    static std::string why_of(const Check& check, const Json& value) { return judged([&]() { return check(value); }); }
 
     std::future<Json> create_async(const std::string& what, const Json& example, const Json& context = obj({}), int count = 0) {
         Kinloom me = *this;
@@ -11114,6 +11727,7 @@ private:
     };
     struct Pending {
         std::vector<Action> ready;
+        std::vector<uint64_t> tags;   // ready[i] came with reply tags[i] (0: from act)
         bool busy = false;
         clock::time_point at{};
     };
@@ -11155,8 +11769,39 @@ private:
         std::map<std::string, std::pair<std::string, std::string>> said_ahead;   // say(): answers that came late (text, source)
         std::map<std::string, std::shared_ptr<SayFetch>> say_fetching;
         std::mt19937 rng{std::random_device{}()};
+        std::map<std::string, uint64_t> last_do;   // chat's check: the tag of the last reply's actions, taken back
+        uint64_t reply_tag = 0;
+        std::map<std::string, Json> decide_refused, decide_ok;
+        std::map<std::string, size_t> remark_turns;
     };
     std::shared_ptr<Inner> in_;
+
+    /// A chat answer as the game gets it: the reply (its actions waiting for act), else the offline reply.
+    std::string chat_answer(const std::string& name, bool ok, const Json& r) {
+        set_source(name, ok, r);
+        if (!ok) {
+            std::lock_guard<std::mutex> lock(in_->mu);
+            in_->last_do.erase(name);
+            auto it = in_->chars.find(name);
+            if (it == in_->chars.end()) return "";
+            const Json& offline = it->second["offline"];
+            if (offline.type() == Json::Array) {
+                const auto& many = offline.items();
+                return many.empty() ? "" : many[std::uniform_int_distribution<size_t>(0, many.size() - 1)(in_->rng)].str();
+            }
+            return offline.str();
+        }
+        redeclare(name, r);
+        std::lock_guard<std::mutex> lock(in_->mu);
+        std::vector<Action> decided;
+        for (auto& a : r["do"].items()) decided.push_back(Action{a["tool"].str(), a["args"]});
+        Pending& p = in_->actions[name];
+        uint64_t tag = ++in_->reply_tag;
+        p.ready.insert(p.ready.end(), decided.begin(), decided.end());
+        p.tags.insert(p.tags.end(), decided.size(), tag);
+        in_->last_do[name] = tag;
+        return r["text"].str();
+    }
 
     std::string offline_line(const std::string& name, const std::string& event, const Json& facts) {
         std::lock_guard<std::mutex> lock(in_->mu);

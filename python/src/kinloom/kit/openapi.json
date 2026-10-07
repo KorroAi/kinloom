@@ -310,6 +310,9 @@
          "do": {
           "type": "boolean"
          },
+         "drop": {
+          "type": "boolean"
+         },
          "facts": {
           "type": "object"
          },
@@ -325,6 +328,17 @@
          },
          "name": {
           "type": "string"
+         },
+         "refused": {
+          "properties": {
+           "answer": {
+            "type": "string"
+           },
+           "why": {
+            "type": "string"
+           }
+          },
+          "type": "object"
          },
          "session": {
           "type": "string"
@@ -404,7 +418,7 @@
       "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
-    "summary": "A reply in character (stream: true answers with server-sent events {piece} then {done, ...})."
+    "summary": "A reply in character (stream: true answers with server-sent events {piece} then {done, ...}). refused: the reply to this message the game refused, taken back and asked again knowing why; drop: taken back, offline."
    }
   },
   "/v1/converse": {
@@ -526,8 +540,21 @@
          "instant": {
           "type": "boolean"
          },
+         "offline": {},
+         "refused": {
+          "properties": {
+           "answer": {},
+           "why": {
+            "type": "string"
+           }
+          },
+          "type": "object"
+         },
          "session": {
           "type": "string"
+         },
+         "stream": {
+          "type": "boolean"
          },
          "what": {
           "type": "string"
@@ -549,6 +576,9 @@
        "application/json": {
         "schema": {
          "properties": {
+          "source": {
+           "type": "string"
+          },
           "value": {}
          },
          "type": "object"
@@ -570,7 +600,7 @@
       "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
-    "summary": "Content shaped like the example (the example is the offline answer)."
+    "summary": "Content shaped like the example (the example is the offline answer). stream: true answers with server-sent events {item} for each item of a list answer as it is written, then {done, value, source}."
    }
   },
   "/v1/decide": {
@@ -1653,6 +1683,98 @@
      }
     },
     "summary": "For a loading screen: waits until what Kinloom writes ahead is ready."
+   }
+  },
+  "/v1/remark": {
+   "post": {
+    "operationId": "remark",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "requestBody": {
+     "content": {
+      "application/json": {
+       "schema": {
+        "properties": {
+         "about": {
+          "type": "string"
+         },
+         "facts": {
+          "type": "object"
+         },
+         "max_chars": {
+          "type": "integer"
+         },
+         "offline": {
+          "anyOf": [
+           {
+            "items": {
+             "type": "string"
+            },
+            "type": "array"
+           },
+           {
+            "type": "string"
+           }
+          ]
+         },
+         "session": {
+          "type": "string"
+         },
+         "who": {
+          "type": "string"
+         }
+        },
+        "required": [
+         "about"
+        ],
+        "type": "object"
+       }
+      }
+     },
+     "required": true
+    },
+    "responses": {
+     "200": {
+      "content": {
+       "application/json": {
+        "schema": {
+         "properties": {
+          "source": {
+           "type": "string"
+          },
+          "text": {
+           "type": "string"
+          }
+         },
+         "type": "object"
+        }
+       }
+      },
+      "description": "the answer"
+     },
+     "400": {
+      "description": "a missing or wrong field: {error, code}"
+     },
+     "401": {
+      "description": "this server needs its token"
+     },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
+     "429": {
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
+     }
+    },
+    "summary": "A short line from someone in the crowd about what just happened (no character to declare)."
    }
   },
   "/v1/remember": {

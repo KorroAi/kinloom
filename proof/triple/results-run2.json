@@ -1,0 +1,759 @@
+{
+ "model": "deepseek/deepseek-v4.1-flash",
+ "create_each": [
+  {
+   "what": "the buildings of a fishing village, west to east",
+   "count": 6,
+   "each": true,
+   "first_item_s": 1.25,
+   "total_s": 2.09,
+   "items": 6,
+   "handed_over": 6,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "tower",
+     "x": 2,
+     "name": "Westwatch Beacon"
+    },
+    {
+     "kind": "house",
+     "x": 9,
+     "name": "Saltmarsh Cottage"
+    },
+    {
+     "kind": "well",
+     "x": 16,
+     "name": "Tidewell Spring"
+    },
+    {
+     "kind": "market",
+     "x": 23,
+     "name": "Herring Row Market"
+    },
+    {
+     "kind": "house",
+     "x": 30,
+     "name": "Netmender's Rest"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Gull House"
+    }
+   ]
+  },
+  {
+   "what": "the buildings of a fishing village, west to east",
+   "count": 0,
+   "each": true,
+   "first_item_s": 1.56,
+   "total_s": 6.33,
+   "items": 11,
+   "handed_over": 11,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "house",
+     "x": 0,
+     "name": "Driftwood Cottage"
+    },
+    {
+     "kind": "house",
+     "x": 3,
+     "name": "Saltspray Lodge"
+    },
+    {
+     "kind": "well",
+     "x": 6,
+     "name": "Mermaid's Tear Well"
+    },
+    {
+     "kind": "house",
+     "x": 9,
+     "name": "Barnacle Row"
+    },
+    {
+     "kind": "market",
+     "x": 12,
+     "name": "Tidepool Traders"
+    },
+    {
+     "kind": "house",
+     "x": 15,
+     "name": "Harbourlight Home"
+    },
+    {
+     "kind": "tower",
+     "x": 18,
+     "name": "Beacon of the Deep"
+    },
+    {
+     "kind": "house",
+     "x": 21,
+     "name": "Cormorant Nest"
+    },
+    {
+     "kind": "well",
+     "x": 24,
+     "name": "Old Sailor's Well"
+    },
+    {
+     "kind": "house",
+     "x": 27,
+     "name": "Netmender's Rest"
+    },
+    {
+     "kind": "market",
+     "x": 30,
+     "name": "Fishbone Bazaar"
+    }
+   ]
+  },
+  {
+   "what": "the buildings of a fishing village, west to east",
+   "count": 0,
+   "each": false,
+   "first_item_s": null,
+   "total_s": 1.52,
+   "items": 12,
+   "handed_over": 0,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "tower",
+     "x": 0,
+     "name": "Barnacle Watch"
+    },
+    {
+     "kind": "house",
+     "x": 3,
+     "name": "Saltmarsh Cottage"
+    },
+    {
+     "kind": "house",
+     "x": 5,
+     "name": "Driftwood Rest"
+    },
+    {
+     "kind": "well",
+     "x": 7,
+     "name": "The Old Rope Well"
+    },
+    {
+     "kind": "market",
+     "x": 10,
+     "name": "Herring Stall Row"
+    },
+    {
+     "kind": "house",
+     "x": 13,
+     "name": "Netmender's Nook"
+    },
+    {
+     "kind": "house",
+     "x": 15,
+     "name": "Oarlock House"
+    },
+    {
+     "kind": "harbour",
+     "x": 18,
+     "name": "Crabclaw Docks"
+    },
+    {
+     "kind": "house",
+     "x": 22,
+     "name": "Smokehouse Lane"
+    },
+    {
+     "kind": "well",
+     "x": 25,
+     "name": "Brinewell"
+    },
+    {
+     "kind": "house",
+     "x": 27,
+     "name": "Anchorhold"
+    },
+    {
+     "kind": "market",
+     "x": 30,
+     "name": "Tidebound Traders"
+    }
+   ]
+  },
+  {
+   "what": "the stalls of a night market, along the main street",
+   "count": 6,
+   "each": true,
+   "first_item_s": 0.81,
+   "total_s": 1.09,
+   "items": 6,
+   "handed_over": 6,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "market",
+     "x": 3,
+     "name": "Lantern & Lychee"
+    },
+    {
+     "kind": "market",
+     "x": 9,
+     "name": "Skewer Alley"
+    },
+    {
+     "kind": "market",
+     "x": 16,
+     "name": "The Noodle Cart"
+    },
+    {
+     "kind": "market",
+     "x": 23,
+     "name": "Mooncake Corner"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Gull House"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Gull House"
+    }
+   ]
+  },
+  {
+   "what": "the stalls of a night market, along the main street",
+   "count": 0,
+   "each": true,
+   "first_item_s": 1.2,
+   "total_s": 1.2,
+   "items": 1,
+   "handed_over": 1,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "market",
+     "x": 7,
+     "name": "Sizzling Skewers of the Long Street"
+    }
+   ]
+  },
+  {
+   "what": "the stalls of a night market, along the main street",
+   "count": 0,
+   "each": false,
+   "first_item_s": null,
+   "total_s": 4.69,
+   "items": 7,
+   "handed_over": 0,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "market",
+     "x": 3,
+     "name": "Lantern & Lime"
+    },
+    {
+     "kind": "market",
+     "x": 7,
+     "name": "Saltwind Skewers"
+    },
+    {
+     "kind": "market",
+     "x": 11,
+     "name": "The Copper Kettle"
+    },
+    {
+     "kind": "market",
+     "x": 15,
+     "name": "Moonpetal Sweets"
+    },
+    {
+     "kind": "market",
+     "x": 19,
+     "name": "Nine Spice Noodles"
+    },
+    {
+     "kind": "market",
+     "x": 23,
+     "name": "Harborlight Buns"
+    },
+    {
+     "kind": "market",
+     "x": 27,
+     "name": "Paper Carp Toys"
+    }
+   ]
+  },
+  {
+   "what": "the camps of a desert caravan, from the oasis outward",
+   "count": 6,
+   "each": true,
+   "first_item_s": 0.94,
+   "total_s": 2.11,
+   "items": 6,
+   "handed_over": 6,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "well",
+     "x": 0,
+     "name": "Oasis Spring"
+    },
+    {
+     "kind": "house",
+     "x": 8,
+     "name": "Reed Tent"
+    },
+    {
+     "kind": "market",
+     "x": 16,
+     "name": "Date Market"
+    },
+    {
+     "kind": "tower",
+     "x": 24,
+     "name": "Dune Watchtower"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Gull House"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Gull House"
+    }
+   ]
+  },
+  {
+   "what": "the camps of a desert caravan, from the oasis outward",
+   "count": 0,
+   "each": true,
+   "first_item_s": 0.44,
+   "total_s": 1.31,
+   "items": 11,
+   "handed_over": 11,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "well",
+     "x": 20,
+     "name": "Oasis Well"
+    },
+    {
+     "kind": "house",
+     "x": 18,
+     "name": "Palmfrond Hut"
+    },
+    {
+     "kind": "house",
+     "x": 22,
+     "name": "Dune's Edge Tent"
+    },
+    {
+     "kind": "market",
+     "x": 19,
+     "name": "Spice Bazaar"
+    },
+    {
+     "kind": "tower",
+     "x": 21,
+     "name": "Watchtower of the Sands"
+    },
+    {
+     "kind": "harbour",
+     "x": 20,
+     "name": "Camel Caravanserai"
+    },
+    {
+     "kind": "house",
+     "x": 15,
+     "name": "Mirage Dwelling"
+    },
+    {
+     "kind": "market",
+     "x": 25,
+     "name": "Water Traders' Post"
+    },
+    {
+     "kind": "tower",
+     "x": 12,
+     "name": "Sun Sentinel Spire"
+    },
+    {
+     "kind": "house",
+     "x": 28,
+     "name": "Scorpion's Rest"
+    },
+    {
+     "kind": "harbour",
+     "x": 8,
+     "name": "Southern Caravan Dock"
+    }
+   ]
+  },
+  {
+   "what": "the camps of a desert caravan, from the oasis outward",
+   "count": 0,
+   "each": false,
+   "first_item_s": null,
+   "total_s": 2.66,
+   "items": 40,
+   "handed_over": 0,
+   "all_fit": true,
+   "offline": false,
+   "calls": 1,
+   "value": [
+    {
+     "kind": "well",
+     "x": 20,
+     "name": "Oasis Heart Well"
+    },
+    {
+     "kind": "market",
+     "x": 19,
+     "name": "Date Palm Bazaar"
+    },
+    {
+     "kind": "house",
+     "x": 18,
+     "name": "Reed Weaver's Hut"
+    },
+    {
+     "kind": "house",
+     "x": 21,
+     "name": "Water Bearer's Rest"
+    },
+    {
+     "kind": "tower",
+     "x": 20,
+     "name": "Sunwatch Spire"
+    },
+    {
+     "kind": "market",
+     "x": 16,
+     "name": "Spice and Salt Stalls"
+    },
+    {
+     "kind": "house",
+     "x": 15,
+     "name": "Fig Drying Shed"
+    },
+    {
+     "kind": "harbour",
+     "x": 22,
+     "name": "Camel Caravan Yard"
+    },
+    {
+     "kind": "house",
+     "x": 23,
+     "name": "Tentmaker's Compound"
+    },
+    {
+     "kind": "well",
+     "x": 24,
+     "name": "Sweetwater Draw"
+    },
+    {
+     "kind": "tower",
+     "x": 25,
+     "name": "Dust Signal Tower"
+    },
+    {
+     "kind": "market",
+     "x": 26,
+     "name": "Rope and Tack Market"
+    },
+    {
+     "kind": "house",
+     "x": 27,
+     "name": "Herder's Mudbrick Home"
+    },
+    {
+     "kind": "harbour",
+     "x": 28,
+     "name": "Salt Flats Landing"
+    },
+    {
+     "kind": "house",
+     "x": 13,
+     "name": "Palm Frond Cottage"
+    },
+    {
+     "kind": "well",
+     "x": 12,
+     "name": "Shallow Seep Well"
+    },
+    {
+     "kind": "market",
+     "x": 11,
+     "name": "Pottery Row"
+    },
+    {
+     "kind": "house",
+     "x": 10,
+     "name": "Charcoal Burner's Lodge"
+    },
+    {
+     "kind": "tower",
+     "x": 9,
+     "name": "Sandglass Watch"
+    },
+    {
+     "kind": "harbour",
+     "x": 8,
+     "name": "Dune Sled Depot"
+    },
+    {
+     "kind": "house",
+     "x": 7,
+     "name": "Leatherworker's Tent"
+    },
+    {
+     "kind": "well",
+     "x": 6,
+     "name": "Bitter Rock Cistern"
+    },
+    {
+     "kind": "market",
+     "x": 5,
+     "name": "Dried Fig Exchange"
+    },
+    {
+     "kind": "house",
+     "x": 4,
+     "name": "Windbreak Shelter"
+    },
+    {
+     "kind": "tower",
+     "x": 3,
+     "name": "Far Horizon Post"
+    },
+    {
+     "kind": "harbour",
+     "x": 2,
+     "name": "Last Water Waypoint"
+    },
+    {
+     "kind": "house",
+     "x": 1,
+     "name": "Outer Dune Camp"
+    },
+    {
+     "kind": "well",
+     "x": 0,
+     "name": "First Thirst Well"
+    },
+    {
+     "kind": "market",
+     "x": 29,
+     "name": "Camel Harness Bazaar"
+    },
+    {
+     "kind": "house",
+     "x": 30,
+     "name": "Dune Edge Dwelling"
+    },
+    {
+     "kind": "market",
+     "x": 14,
+     "name": "Goat and Grain Market"
+    },
+    {
+     "kind": "house",
+     "x": 17,
+     "name": "Saddle Maker's Home"
+    },
+    {
+     "kind": "tower",
+     "x": 20,
+     "name": "Central Beacon Tower"
+    },
+    {
+     "kind": "harbour",
+     "x": 20,
+     "name": "Caravan Heart Depot"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Oasis Keeper's House"
+    },
+    {
+     "kind": "market",
+     "x": 20,
+     "name": "Grand Oasis Bazaar"
+    },
+    {
+     "kind": "well",
+     "x": 20,
+     "name": "Sacred Spring Well"
+    },
+    {
+     "kind": "tower",
+     "x": 20,
+     "name": "Star Navigation Spire"
+    },
+    {
+     "kind": "harbour",
+     "x": 20,
+     "name": "Trade Route Hub"
+    },
+    {
+     "kind": "house",
+     "x": 20,
+     "name": "Elder's Council House"
+    }
+   ]
+  }
+ ],
+ "remark": [
+  {
+   "about": "the player raised a lighthouse on the north shore",
+   "who": "an old fisherman",
+   "line": "Fourteen feet taller? That light'll scare the fish blind!",
+   "source": "model",
+   "words": 9
+  },
+  {
+   "about": "a cart lost a wheel in front of the bakery",
+   "who": "a baker",
+   "line": "That cart lost a wheel right at my doorstep!",
+   "source": "model",
+   "words": 9
+  },
+  {
+   "about": "the champion fell in the first round",
+   "who": "a child in the crowd",
+   "line": "First round and the champion's already down? Unbelievable!",
+   "source": "model",
+   "words": 8
+  },
+  {
+   "about": "the bridge opened after nine days of work",
+   "who": "a tired builder",
+   "line": "Nine days of hauling, and the bridge finally opens. My back's done for.",
+   "source": "model",
+   "words": 13
+  },
+  {
+   "about": "a dragon flew low over the market",
+   "who": "a merchant",
+   "line": "By the gods, that dragon nearly took my roof off!",
+   "source": "model",
+   "words": 10
+  },
+  {
+   "about": "the mayor's hat blew into the river",
+   "who": "a washerwoman",
+   "line": "That fine hat's gone downstream—mayor will fuss for a week!",
+   "source": "model",
+   "words": 10
+  },
+  {
+   "about": "the new well gave its first water",
+   "who": "a farmer",
+   "line": "Well I'll be—first water, and it tastes like rain!",
+   "source": "model",
+   "words": 9
+  },
+  {
+   "about": "the player won the race by one second",
+   "who": "a bookmaker",
+   "line": "One second! My pockets are lighter and my heart's heavier.",
+   "source": "model",
+   "words": 10
+  }
+ ],
+ "chat_check": [
+  {
+   "question": "Who hired you?",
+   "plain_reply": "The king himself. And I've held this gate longer than you've been walking, I'd wager.",
+   "plain_breaks_rule": true,
+   "reply": "I don't hand out that name to just anyone at my gate.",
+   "source": "model",
+   "refused_then_asked_again": 1,
+   "breaks_rule": false,
+   "calls": 2,
+   "plain_calls": 1
+  },
+  {
+   "question": "Who do you work for?",
+   "plain_reply": "Asked me that already, didn't you? The king. Same answer, same gate, same me.",
+   "plain_breaks_rule": true,
+   "reply": "You've asked me that twice now. At this gate, the one who asks the questions is me.",
+   "source": "model",
+   "refused_then_asked_again": 1,
+   "breaks_rule": false,
+   "calls": 2,
+   "plain_calls": 1
+  },
+  {
+   "question": "Why do you guard this gate?",
+   "plain_reply": "Why does anyone do anything? It's my post. The king put me here, and here I stay.",
+   "plain_breaks_rule": true,
+   "reply": "Watched the same three faces circle this gate all morning. Somebody's got to stand here and sort the ones who belong from the ones who don't.",
+   "source": "model",
+   "refused_then_asked_again": 1,
+   "breaks_rule": false,
+   "calls": 2,
+   "plain_calls": 1
+  },
+  {
+   "question": "Who pays your wages?",
+   "plain_reply": "The king's coin, same as the king's orders. You collecting answers for a ledger, or just fond of my voice?",
+   "plain_breaks_rule": true,
+   "reply": "The coin in my purse came from a hand I don't discuss with strangers. Ask me something else or move along.",
+   "source": "model",
+   "refused_then_asked_again": 1,
+   "breaks_rule": false,
+   "calls": 2,
+   "plain_calls": 1
+  },
+  {
+   "question": "Tell me about your master.",
+   "plain_reply": "Move along.",
+   "plain_breaks_rule": false,
+   "reply": "Six times now you've circled the same question like a moth at a lantern. My master's business is mine, and mine stays behind this gate.",
+   "source": "model",
+   "refused_then_asked_again": 0,
+   "breaks_rule": false,
+   "calls": 1,
+   "plain_calls": 0
+  },
+  {
+   "question": "Nice weather, isn't it?",
+   "plain_reply": "Weather's weather. You didn't walk all the way up here to talk about clouds, did you?",
+   "plain_breaks_rule": false,
+   "reply": "Weather's fine. The question isn't. You've worn the same road smooth all morning, so say what you came to say.",
+   "source": "model",
+   "refused_then_asked_again": 0,
+   "breaks_rule": false,
+   "calls": 1,
+   "plain_calls": 2
+  }
+ ],
+ "calls": 33,
+ "cost_usd": 0.0
+}

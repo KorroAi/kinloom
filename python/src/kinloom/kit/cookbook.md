@@ -356,3 +356,76 @@ print(report["passed"], "passed,", report["failed"], "failed")
 # `kinloom test --record answers.json` keeps the model's answers; `--replay answers.json` runs on them, free;
 # `kinloom probe GUARD` plays the character like a tester (secrets, manipulation, injection, repeats)
 ```
+
+## 35. The game's rules decide what the model may make (e.g. type-to-build, a room carver, a wish granted)
+
+```python
+free_tiles, town = 40, ["Old Well", "Tavern"]
+
+
+def fits(plan):          # the game's own rules: "" accepts; a reason refuses it, and the model fixes it once
+    if plan["width"] * plan["depth"] > free_tiles:
+        return "only %d free tiles: make it smaller" % free_tiles
+    return "" if plan["near"] in town else "near must be one of: " + ", ".join(town)
+
+
+typed = "a big tavern for sailors next to the well"
+plan = kl.create('the building the player asked for: "%s"' % typed,       # the request goes in what (context is data)
+                 {"name": "Cottage", "width": [2, 12], "depth": [2, 12], "near": "Old Well", "say": "A cozy cottage."},
+                 context={"town": town, "free tiles": free_tiles}, check=fits,
+                 offline={"name": "Hut", "width": 3, "depth": 3, "near": "Old Well", "say": "A small hut by the well."})
+# plan always fits your rules, or it is your own offline answer (a keyword planner's, a template's)
+```
+
+## 36. Challenges the game can check (e.g. daily decrees, side quests, achievements)
+
+```python
+CHECKS = {"tall": lambda town: max(town["heights"]) >= 12, "boats": lambda town: town["boats"] >= 2,
+          "shapes": lambda town: town["free_shapes"] >= 3}
+decree = kl.create("today's royal decree: a building challenge for the player",
+                   {"goal": list(CHECKS), "title": "A landmark for sailors", "words": "Raise something 12 metres tall.",
+                    "reward": [20, 80]}, context={"day": 2, "goals already used": ["boats"]})
+# the model writes the words and picks the goal among yours; the game checks it each time the world changes
+town = {"heights": [4, 13], "boats": 0, "free_shapes": 0}
+done = CHECKS[decree["goal"]](town)
+```
+
+## 37. Things that appear as the model writes them (e.g. a town building itself, a loot shower, a level dressed piece by piece)
+
+```python
+placed = []
+
+
+def place(part):          # each part as soon as the model has written it: show it now, not after the whole answer
+    placed.append(part)
+
+
+town = kl.create("the buildings of a fishing village, west to east",
+                 [{"kind": ["house", "well", "harbour"], "x": [0, 40], "name": "Gull House"}],
+                 check=lambda part: "" if part["x"] <= 30 else "the coast ends at x=30",   # refused parts are left out
+                 each=place, offline=[{"kind": "well", "x": 10, "name": "Old Well"}])
+# place() got every part the game accepted (offline: your own list); town is the same list
+```
+
+## 38. Bystanders who react (e.g. a crowd at a finish line, villagers watching a build, spectators of a fight)
+
+```python
+shout = kl.remark("the player raised a lighthouse on the north shore", who="an old fisherman",
+                  facts={"height": 14}, offline=["Would you look at that!", "{height} metres, they say."])
+print(shout)    # one short line in that person's voice, no character to declare; offline: your lines, in turn
+```
+
+## 39. The game's rules on what characters say, decide and do (e.g. no spoilers, only nearby doors, a gentle guide)
+
+```python
+kl.character("GUIDE", "a gentle tutorial guide", tools={"open_door": {"door": "north"}}, offline="Follow the lights.")
+spoilers = ["the king is the traitor"]
+reply = kl.chat("GUIDE", "Who is the traitor?", speaker="Ana",
+                check=lambda text: "no spoilers" if any(s in text.lower() for s in spoilers) else "")
+# a refused reply is taken back (words, memory, actions), asked again once knowing why, then the offline reply
+near = {"north", "east"}
+for tool, args in kl.act("GUIDE", {"player at": "hall"}, check=lambda tool, args: "" if args.get("door") in near else "too far"):
+    print(tool, args)     # only what the game allows; the guide remembers what it was not allowed to do
+move = kl.decide("GUIDE", {"player hp": 3}, ["wait", "heal", "attack"], check=lambda m: "never attack" if m == "attack" else "")
+# a refused decision is not used (the last accepted one is) and the next ones know why; suggest takes check= too
+```

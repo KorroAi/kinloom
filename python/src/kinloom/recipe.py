@@ -38,6 +38,22 @@ ROUTES = [
      "The AI checked like code: steps calling the verbs with checks in kinloom.tests.json, run by `kinloom test` "
      "(`--record` keeps the model's answers, `--replay` runs on them: no model, no cost); `kinloom probe NAME` plays a "
      "character like a tester (secrets, manipulation, injection, repeats)."),
+    ("rules", "create + check + offline", "build builds builder building construct construction place placing placement "
+     "layout layouts blueprint blueprints rule rules legal valid validate validation allowed fit fits constraint constraints "
+     "refuse refused reject rejected wish wishes carve carver challenge challenges decree decrees achievement achievements "
+     "spoiler spoilers forbid forbidden censor censored",
+     "The model proposes, your rules decide: create(what, example, context, check=fn, offline=yours). check returns \"\" "
+     "or why the answer breaks a rule (no room, too expensive, an unknown name): the model fixes it once with your reason, "
+     "then your own offline answer is used. chat, decide, act and suggest take check= too (a refused reply is taken back). "
+     "For challenges, let the model pick the goal among the ones your code checks."),
+    ("stream", "create + each", "stream streaming streamed progressive progressively appear appears appearing one-by-one "
+     "piece-by-piece incremental incrementally gradually reveal reveals live",
+     "Items shown as the model writes them: create(what, [item example], each=fn): fn gets each item of the list as soon as "
+     "it is written (with check=, refused items are left out); the call still returns the whole list."),
+    ("bystander", "remark", "bystander bystanders passer-by passers-by passerby spectator spectators onlooker onlookers "
+     "audience react reacts reaction reactions cheer cheers heckle heckles comment comments witness-line bark barks",
+     "A line from someone who is not a declared character: remark(about, who=\"an old fisherman\", facts=, offline=[...]): "
+     "one short line in that voice about what just happened; offline: your lines, said in turn."),
     ("content", "create", "generate generated generator procedural content level levels map maps dungeon room rooms quest quests "
      "mission missions item items loot weapon weapons name names description descriptions story stories lore book books "
      "puzzle puzzles recipe dialogue-tree card cards recap summary summarize translate translation hint hints tutorial",
@@ -64,7 +80,8 @@ ROUTES = [
 # the cookbook patterns that belong to each route (numbers in kit/cookbook.md), most general first
 ROUTE_PATTERNS = {"talk": [1, 2, 3, 4, 7, 11, 18, 14, 28], "line": [6, 5, 8], "choice": [9, 10, 15, 16, 8, 19, 27],
                   "action": [20, 33, 2], "content": [17, 12, 13, 21, 22], "crowd": [23, 24, 9],
-                  "world": [25, 26, 3], "facts": [1, 28], "voice": [29, 30], "sight": [32, 17], "check": [34]}
+                  "world": [25, 26, 3], "facts": [1, 28], "voice": [29, 30], "sight": [32, 17], "check": [34],
+                  "rules": [35, 39, 36, 17], "stream": [37, 35], "bystander": [38, 6]}
 _STOP = {"a", "an", "the", "to", "of", "and", "with", "that", "for", "my", "in", "on", "as", "by", "go", "it", "is", "be",
          "make", "add", "want", "should", "can", "i", "we", "our", "their", "them", "they", "he", "she", "his", "her",
          "more", "some", "each", "every", "when", "so", "this", "from", "at", "into", "like", "game", "player", "players"}

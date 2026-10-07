@@ -423,6 +423,74 @@ impl From<&Json> for Json {
     }
 }
 
+/// The game's own rules for an answer: "" accepts it; any other text is why the game refuses it.
+pub type Check = Arc<dyn Fn(&Json) -> String + Send + Sync>;
+/// Each item of a list answer, as soon as the model has written it.
+pub type Each = Arc<dyn Fn(&Json) + Send + Sync>;
+
+/// What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses.
+pub fn reason(verdict: &Json) -> String {
+    match verdict {
+        Json::Null | Json::Bool(true) => String::new(),
+        Json::Str(s) if s.is_empty() => String::new(),
+        Json::Bool(false) => "it breaks the game's rules".to_string(),
+        other => {
+            let why = py::head(&py::squash(&text::clean(&py::text(other))), 300).to_string();
+            if why.is_empty() { "refused".to_string() } else { why }
+        }
+    }
+}
+
+/// What a character remembers when the game refused one of its actions (act's check).
+pub fn refused_note(tool: &str, args: &Json, why: &str) -> String {
+    format!("The game did not let me {} {}: {}", tool, py::dumps_text(args), why)
+}
+
+/// Why the game's check refuses an answer ("" when it accepts it).
+fn why_of(check: &dyn Fn(&Json) -> String, value: &Json) -> String {
+    judged(|| check(value))
+}
+
+/// reason(verdict()); a check that panics refuses ("the game's check failed"), never breaking the call.
+fn judged(verdict: impl FnOnce() -> String) -> String {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(verdict)) {
+        Ok(v) => reason(&Json::Str(v)),
+        Err(_) => {
+            eprintln!("[kinloom] the game's check failed (it panicked)");
+            "the game's check failed".to_string()
+        }
+    }
+}
+
+/// The oldest entries go once a facade table passes 2000 (decisions refused or accepted, remarks in turn).
+fn cap<V>(table: &mut HashMap<String, V>) {
+    while table.len() > 2000 {
+        match table.keys().next().cloned() {
+            Some(k) => {
+                table.remove(&k);
+            }
+            None => break,
+        }
+    }
+}
+
+/// Hands one item to the game's each; a panicking callback is reported, never carried into Kinloom.
+fn give(each: &Each, item: &Json) {
+    if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| each(item))).is_err() {
+        eprintln!("[kinloom] create: each panicked");
+    }
+}
+
+fn deliver(each: &Option<Each>, listed: bool, value: Json) -> Json {
+    if let Some(e) = each {
+        match (&value, listed) {
+            (Json::Arr(items), true) => items.iter().for_each(|x| give(e, x)),
+            _ => give(e, &value),
+        }
+    }
+    value
+}
+
 /// The offline answer for an example: first option, middle of a range, the example itself.
 pub fn default_of(example: &Json) -> Json {
     match example {
@@ -518,6 +586,7 @@ struct Decision {
 #[derive(Default)]
 struct Pending {
     ready: Vec<Action>,
+    tags: Vec<u64>, // ready[i] came with reply tags[i] (0: from act); chat's check takes back its own reply's only
     busy: bool,
     at: Option<Instant>,
 }
@@ -584,6 +653,11 @@ struct State {
     busy_until: Option<Instant>, // the server answered 429: offline answers until then (it is not down)
     busy_told: bool,
     said_ahead: HashMap<String, (String, String)>, // say(): answers that came late, kept for the next say() (text, source)
+    last_do: HashMap<String, u64>,                  // chat's check: the tag of name's last reply's actions
+    reply_tag: u64,
+    decide_refused: HashMap<String, Json>,          // decide's check: what was refused, and why
+    decide_ok: HashMap<String, Json>,               // and what was last accepted
+    remark_turns: HashMap<String, usize>,           // offline remarks said in turn (relay)
     say_fetching: HashMap<String, Arc<SayFetch>>,
 }
 
@@ -654,6 +728,11 @@ impl Kinloom {
                     busy_told: false,
                     said_ahead: HashMap::new(),
                     say_fetching: HashMap::new(),
+                    last_do: HashMap::new(),
+                    reply_tag: 0,
+                    decide_refused: HashMap::new(),
+                    decide_ok: HashMap::new(),
+                    remark_turns: HashMap::new(),
                 }),
             }),
         }
@@ -851,6 +930,7 @@ impl Kinloom {
             let every = poll_every(&st, name);
             let p = st.actions.entry(name.to_string()).or_default();
             ready = std::mem::take(&mut p.ready);
+            p.tags.clear();
             due = !p.busy && p.at.map_or(true, |t| t.elapsed() >= every);
             if due {
                 p.busy = true;
@@ -865,6 +945,7 @@ impl Kinloom {
                 if let Some(p) = st.actions.get_mut(&name) {
                     for a in r.as_ref().map(|r| r.get("actions").as_array().to_vec()).unwrap_or_default() {
                         p.ready.push(Action { tool: a.get("tool").as_str().to_string(), args: a.get("args").clone() });
+                        p.tags.push(0);
                     }
                     p.busy = false;
                 }
@@ -880,33 +961,283 @@ impl Kinloom {
 
     /// `create` with a picture the model looks at (PNG, JPEG, GIF or WebP bytes).
     pub fn create_image(&self, what: &str, example: Json, context: Json, count: usize, instant: bool, image: &[u8]) -> Json {
+        self.create_full(what, example, context, count, instant, image, None, Json::Null, None)
+    }
+
+    /// `create` with the game's own rules and offline answer. `check` returns "" to accept the answer, or why it refuses
+    /// it: the model hears the reason once, then the offline answer is used (a list is checked item by item). `offline`:
+    /// the game's own offline answer, shaped like the example (`Json::Null`: the example).
+    pub fn create_checked(&self, what: &str, example: Json, context: Json, check: impl Fn(&Json) -> String + Send + Sync + 'static, offline: Json) -> Json {
+        self.create_full(what, example, context, 0, false, &[], Some(Arc::new(check)), offline, None)
+    }
+
+    /// `create` with each item of a list answer handed to `each` as soon as the model has written it (native mode; through
+    /// a relay, when the answer arrives): the game can build while the model writes.
+    pub fn create_each(&self, what: &str, example: Json, context: Json, each: impl Fn(&Json) + Send + Sync + 'static) -> Json {
+        self.create_full(what, example, context, 0, false, &[], None, Json::Null, Some(Arc::new(each)))
+    }
+
+    /// Every option of `create` (with count/instant, items the check refuses are left out, count filled by the offline
+    /// answer). Panics when `offline` is not shaped like the example (a mistake in the game's code).
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_full(&self, what: &str, example: Json, context: Json, count: usize, instant: bool, image: &[u8],
+                       check: Option<Check>, offline: Json, each: Option<Each>) -> Json {
         let example = match example {
             Json::Arr(ref v) if count > 0 && v.len() == 1 => v[0].clone(), // [item] with count: count items like it
             e => e,
         };
+        let mut fallback = default_of(&example);
+        let shape = Shape::of(&example);
+        if !offline.is_null() {
+            match shape.as_ref().map_err(|e| e.clone()).and_then(|s| s.check(&offline, "value")) {
+                Ok(v) => fallback = v,
+                Err(e) => panic!("create: offline must be shaped like the example: {}", e),
+            }
+        }
+        let listed = count > 0 || shape.as_ref().map_or(false, |s| s.kind == "list");
         let mut body = obj! { "what" => what, "example" => &example, "context" => context, "instant" => instant };
-        if !image.is_empty() {
-            if let Json::Obj(m) = &mut body {
+        if let Json::Obj(m) = &mut body {
+            if !image.is_empty() {
                 m.insert("image".into(), base64_encode(image).into());
             }
-        }
-        if count > 0 {
-            if let Json::Obj(m) = &mut body {
+            if count > 0 {
                 m.insert("count".into(), count.into());
             }
-        }
-        let timeout = if instant { Duration::from_secs(2) } else { self.inner.chat_timeout };
-        match self.post("create", &body, timeout).map(|r| r.get("value").clone()) {
-            Some(v) if v != Json::Null => v,
-            _ => {
-                let d = default_of(&example);
-                if count > 0 {
-                    Json::Arr(vec![d; count])
-                } else {
-                    d
-                }
+            if !offline.is_null() {
+                m.insert("offline".into(), fallback.clone());
             }
         }
+        self.created(&body, count, instant, check, &fallback, true, each, listed)
+    }
+
+    /// One create request, then the game's check: a list item by item (in native mode as the model writes, each item
+    /// handed to each at once), anything else whole (refused: sent back once with its reason).
+    #[allow(clippy::too_many_arguments)]
+    fn created(&self, body: &Json, count: usize, instant: bool, check: Option<Check>, fallback: &Json, retry: bool, each: Option<Each>,
+               listed: bool) -> Json {
+        let timeout = if instant { Duration::from_secs(2) } else { self.inner.chat_timeout };
+        let r = match (&self.inner.brain, &each, listed) {
+            (Some(brain), Some(e), true) => {
+                // native: the brain hands over each item as the model writes it
+                let (c2, e2) = (check.clone(), e.clone());
+                let hook: ItemHook = Arc::new(move |x: &Json| {
+                    if let Some(c) = &c2 {
+                        if !why_of(&**c, x).is_empty() {
+                            return false;
+                        }
+                    }
+                    give(&e2, x);
+                    true
+                });
+                match brain.create(&self.inner.session, body.get("what"), body.get("example"), body.get("context"), body.get("count"),
+                                   py::truthy(body.get("instant")), None, body.get("image"), body.get("offline"), body.get("refused"), Some(hook)) {
+                    Ok((v, source, streamed)) => Some(obj! { "value" => v, "source" => source, "streamed" => streamed }),
+                    Err(Bad::Arg(m)) | Err(Bad::Type(m)) => {
+                        eprintln!("[kinloom] create: {}", m);
+                        None
+                    }
+                }
+            }
+            _ => self.post("create", body, timeout),
+        };
+        let r = match r {
+            Some(r) if r.get("value") != &Json::Null => r,
+            _ => return deliver(&each, listed, if count > 0 { Json::Arr(vec![fallback.clone(); count]) } else { fallback.clone() }),
+        };
+        let value = r.get("value").clone();
+        let offline_answer = r.get("source").as_str() == "offline";
+        if listed {
+            if let Json::Arr(items0) = &value {
+                let streamed = r.get("streamed").as_f64() as usize;
+                if streamed > 0 {
+                    // checked and handed over already; the rest is the offline filling
+                    if let Some(e) = &each {
+                        items0[streamed.min(items0.len())..].iter().for_each(|x| give(e, x));
+                    }
+                    return value;
+                }
+                let mut items: Vec<Json> = match (&check, offline_answer) {
+                    (Some(c), false) => items0.iter().filter(|x| why_of(&**c, x).is_empty()).cloned().collect(),
+                    _ => items0.clone(),
+                };
+                if count > 0 {
+                    while items.len() < count {
+                        items.push(fallback.clone());
+                    }
+                } else if items.is_empty() {
+                    return deliver(&each, listed, fallback.clone());
+                }
+                return deliver(&each, listed, Json::Arr(items));
+            }
+        }
+        let check_fn = match (&check, offline_answer) {
+            (Some(c), false) => c.clone(),
+            _ => return deliver(&each, listed, value),
+        };
+        let why = why_of(&*check_fn, &value);
+        if why.is_empty() {
+            return deliver(&each, listed, value);
+        }
+        if !retry || instant {
+            return deliver(&each, listed, fallback.clone());
+        }
+        let mut again = body.clone();
+        if let Json::Obj(m) = &mut again {
+            m.insert("refused".into(), obj! { "answer" => value, "why" => why });
+        }
+        self.created(&again, 0, false, check, fallback, false, each, listed)
+    }
+
+    /// `chat_as` with the game's rules for what is said: `check` returns "" to accept the reply, or why it refuses it; a
+    /// refused reply is taken back and asked again once, then the offline reply is used.
+    pub fn chat_checked(&self, name: &str, message: &str, facts: Json, speaker: &str, check: impl Fn(&str) -> String) -> String {
+        let facts = if facts.is_null() { Json::Obj(Map::new()) } else { facts };
+        let body = obj! { "name" => name, "message" => message, "facts" => facts, "speaker" => speaker, "do" => true };
+        let mut text = self.chat_body(name, &body);
+        for drop in [false, true] {
+            if self.source(name) == "offline" {
+                break;
+            }
+            let why = judged(|| check(&text));
+            if why.is_empty() {
+                break;
+            }
+            {
+                let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                if let Some(tag) = st.last_do.get(name).copied() {
+                    // this reply's own actions only (an equal one from an earlier reply stays)
+                    let p = st.actions.entry(name.to_string()).or_default();
+                    let (ready, tags) = (std::mem::take(&mut p.ready), std::mem::take(&mut p.tags));
+                    for (a, t) in ready.into_iter().zip(tags) {
+                        if t != tag {
+                            p.ready.push(a);
+                            p.tags.push(t);
+                        }
+                    }
+                }
+            }
+            let mut again = body.clone();
+            if let Json::Obj(m) = &mut again {
+                m.insert("refused".into(), obj! { "answer" => text.as_str(), "why" => why });
+                m.insert("drop".into(), Json::Bool(drop));
+            }
+            text = self.chat_body(name, &again);
+        }
+        text
+    }
+
+    /// One chat request (no streaming): the reply, its source and its actions noted.
+    fn chat_body(&self, name: &str, body: &Json) -> String {
+        let r = self.post("chat", body, self.inner.chat_timeout);
+        self.set_source(name, r.as_ref());
+        match r {
+            Some(r) => {
+                self.redeclare(name, &r);
+                let decided: Vec<Action> = r.get("do").as_array().iter().map(|a| Action { tool: a.get("tool").as_str().to_string(), args: a.get("args").clone() }).collect();
+                let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                st.reply_tag += 1;
+                let tag = st.reply_tag;
+                st.last_do.insert(name.to_string(), tag);
+                let p = st.actions.entry(name.to_string()).or_default();
+                p.tags.extend(std::iter::repeat(tag).take(decided.len()));
+                p.ready.extend(decided);
+                r.get("text").as_str().to_string()
+            }
+            None => {
+                self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).last_do.remove(name);
+                self.offline_reply(name)
+            }
+        }
+    }
+
+    /// `decide` with the game's rules: a decision `check` refuses (it returns why) is not used (the last accepted one is,
+    /// else the example) and the next decisions are made knowing why.
+    pub fn decide_checked(&self, name: &str, situation: Json, choices: Json, check: impl Fn(&Json) -> String) -> Json {
+        let key = format!("{}|{}", name, choices.to_json());
+        let note = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).decide_refused.get(&key).cloned();
+        let mut sit = match situation {
+            Json::Null => Json::Obj(Map::new()),
+            Json::Obj(m) => Json::Obj(m),
+            other => obj! { "situation" => other },      // the note needs an object, as in Python
+        };
+        if let (Some(n), Json::Obj(m)) = (note, &mut sit) {
+            m.insert("the game refused your last decision".into(), n);
+        }
+        let fallback = default_of(&choices);
+        let value = self.decide(name, sit, choices);
+        let why = judged(|| check(&value));
+        let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        if why.is_empty() {
+            st.decide_refused.remove(&key);
+            st.decide_ok.insert(key, value.clone());
+            cap(&mut st.decide_ok);
+            return value;
+        }
+        st.decide_refused.insert(key.clone(), obj! { "decision" => value, "why" => why });
+        cap(&mut st.decide_refused);
+        st.decide_ok.get(&key).cloned().unwrap_or(fallback)
+    }
+
+    /// `act_with` with the game's rules: `check(tool, args)` returns "" to allow the action; a refused one is not returned,
+    /// and the character remembers why.
+    pub fn act_checked(&self, name: &str, situation: Json, think: bool, check: impl Fn(&str, &Json) -> String) -> Vec<Action> {
+        let mut kept = Vec::new();
+        for a in self.act_with(name, situation, think) {
+            let why = judged(|| check(&a.tool, &a.args));
+            if why.is_empty() {
+                kept.push(a);
+                continue;
+            }
+            let (me, body) = (self.clone(), obj! { "name" => name, "note" => refused_note(&a.tool, &a.args, &why), "importance" => 0.6 });
+            thread::spawn(move || {
+                let _ = me.post("remember", &body, Duration::from_secs(3));
+            });
+        }
+        kept
+    }
+
+    /// `suggest` with the game's rules: a reply `check` refuses (it returns why) is replaced by its example.
+    pub fn suggest_checked(&self, name: &str, examples: &[&str], speaker: &str, facts: Json, check: impl Fn(&str) -> String) -> Vec<String> {
+        self.suggest(name, examples, speaker, facts).into_iter().enumerate()
+            .map(|(i, t)| if !judged(|| check(&t)).is_empty() && i < examples.len() { examples[i].to_string() } else { t })
+            .collect()
+    }
+
+    /// A short line from someone in the crowd about what just happened (no character to declare), ~1 s. `who`: who says
+    /// it ("an old fisherman", "" for anyone); `offline`: your own lines ({fact} placeholders), said in turn without a model.
+    pub fn remark(&self, about: &str, who: &str, facts: Json, offline: &[&str], max_chars: usize) -> String {
+        let facts = if facts.is_null() { Json::Obj(Map::new()) } else { facts };
+        let mut body = obj! { "about" => about, "facts" => facts.clone() };
+        if let Json::Obj(m) = &mut body {
+            if !who.is_empty() {
+                m.insert("who".into(), Json::Str(who.to_string()));
+            }
+            if !offline.is_empty() {
+                m.insert("offline".into(), Json::Arr(offline.iter().map(|s| Json::Str(s.to_string())).collect()));
+            }
+            if max_chars > 0 {
+                m.insert("max_chars".into(), max_chars.into());
+            }
+        }
+        if let Some(r) = self.post("remark", &body, self.inner.chat_timeout) {
+            if let Json::Str(t) = r.get("text") {
+                return t.clone();
+            }
+        }
+        let usable: Vec<&&str> = offline.iter().filter(|t| lines::placeholders(t).iter().all(|p| facts.as_obj().map_or(false, |m| m.contains_key(p)))).collect();
+        if usable.is_empty() {
+            return String::new();
+        }
+        let named = py::head(&py::squash(&text::clean(who)), 48).to_string();     // as the brain names who speaks
+        let key = if named.is_empty() { "someone in the crowd".to_string() } else { named };
+        let turn = {
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let t = st.remark_turns.get(&key).copied().unwrap_or(0);
+            st.remark_turns.insert(key, t + 1);
+            cap(&mut st.remark_turns);
+            t
+        };
+        souls::fit_chars(&lines::fill(usable[turn % usable.len()], &facts), if max_chars > 0 { Some(max_chars.clamp(10, 2000)) } else { None })
     }
 
     /// `create` on a thread.
@@ -3878,11 +4209,23 @@ impl Shape {
                 Ok(Json::Str(v))
             }
             "list" => {
+                let item = self.item.as_ref().unwrap();
+                let mut value = value;
+                if let Some(m) = value.as_obj() {
+                    // JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+                    let lists: Vec<&Json> = m.values().filter(|x| x.as_list().is_some()).collect();
+                    if let Some(first) = lists.first() {
+                        value = first; // the first list, as items stream it (Items)
+                    } else if item.kind == "object" {
+                        if let Ok(v) = item.check(value, &format!("{}[0]", path)) {
+                            return Ok(Json::Arr(vec![v]));
+                        }
+                    }
+                }
                 let list = value.as_list().ok_or_else(|| format!("{} must be a list", path))?;
                 if list.len() > Shape::MAX_LIST {
                     return Err(format!("{} must have at most {} items", path, Shape::MAX_LIST));
                 }
-                let item = self.item.as_ref().unwrap();
                 let mut out = Vec::new();
                 for (i, x) in list.iter().enumerate() {
                     out.push(item.check(x, &format!("{}[{}]", path, i))?);
@@ -5153,13 +5496,68 @@ pub(crate) mod prompts {
     /// Characters of facts, situation, context or state the model reads (more is cut, and journaled).
     pub const CLIP: usize = 4000;
 
+    /// obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones
+    /// matter most): the last values are shortened first, then replaced by "(cut)". Anything else is cut.
     pub fn clip(obj: &Json, limit: usize) -> String {
-        let text = py::dumps_text(obj);
+        let mut text = py::dumps_text(obj);
         if py::len(&text) <= limit {
-            text
-        } else {
-            format!("{}...", py::head(&text, limit))
+            return text;
         }
+        if let Json::Obj(m) = obj {
+            if !m.is_empty() {
+                // '"key": value', as the whole object writes it
+                let pair = |k: &str, v: &Json| format!("{}: {}", py::dumps_text(&Json::Str(k.to_string())), py::dumps_text(v));
+                let keys: Vec<String> = m.keys().cloned().collect();
+                let mut pairs: Vec<String> = keys.iter().map(|k| pair(k, m.get(k).unwrap_or(&Json::Null))).collect();
+                let mut size: usize = pairs.iter().map(|p| py::len(p)).sum::<usize>() + 2 * pairs.len(); // braces and ", "
+                for cut in [false, true] {
+                    for i in (0..keys.len()).rev() {
+                        let v = if cut { Json::Str("(cut)".into()) } else { short_value(m.get(&keys[i]).unwrap_or(&Json::Null)) };
+                        let fresh = pair(&keys[i], &v);
+                        size = size + py::len(&fresh) - py::len(&pairs[i]);
+                        pairs[i] = fresh;
+                        if size <= limit {
+                            return format!("{{{}}}", pairs.join(", "));
+                        }
+                    }
+                }
+                text = format!("{{{}}}", pairs.join(", "));
+            }
+        }
+        format!("{}...", py::head(&text, limit))
+    }
+
+    /// A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted.
+    pub fn short_value(v: &Json) -> Json {
+        match v {
+            Json::Str(s) if py::len(s) > 80 => Json::Str(format!("{}...", py::head(s, 80))),
+            Json::Arr(a) if a.len() > 3 => {
+                let mut out: Vec<Json> = a[..3].to_vec();
+                out.push(Json::Str(format!("({} more)", a.len() - 3)));
+                Json::Arr(out)
+            }
+            Json::Obj(m) if py::len(&py::dumps_text(v)) > 200 => Json::Str(format!("({} fields)", m.len())),
+            other => other.clone(),
+        }
+    }
+
+    /// Someone in the crowd (no declared character) says one line about what just happened.
+    pub fn remark_system(who: &str, language: &str, chars: Option<usize>) -> String {
+        [
+            "Kinloom task: remark".to_string(),
+            format!("You are {} in a video game world. Something just happened in front of you.", who),
+            format!("Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words{}.",
+                    chars.map(|c| format!(" and at most {} characters", c)).unwrap_or_default()),
+            "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.".to_string(),
+            write_in(language),
+            DATA.to_string(),
+            "Answer as JSON: {\"line\": \"what you say\"}".to_string(),
+        ]
+        .join("\n")
+    }
+
+    pub fn remark_user(about: &str) -> String {
+        format!("What just happened: {}\nSay your line now.", about)
     }
 
     pub fn feeling(v: f64) -> &'static str {
@@ -5256,6 +5654,15 @@ pub(crate) mod prompts {
             return format!("A picture comes with this moment: what {} shows you, or what you see right now. Look at it.\n", speaker);
         }
         "A picture comes with this request: look at it and use what it shows.\n".to_string()
+    }
+
+    /// The game refused the last answer (create's check): its reason, once, with the answer it refused.
+    pub fn refused_block(refused: &Json) -> String {
+        if refused.is_null() {
+            return String::new();
+        }
+        format!("The game refused your last answer: {}\nThe refused answer: {}\nAnswer again: keep what was fine, fix that.\n",
+                refused.get("why").as_str(), clip(refused.get("answer"), 1500))
     }
 
     /// What the game decided for this reply (steer): the model makes it happen, in the character's words.
@@ -5809,6 +6216,19 @@ impl Memory {
                 kept.sort_by(|a, b| t(a).partial_cmp(&t(b)).unwrap_or(std::cmp::Ordering::Equal));
                 *list = kept;
             }
+            st.dirty = true;
+        }
+        self.schedule();
+    }
+
+    /// Removes the latest note with exactly this text (a reply the game refused is not remembered).
+    pub fn take_back(self: &Arc<Self>, session: &str, scope: &str, text: &str) {
+        let text = py::head(&py::squash(text), 300).to_string();
+        {
+            let mut st = self.lock();
+            let Some(list) = st.notes.get_mut(&format!("{}\u{0}{}", session, scope)) else { return };
+            let Some(i) = list.iter().rposition(|n| matches!(n.get("text"), Some(Json::Str(t)) if *t == text)) else { return };
+            list.remove(i);
             st.dirty = true;
         }
         self.schedule();
@@ -9262,6 +9682,9 @@ struct BrainState {
     rise_order: VecDeque<String>,
     per_session: HashMap<String, usize>, // characters kept per session
     steers: HashMap<String, String>,
+    last_decided: HashMap<String, Vec<Arc<PendingAct>>>, // chat's check: the last reply's actions, taken back
+    last_undo: HashMap<String, Undo>,                    // and what it changed inside
+    remark_turns: HashMap<String, usize>,                // offline remarks said in turn
     empty_told: HashSet<String>,
     journal: VecDeque<Json>,
     counts: Map<i64>,
@@ -9312,6 +9735,107 @@ const MIN_RUMOR: f64 = 0.1;
 const CONFIG_KEYS: [&str; 17] = ["personality", "soul", "lines", "offline", "events", "tools", "max_words", "max_chars", "every", "language", "group", "trust",
     "invent", "voice", "warmth", "secret_trust", "warm_up"];
 const MAX_STEER: usize = 300;
+const MAX_WHY: usize = 300; // why the game refused a created answer (create's check), in characters
+const MAX_STREAMED: usize = 200; // items of one list answer handed over as they come
+
+/// The native brain's hook for a list answer's items as they come: false when the game refuses the item.
+pub type ItemHook = Arc<dyn Fn(&Json) -> bool + Send + Sync>;
+
+/// What a reply changed inside, to put back if the game refuses it (chat's check). Each Some: the value before (None:
+/// there was none).
+#[derive(Default)]
+struct Undo {
+    mood: Option<Option<Json>>,
+    rise: Option<Option<[f64; 3]>>,
+    gesture: Option<(Option<String>, Option<String>)>,
+    feel: f64,
+    notes: Vec<String>,
+}
+
+/// The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+/// {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements.
+#[derive(Default)]
+pub struct Items {
+    buf: Vec<char>,
+    i: usize,
+    start: usize,
+    level: Option<usize>,
+    stack: Vec<char>,
+    string: bool,
+    escape: bool,
+    done: bool,
+}
+
+impl Items {
+    pub fn feed(&mut self, piece: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        if self.done || piece.is_empty() {
+            return out;
+        }
+        self.buf.extend(piece.chars());
+        while self.i < self.buf.len() {
+            let ch = self.buf[self.i];
+            if self.string {
+                if self.escape {
+                    self.escape = false;
+                } else if ch == '\\' {
+                    self.escape = true;
+                } else if ch == '"' {
+                    self.string = false;
+                }
+            } else if ch == '"' {
+                self.string = true;
+            } else if ch == '[' || ch == '{' {
+                self.stack.push(ch);
+                if ch == '[' && self.level.is_none() && (self.stack.len() == 1 || (self.stack.len() == 2 && self.stack[0] == '{')) {
+                    self.level = Some(self.stack.len());
+                    self.start = self.i + 1;
+                }
+            } else if ch == ']' || ch == '}' {
+                if ch == ']' && self.level == Some(self.stack.len()) {
+                    Items::emit(&self.buf[self.start..self.i], &mut out);
+                    self.done = true;
+                    self.i += 1;
+                    return out;
+                }
+                self.stack.pop();
+            } else if ch == ',' && self.level == Some(self.stack.len()) {
+                Items::emit(&self.buf[self.start..self.i], &mut out);
+                self.start = self.i + 1;
+            }
+            self.i += 1;
+        }
+        out
+    }
+
+    fn emit(text: &[char], out: &mut Vec<String>) {
+        let s: String = text.iter().collect();
+        let t = py::strip(&s);
+        if !t.is_empty() {
+            out.push(t.to_string());
+        }
+    }
+}
+
+/// The game's own offline answer (create's offline), checked against the example's shape.
+fn offline_answer(shape: &Shape, offline: &Json) -> Result<Json, Bad> {
+    if offline.is_null() {
+        return Ok(shape.default_value());
+    }
+    shape.check(offline, "value").map_err(|e| Bad::Arg(format!("create: offline must be shaped like the example: {}", e)))
+}
+
+/// {answer, why}: an answer the game refused (sent back once with create's check), or Null.
+fn refusal(r: &Json) -> Result<Json, Bad> {
+    if r.is_null() {
+        return Ok(Json::Null);
+    }
+    if !(r.as_obj().map_or(false, |m| m.contains_key("answer")) && matches!(r.get("why"), Json::Str(_))) {
+        return Err(Bad::Arg(format!("create: refused must be {{\"answer\": the refused answer, \"why\": \"the reason\"}}, got {}", py::py_repr(r))));
+    }
+    let why = py::head(&py::squash(&text::clean(r.get("why").as_str())), MAX_WHY).to_string();
+    Ok(if why.is_empty() { Json::Null } else { obj! { "answer" => r.get("answer").clone(), "why" => why } })
+}
 const REPLY_TIMEOUT: f64 = 8.0;
 
 fn k2(a: &str, b: &str) -> String {
@@ -10412,12 +10936,19 @@ impl Brain {
     }
 
     fn inner(self: &Arc<Self>, session: &str, c: &Arc<CharacterDef>, speaker: &str, data: &Json) -> Vec<Arc<PendingAct>> {
+        self.inner_undo(session, c, speaker, data, &mut Undo::default())
+    }
+
+    /// undo: what to put back if the game refuses the reply (chat's check).
+    fn inner_undo(self: &Arc<Self>, session: &str, c: &Arc<CharacterDef>, speaker: &str, data: &Json, undo: &mut Undo) -> Vec<Arc<PendingAct>> {
         let i = souls::inner_of_reply(data);
         let key = k2(session, &c.name);
         if let Some(mood) = &i.mood {
             if self.allowed_text(mood) {
                 let t = self.clock();
-                self.lock().moods.insert(key.clone(), obj! { "word" => mood.as_str(), "level" => i.intensity, "t" => t });
+                let mut st = self.lock();
+                undo.mood = Some(st.moods.get(&key).cloned());
+                st.moods.insert(key.clone(), obj! { "word" => mood.as_str(), "level" => i.intensity, "t" => t });
             }
         }
         if let Some(feel) = i.feel {
@@ -10428,6 +10959,7 @@ impl Brain {
                         let mut st = self.lock();
                         let now = wall();
                         let rkey = k3(session, &c.name, speaker);
+                        undo.rise = Some(st.rises.get(&rkey).copied());
                         let r = st.rises.get(&rkey).copied().unwrap_or([now, 0.0, -1e18]);
                         let (mut start, mut gained) = (r[0], r[1]);
                         if now - r[2] > souls::NEW_TALK {
@@ -10444,16 +10976,19 @@ impl Brain {
                     }
                 }
                 if change != 0.0 {
-                    self.feel_value(session, &c.name, speaker, change);
+                    let before = self.opinion(session, &Json::Str(c.name.clone()), &Json::Str(speaker.to_string()));
+                    undo.feel = self.feel_value(session, &c.name, speaker, change) - before;
                 }
             }
         }
         if !i.self_.is_empty() && self.allowed_text(&i.self_) {
             self.memory.add(session, &c.name, &i.self_, 0.9, Some(&[("about".to_string(), Json::Str(lines::SELF.into()))].into_iter().collect()));
+            undo.notes.push(i.self_.clone());
         }
         if !i.remember.is_empty() {
             if self.allowed_text(&i.remember) {
                 self.memory.add(session, &c.name, &i.remember, 0.8, Some(&[("about".to_string(), Json::Str(speaker.into()))].into_iter().collect()));
+                undo.notes.push(i.remember.clone());
             } else {
                 self.log("refused", &c.name, "remember: blocked by the content filter", None);
             }
@@ -10461,6 +10996,7 @@ impl Brain {
         let gesture_ok = !i.gesture.is_empty() && self.allowed_text(&i.gesture);
         {
             let mut st = self.lock();
+            undo.gesture = Some((st.gesture_seen.get(&key).cloned(), st.gestures.get(&key).cloned()));
             let seen = st.gesture_seen.get(&key).cloned().unwrap_or_default();
             let fresh = gesture_ok && !souls::same_action(&i.gesture, &seen);
             st.gesture_seen.insert(key.clone(), i.gesture.to_lowercase());
@@ -10944,7 +11480,14 @@ impl Brain {
     #[allow(clippy::too_many_arguments)]
     fn structured(self: &Arc<Self>, kind: &str, name: &str, system: &str, user: &str, shape: &Shape, foreground: bool, max_tokens: usize, timeout: Option<f64>,
                   images: &[Picture]) -> Option<Json> {
-        let r = self.call(kind, name, system, user, true, foreground, max_tokens, None, timeout, images);
+        self.structured_stream(kind, name, system, user, shape, foreground, max_tokens, timeout, images, None, None)
+    }
+
+    /// on_text: the answer's pieces as they come; used(): true when part of it was already used (then no repair).
+    #[allow(clippy::too_many_arguments)]
+    fn structured_stream(self: &Arc<Self>, kind: &str, name: &str, system: &str, user: &str, shape: &Shape, foreground: bool, max_tokens: usize,
+                         timeout: Option<f64>, images: &[Picture], on_text: Option<OnText>, used: Option<&dyn Fn() -> bool>) -> Option<Json> {
+        let r = self.call(kind, name, system, user, true, foreground, max_tokens, on_text, timeout, images);
         if !r.ok {
             return None;
         }
@@ -10956,6 +11499,7 @@ impl Brain {
                 }
                 Some(v)
             }
+            Err(_) if used.map_or(false, |u| u()) => None,
             Err(e) => {
                 self.log("repair", name, &format!("{}: {}", kind, e), None);
                 // stopped by the token limit: room to finish
@@ -11692,14 +12236,19 @@ impl Brain {
 
     // ---------------- create ----------------
 
+    /// (value, "model" or "offline"). offline: the game's own offline answer; refused: {answer, why} the game refused.
     #[allow(clippy::too_many_arguments)]
-    pub fn create(self: &Arc<Self>, session: &str, what0: &Json, example0: &Json, context: &Json, count: &Json, instant: bool, timeout: Option<f64>, image: &Json)
-                  -> Result<Json, Bad> {
+    /// on_item: for a list answer, every item as soon as the model has written it; false when the game refuses it (left
+    /// out). (value, source, how many items on_item already got).
+    pub fn create(self: &Arc<Self>, session: &str, what0: &Json, example0: &Json, context: &Json, count: &Json, instant: bool, timeout: Option<f64>, image: &Json,
+                  offline: &Json, refused0: &Json, on_item: Option<ItemHook>) -> Result<(Json, &'static str, usize), Bad> {
         let example = match example0 {
             Json::Arr(a) if py::truthy(count) && a.len() == 1 => a[0].clone(),
             other => other.clone(),
         };
         let shape = Shape::of(&example).map_err(Bad::Arg)?;
+        let fallback = offline_answer(&shape, offline)?;
+        let refused = refusal(refused0)?;
         let what = text::clean(&py::text(what0));
         self.clip_note(py::head(&what, MAX_WHAT), "what", &Json::Str(what.clone()), MAX_WHAT, true);
         self.clip_note(py::head(&what, MAX_WHAT), "context", context, prompts::CLIP, false);
@@ -11709,43 +12258,243 @@ impl Brain {
             if !pics.is_empty() {
                 self.log("refused", &what, "image: not used with instant=True (those items are made ahead)", None);
             }
-            return Ok(self.from_pool(session, &what, &shape, context));
+            return Ok(match self.from_pool(session, &what, &shape, context) {
+                Some(v) => (v, "model", 0),
+                None => (fallback, "offline", 0),
+            });
         }
         if py::truthy(count) {
             let n = (arg_num(count, "count")? as i64).clamp(1, 50) as usize;
-            let mut items = self.create_many(session, &what, &shape, context, n, true, timeout, &pics);
-            while items.len() < n {
-                items.push(shape.default_value());
+            let kept: Arc<Mutex<Vec<Json>>> = Arc::new(Mutex::new(Vec::new()));
+            let open = Arc::new(AtomicBool::new(true));
+            let feed = on_item.map(|h| self.streamer(shape.clone(), h, kept.clone(), n, open.clone()));
+            let mut items = self.create_many_stream(session, &what, &shape, context, n, true, timeout, &pics, feed);
+            let streamed = {
+                let kept = kept.lock().unwrap_or_else(|e| e.into_inner());
+                open.store(false, Ordering::SeqCst); // a stream that goes on (a call given up on) hands nothing more over
+                kept.clone()
+            };
+            if !streamed.is_empty() {
+                items = streamed.clone();
             }
-            return Ok(Json::Arr(items));
+            let source = if items.is_empty() { "offline" } else { "model" };
+            while items.len() < n {
+                items.push(fallback.clone());
+            }
+            return Ok((Json::Arr(items), source, streamed.len()));
         }
         if self.provider.is_none() {
-            return Ok(shape.default_value());
+            return Ok((fallback, "offline", 0));
+        }
+        if !refused.is_null() {
+            self.log("refused", &what, &format!("create: the game refused it: {}", refused.get("why").as_str()), None);
         }
         let system = prompts::create_system(&what, &shape, &self.written());
-        let user = format!("{}{}{}", self.context(session, None, &what, true), prompts::context_block(context), prompts::picture_block(pics.len(), ""));
-        match self.structured("create", &what, &system, &user, &shape, true, 1500, timeout, &pics) {
+        let user = format!("{}{}{}{}", self.context(session, None, &what, true), prompts::context_block(context), prompts::picture_block(pics.len(), ""),
+                           prompts::refused_block(&refused));
+        let kept: Arc<Mutex<Vec<Json>>> = Arc::new(Mutex::new(Vec::new()));
+        let item_shape = if shape.kind == "list" { shape.item.as_deref().cloned() } else { None };
+        let open = Arc::new(AtomicBool::new(true));
+        let feed = match (on_item, item_shape) {
+            (Some(h), Some(item)) => Some(self.streamer(item, h, kept.clone(), MAX_STREAMED, open.clone())),
+            _ => None,
+        };
+        let streaming = feed.is_some();
+        let used = || !kept.lock().unwrap_or_else(|e| e.into_inner()).is_empty();
+        let value = self.structured_stream("create", &what, &system, &user, &shape, true, 1500, timeout, &pics, feed,
+                                           if streaming { Some(&used) } else { None });
+        let streamed = {
+            let kept = kept.lock().unwrap_or_else(|e| e.into_inner());
+            open.store(false, Ordering::SeqCst);
+            kept.clone()
+        };
+        let value = if streamed.is_empty() { value } else { Some(Json::Arr(streamed.clone())) };
+        match value {
             None => {
                 self.count("offline_answers");
-                Ok(shape.default_value())
+                Ok((fallback, "offline", 0))
             }
             Some(value) => {
                 self.log("create", &what, py::head(&py::dumps(&value), 300), None);
-                Ok(value)
+                Ok((value, "model", streamed.len()))
             }
         }
     }
 
+    /// on_text for a list answer: each finished item, valid and allowed, goes to on_item at once (kept when accepted).
+    /// open false (the call returned): a stream that goes on (a call given up on) hands nothing more over; kept is
+    /// locked while an item is handed over.
+    fn streamer(self: &Arc<Self>, item_shape: Shape, on_item: ItemHook, kept: Arc<Mutex<Vec<Json>>>, limit: usize, open: Arc<AtomicBool>) -> OnText {
+        let me = self.clone();
+        let items = Mutex::new(Items::default());
+        Arc::new(move |piece: &str| {
+            let mut kept = kept.lock().unwrap_or_else(|e| e.into_inner());
+            if !open.load(Ordering::SeqCst) {
+                return;
+            }
+            let found = items.lock().unwrap_or_else(|e| e.into_inner()).feed(piece);
+            for text in found {
+                if kept.len() >= limit {
+                    return;
+                }
+                let Ok(v) = item_shape.parse(&text) else { continue };
+                if !me.allowed(&v) || !on_item(&v) {
+                    continue;
+                }
+                kept.push(v);
+            }
+        })
+    }
+
+    /// A short line said out loud by someone in the crowd (no character to declare) about what just happened.
+    /// offline: the game's own lines ({fact} placeholders), taken in turn when no model answers.
+    /// The reply the game refused: out of the conversation, the memory and the actions waiting for act().
+    fn take_back(self: &Arc<Self>, session: &str, c: &CharacterDef, speaker: &str, message: &str, answer: &str) {
+        let mut undo;
+        {
+            let mut st = self.lock();
+            if let Some(h) = st.history.get_mut(&k3(session, &c.name, speaker)) {
+                if h.last().map_or(false, |(w, t)| *w == c.name && t == answer) {
+                    h.pop();
+                    if !message.is_empty() && h.last().map_or(false, |(w, t)| w == speaker && t == message) {
+                        h.pop();
+                    }
+                }
+            }
+            if let Some(said) = st.said.get_mut(&k2(session, &c.name)) {
+                if said.back().map_or(false, |t| t == answer) {
+                    said.pop_back();
+                }
+            }
+            if let Some(acts) = st.last_decided.remove(&k2(session, &c.name)) {
+                for a in acts {
+                    a.taken.store(true, Ordering::SeqCst);
+                }
+            }
+            undo = st.last_undo.remove(&k2(session, &c.name)).unwrap_or_default();
+            let (key, rkey) = (k2(session, &c.name), k3(session, &c.name, speaker));
+            fn put<V>(table: &mut HashMap<String, V>, key: &str, value: Option<V>) {
+                match value {
+                    Some(v) => {
+                        table.insert(key.to_string(), v);
+                    }
+                    None => {
+                        table.remove(key);
+                    }
+                }
+            }
+            if let Some(was) = undo.mood.take() {
+                put(&mut st.moods, &key, was);
+            }
+            if let Some(was) = undo.rise.take() {
+                put(&mut st.rises, &rkey, was);
+            }
+            if let Some((seen, shown)) = undo.gesture.take() {
+                put(&mut st.gesture_seen, &key, seen);
+                put(&mut st.gestures, &key, shown);
+            }
+        }
+        if undo.feel != 0.0 {
+            // the feeling it moved, the memories it wrote: not kept either
+            self.feel_value(session, &c.name, speaker, -undo.feel);
+        }
+        for note in &undo.notes {
+            self.memory.take_back(session, &c.name, note);
+        }
+        if !message.is_empty() {
+            self.memory.take_back(session, &c.name, &format!("{} said: {} / I answered: {}", speaker, py::head(message, 120), py::head(answer, 160)));
+        }
+    }
+
+    pub fn remark(self: &Arc<Self>, session: &str, about0: &Json, who0: &Json, facts0: &Json, offline: &Json, max_chars: &Json) -> Result<Said, Bad> {
+        let Json::Str(a0) = about0 else {
+            return Err(Bad::Arg(format!("remark: about must be a string (what just happened), got {}", py::py_repr(about0))));
+        };
+        let about = py::head(&py::squash(&text::clean(a0)), 300).to_string();
+        let who_text = py::head(&py::squash(&text::clean(&if who0.is_null() { String::new() } else { py::text(who0) })), MAX_NAME).to_string();
+        let who = if who_text.is_empty() { "someone in the crowd".to_string() } else { who_text };
+        let facts = Brain::mapping(facts0, "facts")?;
+        self.clip_note(&who, "facts", &facts, prompts::CLIP, false);
+        let lines: Vec<String> = match offline {
+            Json::Null => Vec::new(),
+            Json::Str(s) => vec![s.clone()],
+            Json::Arr(a) if a.iter().all(|x| matches!(x, Json::Str(_))) => a.iter().map(|x| x.as_str().to_string()).collect(),
+            other => return Err(Bad::Arg(format!("remark: offline must be a line or a list of lines, like [\"Would you look at that!\"], got {}", py::py_repr(other)))),
+        };
+        let limit = Brain::box_limit(max_chars);
+        if self.provider.is_some() && !about.is_empty() {
+            let user = format!("{}{}{}", self.context(session, None, &about, true), prompts::facts_block(&facts), prompts::remark_user(&about));
+            let r = self.call("remark", &who, &prompts::remark_system(&who, &self.written(), limit), &user, true, true, 120, None, None, &[]);
+            let data = if r.ok { text::find_json(&r.text) } else { Json::Null };
+            let said = match data.get("line") {
+                Json::Str(line) => self.valid_remark(line, &facts, &about, limit),
+                _ => String::new(),
+            };
+            if !said.is_empty() {
+                let mut d = Map::new();
+                d.insert("about".into(), Json::Str(about.clone()));
+                self.log("remark", &who, &said, Some(d));
+                return Ok(Said { text: said, source: "model".into(), actions: Vec::new() });
+            }
+        }
+        let usable: Vec<&String> = lines.iter().filter(|t| lines::placeholders(t).iter().all(|p| facts.as_obj().map_or(false, |m| m.contains_key(p)))).collect();
+        let mut spoken = String::new();
+        if !usable.is_empty() {
+            let turn = {
+                let mut st = self.lock();
+                let t = st.remark_turns.get(&k2(session, &who)).copied().unwrap_or(0);
+                st.remark_turns.insert(k2(session, &who), t + 1);
+                cap(&mut st.remark_turns);
+                t
+            };
+            spoken = souls::fit_chars(&lines::fill(usable[turn % usable.len()], &facts), limit);
+        }
+        self.count("offline_answers");
+        let mut d = Map::new();
+        d.insert("about".into(), Json::Str(about.clone()));
+        d.insert("source".into(), Json::Str("offline".into()));
+        self.log("remark", &who, &spoken, Some(d));
+        if spoken.is_empty() {
+            self.tell_empty(session, &who, "remark", &format!("remark by {} answered \"\" (give it offline=[...] lines, said when no model answers)", who));
+        }
+        Ok(Said { text: spoken, source: "offline".into(), actions: Vec::new() })
+    }
+
+    /// The remark as said: one short line, the filter passed, no numbers the game did not give; else "".
+    fn valid_remark(&self, line: &str, facts: &Json, about: &str, limit: Option<usize>) -> String {
+        let cleaned = text::clean(line);
+        let text = py::strip_chars(py::strip(py::strip(&cleaned)), "\"").to_string();
+        let text = py::strip(&text).to_string();
+        if text.is_empty() || !self.allowed(&Json::Str(text.clone())) || lines::META().is_match(&text) || lines::PROMPTISH().is_match(&text)
+            || text.contains('{') {
+            return String::new();
+        }
+        let allowed = lines::allowed_numbers(&[facts, &Json::Str(about.to_string())]);
+        for m in lines::NUMBER().find_all(&text) {
+            if !lines::number_ok(m.group(&text, 0).unwrap_or(""), &allowed) {
+                return String::new();
+            }
+        }
+        souls::cap(&text, 20, limit)
+    }
+
+    #[allow(clippy::too_many_arguments)]
     #[allow(clippy::too_many_arguments)]
     fn create_many(self: &Arc<Self>, session: &str, what: &str, shape: &Shape, context: &Json, count: usize, foreground: bool, timeout: Option<f64>,
                    pics: &[Picture]) -> Vec<Json> {
+        self.create_many_stream(session, what, shape, context, count, foreground, timeout, pics, None)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_many_stream(self: &Arc<Self>, session: &str, what: &str, shape: &Shape, context: &Json, count: usize, foreground: bool, timeout: Option<f64>,
+                          pics: &[Picture], on_text: Option<OnText>) -> Vec<Json> {
         let mut items = Vec::new();
         if self.provider.is_none() {
             return items;
         }
         let system = prompts::create_many_system(what, shape, count, &self.written());
         let user = format!("{}{}{}", self.context(session, None, what, true), prompts::context_block(context), prompts::picture_block(pics.len(), ""));
-        let r = self.call("create", what, &system, &user, true, foreground, 4000.min(200 + 150 * count), None, timeout, pics);
+        let r = self.call("create", what, &system, &user, true, foreground, 4000.min(200 + 150 * count), on_text, timeout, pics);
         if !r.ok {
             return items;
         }
@@ -11769,7 +12518,7 @@ impl Brain {
         items
     }
 
-    fn from_pool(self: &Arc<Self>, session: &str, what: &str, shape: &Shape, context: &Json) -> Json {
+    fn from_pool(self: &Arc<Self>, session: &str, what: &str, shape: &Shape, context: &Json) -> Option<Json> {
         let key = k3(session, what, &shape.signature());
         let (item, low) = {
             let mut st = self.lock();
@@ -11798,20 +12547,34 @@ impl Brain {
                 pool.items.extend(items);
             });
         }
-        item.unwrap_or_else(|| shape.default_value())
+        item
     }
 
     // ---------------- chat ----------------
 
     #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     pub fn chat(self: &Arc<Self>, session: &str, name: &Json, message0: &Json, facts0: &Json, speaker0: &Json, stream: Option<OnText>, timeout: Option<f64>,
                 max_chars: &Json, image: &Json) -> Result<Said, Bad> {
+        self.chat_refused(session, name, message0, facts0, speaker0, stream, timeout, max_chars, image, &Json::Null, false)
+    }
+
+    /// refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of it, its
+    /// actions) and asked again knowing why; drop: taken back and answered offline (refused twice).
+    #[allow(clippy::too_many_arguments)]
+    pub fn chat_refused(self: &Arc<Self>, session: &str, name: &Json, message0: &Json, facts0: &Json, speaker0: &Json, stream: Option<OnText>,
+                        timeout: Option<f64>, max_chars: &Json, image: &Json, refused0: &Json, drop: bool) -> Result<Said, Bad> {
         let c = self.character(session, name);
         let began = Instant::now();
         let pics = if image.is_null() { Vec::new() } else { self.pictures(&c.name, image) };
         let limit = Brain::box_limit(max_chars).or(c.max_chars);
         let message = py::head(&text::clean(&if message0.is_null() { String::new() } else { py::text(message0) }), 1000).to_string();
         let speaker = name_of(speaker0).unwrap_or_else(|| "player".to_string());
+        let refused = refusal(refused0)?;
+        if !refused.is_null() {
+            self.take_back(session, &c, &speaker, &message, refused.get("answer").as_str());
+            self.log("refused", &c.name, &format!("chat: the game refused the reply: {}", refused.get("why").as_str()), None);
+        }
         let facts = Brain::mapping(facts0, "facts")?;
         self.clip_note(&c.name, "facts", &facts, prompts::CLIP, false);
         let hkey = k3(session, &c.name, &speaker);
@@ -11858,7 +12621,7 @@ impl Brain {
                 s(&r);
             }
             reply = Some(r);
-        } else if self.provider.is_some() {
+        } else if self.provider.is_some() && !drop {
             let (word, level) = self.mood_of(session, &c);
             let persona = c.persona();
             let system = prompts::chat_system(&persona, &self.lang(&c, true), &self.card_lines(&c), &self.lore(session), "chat");
@@ -11875,7 +12638,7 @@ impl Brain {
             let recalled = self.memory.recall(session, &[&c.name, "world"], &message, 6, true);
             let nums = lines::allowed_numbers(&[&facts, &st_json, &Json::Str(message.clone()), &Json::Str(steer.clone()), &Json::Str(c.personality()), &souls::texts(&card),
                                                 &Json::from(recalled), &Json::from(known.clone())]);
-            let mut repair = String::new();
+            let mut repair = if refused.is_null() { String::new() } else { format!("\n\n{}", prompts::refused_block(&refused)) };
             let streamed = Arc::new(AtomicBool::new(false));
             let mine: Vec<String> = {
                 let st = self.lock();
@@ -12028,7 +12791,15 @@ impl Brain {
                             inner_data = Some(data.clone());
                         }
                     }
-                    decided = self.inner(session, &c, &speaker, &data);
+                    let mut undo = Undo::default();
+                    decided = self.inner_undo(session, &c, &speaker, &data, &mut undo);
+                    {
+                        let mut st = self.lock();
+                        st.last_decided.insert(k2(session, &c.name), decided.clone());
+                        st.last_undo.insert(k2(session, &c.name), undo);
+                        cap(&mut st.last_decided);
+                        cap(&mut st.last_undo);
+                    }
                     if source == "prepared" {
                         self.prepare_greeting(session, &c); // the next stranger's, with the mood this one left
                     }
@@ -13079,7 +13850,8 @@ impl Brain {
                 }
                 let speaker = Brain::speaker_of(body);
                 let (facts, image) = (Brain::facts_of(body)?, Brain::image_of(body)?);
-                let s = self.chat(session, name, body.get("message"), &facts, &Json::Str(speaker.clone()), None, None, body.get("max_chars"), &image).map_err(bad)?;
+                let s = self.chat_refused(session, name, body.get("message"), &facts, &Json::Str(speaker.clone()), None, None, body.get("max_chars"), &image,
+                                          body.get("refused"), py::truthy(body.get("drop"))).map_err(bad)?;
                 let mut m = Map::new();
                 m.insert("text".into(), Json::Str(s.text.clone()));
                 m.insert("declared".into(), Json::Bool(self.is_declared(session, name)));
@@ -13116,9 +13888,18 @@ impl Brain {
                     return Err(kerr(400, "missing 'example' (an example answer: it is also the offline answer)"));
                 }
                 let image = Brain::image_of(body)?;
-                let v = self.create(session, body.get("what"), body.get("example"), body.get("context"), body.get("count"), py::truthy(body.get("instant")), None, &image)
+                let (v, source, streamed) = self.create(session, body.get("what"), body.get("example"), body.get("context"), body.get("count"),
+                                                        py::truthy(body.get("instant")), None, &image, body.get("offline"), body.get("refused"), None)
                     .map_err(bad)?;
-                Ok(obj! { "value" => v })
+                Ok(obj! { "value" => v, "source" => source, "streamed" => streamed })
+            }
+            "remark" => {
+                if !matches!(body.get("about"), Json::Str(_)) {
+                    return Err(kerr(400, "missing 'about' (what just happened, as text)"));
+                }
+                let facts = Brain::facts_of(body)?;
+                let s = self.remark(session, body.get("about"), body.get("who"), &facts, body.get("offline"), body.get("max_chars")).map_err(bad)?;
+                Ok(obj! { "text" => s.text, "source" => s.source })
             }
             "tools" => {
                 if !body.as_obj().map_or(false, |m| m.contains_key("tools")) {
@@ -13344,8 +14125,8 @@ impl Brain {
     /// chat, its reply streamed to on_piece; the same answer as /v1/chat's "done" event.
     pub fn chat_stream(self: &Arc<Self>, session: &str, body: &Json, on_piece: OnText) -> Result<Json, KinloomError> {
         let speaker = Brain::speaker_of(body);
-        let s = self.chat(session, body.get("name"), body.get("message"), body.get("facts"), &Json::Str(speaker.clone()), Some(on_piece), None, body.get("max_chars"),
-                          body.get("image"))
+        let s = self.chat_refused(session, body.get("name"), body.get("message"), body.get("facts"), &Json::Str(speaker.clone()), Some(on_piece), None,
+                                  body.get("max_chars"), body.get("image"), body.get("refused"), py::truthy(body.get("drop")))
             .map_err(|e| match e {
                 Bad::Type(m) => kerr(400, format!("chat: a field has the wrong type ({})", m)),
                 Bad::Arg(m) => kerr(400, format!("chat: {}", m)),
@@ -13557,6 +14338,7 @@ impl Kinloom {
                     let p = st.actions.entry(name.to_string()).or_default();
                     for a in decided {
                         p.ready.push(Action { tool: a.get("tool").as_str().to_string(), args: a.get("args").clone() });
+                        p.tags.push(0);
                     }
                 }
                 r.get("text").as_str().to_string()
@@ -13767,6 +14549,16 @@ pub mod vectors {
                 Json::Arr(vec![Json::Str(s), Json::Str(n)])
             }
             "inner" => souls::inner_of_reply(&arg(0)).to_json(),
+            "reason" => Json::Str(reason(&arg(0))),
+            "refused_note" => Json::Str(refused_note(arg(0).as_str(), &arg(1), arg(2).as_str())),
+            "items" => {
+                let mut it = Items::default();
+                let mut got = Vec::new();
+                for p in arg(0).as_array() {
+                    got.extend(it.feed(p.as_str()).into_iter().map(Json::Str));
+                }
+                Json::Arr(got)
+            }
             "card" => souls::card(&arg(0), &text(&arg(1))),
             "describe_card" => Json::from(souls::describe(&arg(0))),
             "mood_now" => {
@@ -13953,6 +14745,9 @@ pub mod vectors {
                                     arg(8).as_bool(), st)
             }
             "steer_block" => prompts::steer_block(&text(&arg(0))),
+            "remark_system" => prompts::remark_system(&text(&arg(0)), &text(&arg(1)), if arg(2).is_null() { None } else { Some(arg(2).as_f64() as usize) }),
+            "remark_user" => prompts::remark_user(&text(&arg(0))),
+            "refused_block" => prompts::refused_block(&arg(0)),
             "deeds_user" => prompts::deeds_user(&text(&arg(0)), &text(&arg(1)), &text(&arg(2)), &text(&arg(3))),
             "soul_user" => prompts::soul_user(&text(&arg(0)), &strs(&arg(1))),
             "repair" => prompts::repair(&text(&arg(0))),

@@ -55,6 +55,85 @@ export interface CharacterOptions {
 export interface Action { tool: string; args: Record<string, any> }
 /** A picture the model looks at: a Blob, canvas.toDataURL(), an ArrayBuffer, a typed array or base64. */
 export type Picture = Blob | ArrayBuffer | ArrayBufferView | string;
+/** The game's own rules for an answer: null, "" or true accept it; a reason (text) or false refuses it. */
+export type Check = (answer: any) => string | boolean | null | undefined;
+/** The game's rules for an action: (tool, args) -> "" or why it is refused. */
+export type ActCheck = (tool: string, args: Record<string, any>) => string | boolean | null | undefined;
+
+/** What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses. */
+export function reason(verdict: unknown): string {
+  if (verdict === null || verdict === undefined || verdict === true || verdict === "") return "";
+  if (verdict === false) return "it breaks the game's rules";
+  return cpSlice(squash(cleanText(pyStr(verdict))), 0, 300) || "refused";
+}
+
+/** What a character remembers when the game refused one of its actions (act's check). */
+export function refusedNote(tool: string, args: unknown, why: string): string {
+  return "The game did not let me " + tool + " " + pyDumps(args, false) + ": " + why;
+}
+
+function cloneJson<T>(v: T): T { return v === undefined ? v : JSON.parse(JSON.stringify(v)); }
+
+/** reason(verdict()); a check that throws refuses ("the game's check failed"), never breaking the call. */
+function judged(verdict: () => unknown): string {
+  try { return reason(verdict()); } catch (e) {
+    console.warn("[kinloom] the game's check failed: " + (e instanceof Error ? e.message : e));
+    return "the game's check failed";
+  }
+}
+
+/** Why the game's check refuses an answer ("" when it accepts it). */
+function whyOf(check: Check, value: unknown): string { return judged(() => check(cloneJson(value))); }
+
+/** Hands one item to the game's each(); a failing callback is reported, never thrown into Kinloom. */
+function give(each: (item: any) => void, item: unknown): void {
+  try { each(cloneJson(item)); } catch (e) { console.warn("[kinloom] create: each() failed: " + (e instanceof Error ? e.message : e)); }
+}
+
+/** The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+ * {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements. */
+export class Items {
+  private buf = ""; private i = 0; private stack: string[] = []; private str = false; private esc = false;
+  private level: number | null = null; private start = 0; private done = false;
+  feed(piece: string): string[] {
+    const out: string[] = [];
+    if (this.done || !piece) return out;
+    this.buf += piece;
+    while (this.i < this.buf.length) {
+      const ch = this.buf[this.i];
+      if (this.str) {
+        if (this.esc) this.esc = false;
+        else if (ch === "\\") this.esc = true;
+        else if (ch === '"') this.str = false;
+      } else if (ch === '"') {
+        this.str = true;
+      } else if (ch === "[" || ch === "{") {
+        this.stack.push(ch);
+        if (ch === "[" && this.level === null && (this.stack.length === 1 || (this.stack.length === 2 && this.stack[0] === "{"))) {
+          this.level = this.stack.length;
+          this.start = this.i + 1;
+        }
+      } else if (ch === "]" || ch === "}") {
+        if (ch === "]" && this.level !== null && this.stack.length === this.level) {
+          Items.emit(this.buf.slice(this.start, this.i), out);
+          this.done = true;
+          this.i++;
+          return out;
+        }
+        if (this.stack.length) this.stack.pop();
+      } else if (ch === "," && this.level !== null && this.stack.length === this.level) {
+        Items.emit(this.buf.slice(this.start, this.i), out);
+        this.start = this.i + 1;
+      }
+      this.i++;
+    }
+    return out;
+  }
+  private static emit(text: string, out: string[]): void {
+    const t = pyStrip(text);
+    if (t) out.push(t);
+  }
+}
 export interface Prepared { ready: boolean; waiting: number; online: boolean }
 
 /** A sense: [lo, hi] a number, true a flag, ["calm", "angry"] one of these. */
@@ -150,6 +229,10 @@ export class Kinloom {
   private decisions = new Map<string, Decision>();
   private actions = new Map<string, Pending>();
   private sources = new Map<string, string>();
+  private lastDo = new Map<string, Action[]>();                       // the actions of name's last reply (chat's check)
+  private decideRefused = new Map<string, { decision: any; why: string }>();   // decide's check: what was refused
+  private decideOk = new Map<string, any>();                          // and what was last accepted
+  private remarkTurns = new Map<string, number>();                    // offline remarks said in turn (relay)
   private downUntil = 0;
   private failures = 0;
   private limitedUntil = new Map<string, number>();   // relay: verb -> when its rate limit (HTTP 429) lets it ask again
@@ -247,19 +330,66 @@ export class Kinloom {
    * What they decide to do while talking comes out of act(name, {}, false), at once.
    * image: a picture with the message (a Blob, canvas.toDataURL(), an ArrayBuffer, base64), for a model that sees. */
   async chat(name: string, message: string, facts: Facts = {}, speaker = "player",
-             onPiece: ((text: string) => void) | null = null, image: Picture | null = null): Promise<string> {
+             onPiece: ((text: string) => void) | null = null, image: Picture | null = null,
+             { check = null }: { check?: Check | null } = {}): Promise<string> {
     const body: Record<string, unknown> = { name, message, facts, speaker, do: true };
     if (image) body.image = await toBase64(image);
+    if (!check) return this.chatOnce(name, body, onPiece);
+    // the game's rules for what is said: a refused reply is taken back and asked again once, then the offline reply
+    let text = await this.chatOnce(name, body, null);
+    for (const drop of [false, true]) {
+      if (this.sources.get(name) === "offline") break;
+      const why = judged(() => check(text));
+      if (!why) break;
+      const taken = this.lastDo.get(name) || [];
+      const entry = this.actionsOf(name);
+      entry.ready = entry.ready.filter((a) => !taken.includes(a));
+      text = await this.chatOnce(name, { ...body, refused: { answer: text, why }, drop }, null);
+    }
+    if (onPiece && text) {
+      try { onPiece(text); } catch (e) { console.warn("[kinloom] chat: onPiece failed: " + (e instanceof Error ? e.message : e)); }
+    }
+    return text;
+  }
+
+  private async chatOnce(name: string, body: Record<string, unknown>, onPiece: ((text: string) => void) | null): Promise<string> {
     const r = onPiece ? await this.stream(body, onPiece) : await this.post("chat", body, this.timeoutMs);
     if (!r) {
       this.sources.set(name, "offline");
+      this.lastDo.set(name, []);
       const o = this.chars.get(name)?.offline;
       return Array.isArray(o) ? (o.length ? String(o[Math.floor(Math.random() * o.length)]) : "") : String(o ?? "");
     }
     this.redeclare(name, r);
     this.sources.set(name, String(r.source ?? "model"));
+    this.lastDo.set(name, Array.isArray(r.do) ? r.do : []);
     if (Array.isArray(r.do) && r.do.length) this.actionsOf(name).ready.push(...r.do);
     return String(r.text ?? "");
+  }
+
+  /** A short line from someone in the crowd about what just happened (no character to declare), ~1 s.
+   * who: who says it ("an old fisherman"); offline: your own lines ({fact} placeholders), said in turn without a model. */
+  async remark(about: string, { who = "", facts = {}, offline = null, maxChars = 0 }:
+    { who?: string; facts?: Facts; offline?: string | string[] | null; maxChars?: number } = {}): Promise<string> {
+    const body: Record<string, unknown> = { about, facts };
+    if (who) body.who = who;
+    if (offline !== null && offline !== undefined) body.offline = offline;
+    if (maxChars) body.max_chars = maxChars;
+    const r = await this.post("remark", body, this.timeoutMs);
+    if (r && typeof r.text === "string") {
+      this.sources.set(who || DEFAULT_WHO, String(r.source ?? "model"));
+      return r.text;
+    }
+    const lines = offline === null || offline === undefined ? [] : Array.isArray(offline) ? offline : [offline];
+    const usable = lines.filter((t) => [...String(t).matchAll(PLACEHOLDER_RE)].every((m) => Object.prototype.hasOwnProperty.call(facts, m[1])));
+    if (!usable.length) return "";
+    const key = cpSlice(squash(cleanText(who)), 0, MAX_NAME) || DEFAULT_WHO;
+    const turn = this.remarkTurns.get(key) || 0;
+    this.remarkTurns.set(key, turn + 1);
+    trim(this.remarkTurns);
+    let limit: number | null = null;
+    try { limit = boxLimit(maxChars); } catch { limit = null; }
+    return fitChars(fillLine(String(usable[turn % usable.length]), facts), limit);
   }
 
   /** Who the character is and feels: {card, mood: {word, level}, bonds: {speaker: {talks, feeling}}, memories,
@@ -278,9 +408,12 @@ export class Kinloom {
   /** What the player could say now to name, for games without a keyboard: one reply per example, in its order, each
    * keeping that example's intent, written for this moment ("Ask about her past" -> "So, the king's sword?"). The
    * examples are the offline answer, so index i always means the same choice. */
-  async suggest(name: string, examples: string[], speaker = "player", facts: Facts = {}): Promise<string[]> {
+  async suggest(name: string, examples: string[], speaker = "player", facts: Facts = {},
+    { check = null }: { check?: Check | null } = {}): Promise<string[]> {
     const r = await this.post("suggest", { name, examples, speaker, facts }, this.timeoutMs);
-    return r && Array.isArray(r.replies) ? r.replies.map(String) : examples.map(String);
+    const replies: string[] = r && Array.isArray(r.replies) ? r.replies.map(String) : examples.map(String);
+    if (!check) return replies;
+    return replies.map((t, i) => (judged(() => check(t)) && i < examples.length ? String(examples[i]) : t));   // refused: its example
   }
 
   /** What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model says it
@@ -358,8 +491,29 @@ export class Kinloom {
 
   /** Instant: the latest decision shaped like `choices` (refreshed in the background): an object of choices gives an
    * object, a list of options gives one of them. */
-  decide<T extends Record<string, Example> | Example[]>(name: string, situation: Facts, choices: T): T extends Example[] ? any : Record<keyof T, any> {
+  decide<T extends Record<string, Example> | Example[]>(name: string, situation: Facts, choices: T,
+    { check = null }: { check?: Check | null } = {}): T extends Example[] ? any : Record<keyof T, any> {
     const key = name + "|" + JSON.stringify(choices);
+    if (check) {
+      // the game's rules: a refused decision is not used (the last accepted one is, else the example), and the next
+      // decisions are made knowing why
+      const note = this.decideRefused.get(key);
+      const value = this.decided(key, name, note ? { ...situation, "the game refused your last decision": note } : situation, choices);
+      const why = judged(() => check(cloneJson(value)));
+      if (!why) {
+        this.decideRefused.delete(key);
+        this.decideOk.set(key, value);
+        trim(this.decideOk);
+        return value;
+      }
+      this.decideRefused.set(key, { decision: value, why });
+      trim(this.decideRefused);
+      return this.decideOk.has(key) ? cloneJson(this.decideOk.get(key)) : defaultOf(choices);
+    }
+    return this.decided(key, name, situation, choices);
+  }
+
+  private decided(key: string, name: string, situation: Facts, choices: any): any {
     let d = this.decisions.get(key);
     if (!d) this.decisions.set(key, (d = { value: defaultOf(choices), pending: false, at: -1 }));
     const entry = d;
@@ -377,10 +531,18 @@ export class Kinloom {
 
   /** Instant: tool calls chosen since the last call (on their own, or while talking), as [{tool, args}].
    * think false: only what they decided while talking (no model call of their own). */
-  act(name: string, situation: Facts = {}, think = true): Action[] {
+  act(name: string, situation: Facts = {}, think = true, { check = null }: { check?: ActCheck | null } = {}): Action[] {
     const entry = this.actionsOf(name);
-    const ready = entry.ready;
+    let ready = entry.ready;
     entry.ready = [];
+    if (check) {
+      // the game's rules: a refused action is not returned, and the character remembers why
+      ready = ready.filter((a) => {
+        const why = judged(() => check(a.tool, cloneJson(a.args)));
+        if (why) void this.post("remember", { name, note: refusedNote(a.tool, a.args, why), importance: 0.6 }, 3000);
+        return !why;
+      });
+    }
     const now = Date.now();
     if (!entry.pending && now - entry.at >= this.pollMs(name)) {
       entry.pending = true;
@@ -408,20 +570,66 @@ export class Kinloom {
   }
 
   /** Content shaped like the example (which is also the offline answer). count > 0 gives a list; instant: from a ready
-   * pool; image: a picture the model looks at (a Blob, a data: URL, an ArrayBuffer, base64). */
+   * pool; image: a picture the model looks at (a Blob, a data: URL, an ArrayBuffer, base64).
+   * check(answer): the game's own rules. null, "" or true accept the answer; a reason (text) or false refuses it: the
+   * model hears the reason once, then the offline answer is used (with count/instant, refused items are replaced).
+   * offline: the game's own offline answer, shaped like the example (one item of it with count). each(item): every
+   * item of a list answer as soon as it is ready (native: as the model writes it), refused items left out. */
   async create<T extends Example>(what: string, example: T,
-    { context = {}, count = 0, instant = false, image = null }:
-      { context?: Facts; count?: number; instant?: boolean; image?: Picture | null } = {}): Promise<any> {
+    { context = {}, count = 0, instant = false, image = null, check = null, offline = null, each = null }:
+      { context?: Facts; count?: number; instant?: boolean; image?: Picture | null; check?: Check | null; offline?: unknown;
+        each?: ((item: any) => void) | null } = {}): Promise<any> {
     const item: any = count > 0 && Array.isArray(example) && example.length === 1 ? example[0] : example; // [item] + count: count items
+    let fallback = defaultOf(item);
+    if (offline !== null && offline !== undefined) {
+      const [ok, v, err] = Shape.of(item).check(offline);
+      if (!ok) throw new Error("create: offline must be shaped like the example: " + err);
+      fallback = v;
+    }
+    if (check !== null && typeof check !== "function") throw new Error("create: check must be a function taking the answer");
+    if (each !== null && typeof each !== "function") throw new Error("create: each must be a function taking one item");
     const body: Record<string, unknown> = { what, example: item, context, instant };
     if (image) body.image = await toBase64(image);
     if (count > 0) body.count = count;
-    const r = await this.post("create", body, instant ? 2000 : this.timeoutMs);
-    if (!r || !("value" in r)) {
-      const fallback = defaultOf(item);
-      return count > 0 ? Array.from({ length: count }, () => fallback) : fallback;
+    if (offline !== null && offline !== undefined) body.offline = fallback;
+    const listed = count > 0 || Shape.of(item).kind === "list";
+    const value = await this.created(body, count, instant, check, fallback, true, each, listed);
+    return value;
+  }
+
+  /** One create request, then the game's check: a list item by item (in native mode as the model writes, each item
+   * handed to each() at once), anything else whole (refused: sent back once with its reason). */
+  private async created(body: Record<string, unknown>, count: number, instant: boolean, check: Check | null, fallback: any,
+    retry: boolean, each: ((item: any) => void) | null, listed: boolean): Promise<any> {
+    const copy = () => cloneJson(fallback);
+    const out = (v: any) => { if (each) for (const x of listed && Array.isArray(v) ? v : [v]) give(each, x); return v; };
+    if (each && listed && this.brain) {
+      body.__item = (x: any) => {          // native: the brain hands over each item as the model writes it
+        if (check && whyOf(check, x)) return false;
+        give(each, x);
+        return true;
+      };
     }
-    return r.value;
+    const r = await this.post("create", body, instant ? 2000 : this.timeoutMs);
+    delete body.__item;
+    if (!r || !("value" in r)) return out(count > 0 ? Array.from({ length: count }, copy) : copy());
+    const value = r.value;
+    if (listed && Array.isArray(value)) {
+      const streamed = Number(r.streamed || 0);
+      if (streamed > 0) {                   // checked and handed over already; the rest is the offline filling
+        if (each) for (const x of value.slice(streamed)) give(each, x);
+        return value;
+      }
+      let items = check && r.source !== "offline" ? value.filter((x: any) => !whyOf(check, x)) : value;
+      if (count > 0) items = [...items, ...Array.from({ length: count - items.length }, copy)];
+      else if (!items.length) items = copy();
+      return out(items);
+    }
+    if (!check || r.source === "offline") return out(value);
+    const why = whyOf(check, value);
+    if (!why) return out(value);
+    if (!retry || instant) return out(copy());
+    return this.created({ ...body, refused: { answer: value, why } }, 0, false, check, fallback, false, each, listed);
   }
 
   /** What the game can do, declared once: {open_door: {door: "north"}, give: {item: "sword"}}. Characters use them by
@@ -574,7 +782,7 @@ export class Kinloom {
     const lines = this.chars.get(name)?.lines ?? {};
     const own = Array.isArray(lines) ? lines : linesOf(lines[event]);
     const options: string[] = own.length || Array.isArray(lines) ? own : linesOf(lines["*"]);
-    const usable = options.filter((t) => [...String(t).matchAll(PLACEHOLDER)].every((m) => m[1] in facts));
+    const usable = options.filter((t) => [...String(t).matchAll(PLACEHOLDER)].every((m) => Object.prototype.hasOwnProperty.call(facts, m[1])));
     return usable.length ? fill(usable[Math.floor(Math.random() * usable.length)], facts) : "";
   }
 
@@ -1492,6 +1700,15 @@ export class Shape {
       return [true, v, null];
     }
     if (k === "list") {
+      if (isObj(value)) {
+        // JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+        const lists = Object.values(value).filter((v) => Array.isArray(v));
+        if (lists.length) value = lists[0];            // the first list, as items stream it (Items)
+        else if ((this.info.item as Shape).kind === "object") {
+          const [ok, v] = (this.info.item as Shape).check(value, path + "[0]");
+          if (ok) return [true, [v], null];
+        }
+      }
       if (!Array.isArray(value)) return [false, null, path + " must be a list"];
       if (value.length > MAX_LIST) return [false, null, path + " must have at most " + MAX_LIST + " items"];
       const out: any[] = [];
@@ -2294,10 +2511,44 @@ export const prompts = {
     lines.push(DATA_RULE);
     return lines.join("\n");
   },
+  /** obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones
+   * matter most): the last values are shortened first, then replaced by "(cut)". Anything else is cut. */
   clip(obj: unknown, limit = CLIP): string {
-    const text = pyDumps(obj, false);
-    return cpLen(text) <= limit ? text : cpSlice(text, 0, limit) + "...";
+    let text = pyDumps(obj, false);
+    if (cpLen(text) <= limit) return text;
+    if (isObj(obj) && Object.keys(obj).length) {
+      const keys = Object.keys(obj);
+      const pair = (k: string, v: unknown) => pyDumps(k, false) + ": " + pyDumps(v, false);   // as the whole object writes it
+      const pairs = keys.map((k) => pair(k, (obj as Record<string, any>)[k]));
+      let size = pairs.reduce((n, p) => n + cpLen(p), 0) + 2 * pairs.length;   // the braces and the ", " between pairs
+      for (const valueOf of [(k: string) => prompts.short((obj as Record<string, any>)[k]), () => "(cut)"]) {
+        for (let i = keys.length - 1; i >= 0; i--) {
+          const fresh = pair(keys[i], valueOf(keys[i]));
+          size += cpLen(fresh) - cpLen(pairs[i]);
+          pairs[i] = fresh;
+          if (size <= limit) return "{" + pairs.join(", ") + "}";
+        }
+      }
+      text = "{" + pairs.join(", ") + "}";
+    }
+    return cpSlice(text, 0, limit) + "...";
   },
+  /** A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted. */
+  short(v: unknown): unknown {
+    if (typeof v === "string") return cpLen(v) <= 80 ? v : cpSlice(v, 0, 80) + "...";
+    if (Array.isArray(v)) return v.length <= 3 ? v : [...v.slice(0, 3), "(" + (v.length - 3) + " more)"];
+    if (isObj(v)) return cpLen(pyDumps(v, false)) <= 200 ? v : "(" + Object.keys(v).length + " fields)";
+    return v;
+  },
+  /** Someone in the crowd (no declared character) says one line about what just happened. */
+  remarkSystem(who: string, language: string, chars: number | null = null): string {
+    return ["Kinloom task: remark", "You are " + who + " in a video game world. Something just happened in front of you.",
+      "Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words" +
+      (chars ? " and at most " + chars + " characters" : "") + ".",
+      "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.",
+      prompts.writeIn(language), DATA_RULE, 'Answer as JSON: {"line": "what you say"}'].join("\n");
+  },
+  remarkUser(about: string): string { return "What just happened: " + about + "\nSay your line now."; },
   feeling(v: number): string {
     return v <= -0.6 ? "hates" : v < -0.1 ? "distrusts" : v >= 0.6 ? "trusts deeply" : v > 0.1 ? "likes" : "";
   },
@@ -2485,6 +2736,12 @@ export const prompts = {
     if (known.length) lines.push("What you know about " + speaker + ":\n" + known.map((k) => "- " + k).join("\n"));
     lines.push("Right now you feel " + (moodStrength ? moodStrength + " " : "") + moodWord + ".");
     return lines.join("\n") + "\n\n";
+  },
+  /** The game refused the last answer (create's check): its reason, once, with the answer it refused. */
+  refusedBlock(refused: { answer: unknown; why: string } | null): string {
+    if (!refused) return "";
+    return "The game refused your last answer: " + refused.why + "\nThe refused answer: " + prompts.clip(refused.answer, 1500) +
+      "\nAnswer again: keep what was fine, fix that.\n";
   },
   /** What the game decided for this reply (steer): the model makes it happen, in the character's words. */
   steerBlock(steer: string): string {
@@ -2713,6 +2970,15 @@ export class Memory {
   }
 
   notes(session: string, scope: string): Note[] { return (this.notesBy.get(session + "\u0000" + scope) || []).map((n) => ({ ...n })); }
+
+  /** Removes the latest note with exactly this text (a reply the game refused is not remembered). */
+  takeBack(session: string, scope: string, text: string): void {
+    text = cpSlice(squash(String(text)), 0, MAX_NOTE);
+    const notes = this.notesBy.get(session + "\u0000" + scope) || [];
+    for (let i = notes.length - 1; i >= 0; i--) {
+      if (notes[i].text === text) { notes.splice(i, 1); this.changed(); return; }
+    }
+  }
 
   annotate(session: string, scope: string, eid: string, meta: Record<string, any>): void {
     for (const n of this.notesBy.get(session + "\u0000" + scope) || [])
@@ -4000,6 +4266,28 @@ const HEARSAY = 0.5, RUMOR_DECAY = 0.8, MIN_RUMOR = 0.1;
 const CONFIG_KEYS = ["personality", "soul", "lines", "offline", "events", "tools", "max_words", "max_chars", "every", "language",
   "group", "trust", "invent", "voice", "warmth", "secret_trust", "warm_up"];
 const MAX_STEER = 300;                 // what the game decides for the next reply (steer), in characters
+const MAX_WHY = 300;                   // why the game refused a created answer (create's check), in characters
+const MAX_ABOUT = 300;                 // what a remark is about, in characters
+const REMARK_WORDS = 20;               // a remark longer than this is cut to whole sentences
+const DEFAULT_WHO = "someone in the crowd";
+const MAX_STREAMED = 200;              // items of one list answer handed over as they come
+
+/** The game's own offline answer (create's offline), checked against the example's shape. */
+function offlineAnswer(shape: Shape, offline: unknown): any {
+  if (offline === null || offline === undefined) return shape.default();
+  const [ok, v, err] = shape.check(offline);
+  if (!ok) throw new KinloomError(400, "create: offline must be shaped like the example: " + err);
+  return v;
+}
+
+/** {answer, why}: an answer the game refused (sent back once with create's check), or null. */
+function refusal(r: unknown): { answer: unknown; why: string } | null {
+  if (r === null || r === undefined) return null;
+  if (!isObj(r) || !("answer" in r) || typeof r.why !== "string")
+    throw new KinloomError(400, 'create: refused must be {"answer": the refused answer, "why": "the reason"}, got ' + pyRepr(r));
+  const why = cpSlice(squash(cleanText(r.why)), 0, MAX_WHY);
+  return why ? { answer: r.answer, why } : null;
+}
 const REPLY_TIMEOUT = 8.0;             // seconds a spoken reply may take on a hosted model (kinloom.json "reply_timeout")
 
 /** warmth / secret_trust / warm_up: a number clamped to [low, high]; null is the default. */
@@ -4037,6 +4325,8 @@ export function eventKey(event: unknown): string { return cpSlice(cleanText(pySt
 function nameOf(x: unknown): string | null { return x === null || x === undefined || x === "" ? null : cpSlice(cleanText(pyStr(x)), 0, MAX_NAME); }
 
 interface Act { tool: string; args: Record<string, any>; taken: boolean }
+/** What a reply changed inside, to put back if the game refuses it (chat's check). */
+interface Undo { mood?: [any]; rise?: [any]; gesture?: [any, any]; feel?: number; notes?: string[] }
 
 /** What say() and chat() give back: the text, where it came from, and (chat) the actions decided in it. */
 export interface Said { text: string; source: "model" | "prepared" | "offline"; actions: Act[] }
@@ -4231,6 +4521,8 @@ export class Brain {
   private cardWaiters = new Map<string, [string, Character][]>(); private greetings = new Map<string, [string, Record<string, any>]>();
   private greetingBusy = new Set<string>(); private bonds = new Map<string, Record<string, Record<string, { talks: number; first: number; last: number }>>>();
   private clips = new Set<string>();   // name + label already journaled as too long
+  private lastDecided = new Map<string, Act[]>(); private remarkTurns = new Map<string, number>();
+  private lastUndo = new Map<string, Undo>();   // what the last reply changed inside (chat's check takes it back)
   private said = new Map<string, string[]>(); private switches = 0; private rises = new Map<string, [number, number, number]>();
   private steers = new Map<string, string>();      // session|name -> what the game decided for the next reply (steer)
   private replyTimeout = REPLY_TIMEOUT;
@@ -4725,15 +5017,20 @@ export class Brain {
     return notes.slice(0, k).sort((a, b) => a.t - b.t).map((n) => n.text);
   }
 
-  private inner(session: string, c: Character, speaker: string, data: any): Act[] {
+  private inner(session: string, c: Character, speaker: string, data: any, undo: Undo = {}): Act[] {
     const i = innerOfReply(data);
     const key = session + "\u0000" + c.name;
-    if (i.mood && this.allowed(i.mood)) this.moods.set(key, { word: i.mood, level: i.intensity, t: this.clock() });
+    undo.notes = [];
+    if (i.mood && this.allowed(i.mood)) {
+      undo.mood = [this.moods.get(key)];
+      this.moods.set(key, { word: i.mood, level: i.intensity, t: this.clock() });
+    }
     if (i.feel) {
       let change: number = i.feel;
       if (change > 0) {
         const now = this.wall();
         const rkey = key + "\u0000" + speaker;
+        undo.rise = [this.rises.get(rkey)];
         let [start, gained, last] = this.rises.get(rkey) || [now, 0.0, -1e18];
         if (now - last > NEW_TALK) { start = now; gained = 0.0; }
         change = Math.max(0.0, Math.min(change, c.warm_up - gained));
@@ -4741,13 +5038,22 @@ export class Brain {
         trim(this.rises);
         if (change < i.feel) this.log("refused", c.name, "feel: " + speaker + " already won " + pyFixed(c.warm_up, 1, "+") + " this conversation");
       }
-      if (change) this.feel(session, c.name, speaker, change);
+      if (change) {
+        const before = this.opinion(session, c.name, speaker);
+        undo.feel = this.feel(session, c.name, speaker, change) - before;
+      }
     }
-    if (i.self && this.allowed(i.self)) this.memory.add(session, c.name, i.self, 0.9, { about: SELF });
+    if (i.self && this.allowed(i.self)) {
+      this.memory.add(session, c.name, i.self, 0.9, { about: SELF });
+      undo.notes.push(i.self);
+    }
     if (i.remember) {
-      if (this.allowed(i.remember)) this.memory.add(session, c.name, i.remember, 0.8, { about: speaker });
-      else this.log("refused", c.name, "remember: blocked by the content filter");
+      if (this.allowed(i.remember)) {
+        this.memory.add(session, c.name, i.remember, 0.8, { about: speaker });
+        undo.notes.push(i.remember);
+      } else this.log("refused", c.name, "remember: blocked by the content filter");
     }
+    undo.gesture = [this.gestureSeen.get(key), this.gestures.get(key)];
     const fresh = i.gesture && this.allowed(i.gesture) && !sameAction(i.gesture, this.gestureSeen.get(key));
     this.gestureSeen.set(key, String(i.gesture).toLowerCase());
     if (fresh) this.gestures.set(key, i.gesture); else this.gestures.delete(key);
@@ -4969,13 +5275,16 @@ export class Brain {
     return isObj(choices) || !isObj(value) ? value : (value.choice ?? value);
   }
 
+  /** onText: the answer's pieces as they come; used(): true when part of it was already used (then no repair). */
   private async structured(kind: string, name: string, system: string, user: string, shape: Shape, foreground: boolean, maxTokens = 500,
-    timeout: number | null = null, images: ModelPicture[] | null = null): Promise<any> {
-    let r = await this.call(kind, name, system, user, true, foreground, maxTokens, null, timeout, images);
+    timeout: number | null = null, images: ModelPicture[] | null = null, onText: ((p: string) => void) | null = null,
+    used: (() => boolean) | null = null): Promise<any> {
+    let r = await this.call(kind, name, system, user, true, foreground, maxTokens, onText, timeout, images);
     if (!r.ok) return null;
     let [ok, value, error] = shape.parse(r.text);
     if (ok && !this.allowed(value)) { this.log("refused", name, kind + ": blocked by the content filter"); return null; }
     if (ok) return value;
+    if (used && used()) return null;
     this.log("repair", name, kind + ": " + error);
     if (error === CUT) maxTokens = Math.min(4000, maxTokens * 2);   // stopped by the token limit: room to finish
     r = await this.call(kind, name, system, user + prompts.repair(error as string), true, foreground, maxTokens, null, timeout, images);
@@ -5317,10 +5626,17 @@ export class Brain {
 
   // ---------------- create ----------------
 
+  /** [value, "model" or "offline", how many items onItem already got]. offline: the game's own offline answer;
+   * refused: {answer, why} the game refused. onItem(item): for a list answer, every item as soon as the model has
+   * written it; false when the game refuses it (it is then left out). */
   async create(session: string, what0: unknown, example: any, context: unknown = null, count: unknown = null, instant = false,
-    timeout: number | null = null, image: unknown = null): Promise<any> {
+    timeout: number | null = null, image: unknown = null, offline: unknown = null, refused0: unknown = null,
+    onItem: ((item: any) => boolean) | null = null): Promise<[any, string, number]> {
     if (count && Array.isArray(example) && example.length === 1) example = example[0];
     const shape = Shape.of(example);
+    const fallback = offlineAnswer(shape, offline);
+    const copy = () => JSON.parse(JSON.stringify(fallback));
+    const refused = refusal(refused0);
     let what = cleanText(pyStr(what0));
     this.clipNote(cpSlice(what, 0, MAX_WHAT), "what", what, MAX_WHAT, true);
     this.clipNote(cpSlice(what, 0, MAX_WHAT), "context", context);
@@ -5328,28 +5644,59 @@ export class Brain {
     const pictures = image !== null && image !== undefined ? this.pictures(what, image) : [];
     if (instant) {
       if (pictures.length) this.log("refused", what, "image: not used with instant=True (those items are made ahead)");
-      return this.fromPool(session, what, shape, context);
+      const item = this.fromPool(session, what, shape, context);
+      return item !== undefined ? [item, "model", 0] : [copy(), "offline", 0];
     }
     if (count) {
       const n = Math.max(1, Math.min(50, Math.trunc(argNum(count, "count"))));
-      const items = await this.createMany(session, what, shape, context, n, true, timeout, pictures);
-      return [...items, ...Array.from({ length: n - items.length }, () => shape.default())];
+      const streamed: any[] = [];
+      const feed = onItem ? this.streamer(shape, onItem, streamed, n) : null;
+      let items = await this.createMany(session, what, shape, context, n, true, timeout, pictures, feed?.feed ?? null);
+      feed?.close();
+      if (streamed.length) items = [...streamed];
+      return [[...items, ...Array.from({ length: n - items.length }, copy)], items.length ? "model" : "offline", streamed.length];
     }
-    if (this.provider === null) return shape.default();
+    if (this.provider === null) return [copy(), "offline", 0];
+    if (refused) this.log("refused", what, "create: the game refused it: " + refused.why);
     const system = prompts.createSystem(what, shape, this.written());
-    const user = this.context(session, null, what) + prompts.contextBlock(context) + prompts.pictureBlock(pictures.length);
-    const value = await this.structured("create", what, system, user, shape, true, 1500, timeout, pictures);
-    if (value === null) { this.statsOf.offline_answers++; return shape.default(); }
+    const user = this.context(session, null, what) + prompts.contextBlock(context) + prompts.pictureBlock(pictures.length) +
+      prompts.refusedBlock(refused);
+    const streamed: any[] = [];
+    const feed = onItem && shape.kind === "list" ? this.streamer(shape.info.item as Shape, onItem, streamed, MAX_STREAMED) : null;
+    let value = await this.structured("create", what, system, user, shape, true, 1500, timeout, pictures, feed?.feed ?? null,
+      feed ? () => streamed.length > 0 : null);
+    feed?.close();
+    if (streamed.length) value = [...streamed];
+    if (value === null) { this.statsOf.offline_answers++; return [copy(), "offline", 0]; }
     this.log("create", what, cpSlice(pyDumps(value), 0, 300));
-    return value;
+    return [value, "model", streamed.length];
+  }
+
+  /** onText for a list answer: each finished item, valid and allowed, goes to onItem at once (kept when accepted). */
+  private streamer(itemShape: Shape, onItem: (item: any) => boolean, kept: any[], limit: number):
+    { feed: (piece: string) => void; close: () => void } {
+    const items = new Items();
+    let open = true;            // a call given up on (timed out) keeps streaming: nothing after the answer
+    return {
+      feed: (piece: string) => {
+        if (!open) return;
+        for (const text of items.feed(piece)) {
+          if (kept.length >= limit) return;
+          const [ok, value] = itemShape.parse(text);
+          if (!ok || !this.allowed(value) || !onItem(value)) continue;
+          kept.push(value);
+        }
+      },
+      close: () => { open = false; },
+    };
   }
 
   private async createMany(session: string, what: string, shape: Shape, context: unknown, count: number, foreground: boolean,
-    timeout: number | null = null, pictures: ModelPicture[] = []): Promise<any[]> {
+    timeout: number | null = null, pictures: ModelPicture[] = [], onText: ((p: string) => void) | null = null): Promise<any[]> {
     if (this.provider === null) return [];
     const system = prompts.createManySystem(what, shape, count, this.written());
     const user = this.context(session, null, what) + prompts.contextBlock(context) + prompts.pictureBlock(pictures.length);
-    const r = await this.call("create", what, system, user, true, foreground, Math.min(4000, 200 + 150 * count), null, timeout, pictures);
+    const r = await this.call("create", what, system, user, true, foreground, Math.min(4000, 200 + 150 * count), onText, timeout, pictures);
     if (!r.ok) return [];
     const data = findJson(r.text);
     const raw = isObj(data) ? data.items : Array.isArray(data) ? data : [];
@@ -5382,14 +5729,22 @@ export class Brain {
         }
       });
     }
-    return item !== undefined ? item : shape.default();
+    return item;
   }
 
   // ---------------- chat ----------------
 
+  /** refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of it, its
+   * actions) and asked again knowing why; drop: taken back and answered offline (refused twice). */
   async chat(session: string, name: unknown, message0: unknown, facts0: unknown = null, speaker0: unknown = "player",
-    stream: ((piece: string) => void) | null = null, timeout: number | null = null, maxChars: unknown = null, image: unknown = null): Promise<Said> {
+    stream: ((piece: string) => void) | null = null, timeout: number | null = null, maxChars: unknown = null, image: unknown = null,
+    refused0: unknown = null, drop = false): Promise<Said> {
     const c = this.char(session, name);
+    const refused = refusal(refused0);
+    if (refused) {
+      this.takeBack(session, c, nameOf(speaker0) || "player", cpSlice(cleanText(message0 || ""), 0, 1000), String(refused.answer));
+      this.log("refused", c.name, "chat: the game refused the reply: " + refused.why);
+    }
     const began = nowSec();
     const pictures = image !== null && image !== undefined ? this.pictures(c.name, image) : [];
     const limit = boxLimit(maxChars) || c.max_chars;
@@ -5423,7 +5778,7 @@ export class Brain {
       reply = fitChars(reply, limit);
       source = "prepared";
       if (stream) stream(reply);
-    } else if (this.provider !== null) {
+    } else if (this.provider !== null && !drop) {
       const [word, level] = this.mood(session, c);
       const system = prompts.chatSystem(c, this.lang(c, true), this.cardLines(c), this.lore(session));
       const user = prompts.historyBlock(history, KEEP) + this.context(session, c.name, message) + prompts.factsBlock(facts) +
@@ -5433,7 +5788,7 @@ export class Brain {
         prompts.pictureBlock(pictures.length, speaker) + prompts.messageBlock(speaker, message) + prompts.boxBlock(boxLimit(maxChars));
       const allowed = allowedNumbers(facts, state, message, steer, c.personality, cardTexts(c.card || {}),
         this.memory.recall(session, [c.name, "world"], message), this.known(session, c.name, speaker));
-      let repair = "";
+      let repair = refused ? "\n\n" + prompts.refusedBlock(refused) : "";
       let streamed = false;
       const mine = (this.said.get(session + "\u0000" + c.name) || []).slice(-6);
       // A steer is the game's own decision: it may reveal a secret.
@@ -5529,7 +5884,12 @@ export class Brain {
         const found = await this.deeds(c, speaker, message, reply, Math.max(1.5, left));
         if (found.length) inner = { ...(inner || {}), do: found };
       }
-      decided = this.inner(session, c, speaker, inner);
+      const undo: Undo = {};
+      decided = this.inner(session, c, speaker, inner, undo);
+      this.lastDecided.set(session + "\u0000" + c.name, decided);
+      this.lastUndo.set(session + "\u0000" + c.name, undo);
+      trim(this.lastDecided);
+      trim(this.lastUndo);
       if (source === "prepared") this.prepareGreeting(session, c);   // the next stranger's, with the mood this one left
     } else if (reply === null) {
       inner = null;
@@ -5566,6 +5926,79 @@ export class Brain {
       this.memory.add(session, c.name, speaker + " said: " + cpSlice(message, 0, 120) + " / I answered: " + cpSlice(reply, 0, 160), 0.35, { about: speaker });
     this.log("chat", c.name, reply, { message, speaker, ...(inner === null ? { offline: true } : {}) });
     return { text: reply, source, actions: decided };
+  }
+
+  /** The reply the game refused: out of the conversation, the memory and the actions waiting for act(). */
+  private takeBack(session: string, c: Character, speaker: string, message: string, answer: string): void {
+    const h = this.history.get(session + "\u0000" + c.name + "\u0000" + speaker);
+    if (h && h.length && h[h.length - 1][0] === c.name && h[h.length - 1][1] === answer) {
+      h.pop();
+      if (message && h.length && h[h.length - 1][0] === speaker && h[h.length - 1][1] === message) h.pop();
+    }
+    const said = this.said.get(session + "\u0000" + c.name);
+    if (said && said.length && said[said.length - 1] === answer) said.pop();
+    const key = session + "\u0000" + c.name;
+    for (const a of this.lastDecided.get(key) || []) a.taken = true;
+    this.lastDecided.delete(key);
+    const undo = this.lastUndo.get(key) || {};
+    this.lastUndo.delete(key);
+    const put = <V>(table: Map<string, V>, k: string, v: V | undefined) => { if (v === undefined) table.delete(k); else table.set(k, v); };
+    if (undo.mood) put(this.moods, key, undo.mood[0]);
+    if (undo.rise) put(this.rises, key + "\u0000" + speaker, undo.rise[0]);
+    if (undo.gesture) { put(this.gestureSeen, key, undo.gesture[0]); put(this.gestures, key, undo.gesture[1]); }
+    if (undo.feel) this.feel(session, c.name, speaker, -undo.feel);     // the feeling it moved, the memories it wrote
+    for (const note of undo.notes || []) this.memory.takeBack(session, c.name, note);
+    if (message) this.memory.takeBack(session, c.name, speaker + " said: " + cpSlice(message, 0, 120) + " / I answered: " + cpSlice(answer, 0, 160));
+  }
+
+  /** A short line said out loud by someone in the crowd (no character to declare) about what just happened.
+   * offline: the game's own lines ({fact} placeholders), taken in turn when no model answers. */
+  async remark(session: string, about0: unknown, who0: unknown = null, facts0: unknown = null, offline: unknown = null,
+    maxChars: unknown = null): Promise<Said> {
+    if (typeof about0 !== "string") throw new KinloomError(400, "remark: about must be a string (what just happened), got " + pyRepr(about0));
+    const about = cpSlice(squash(cleanText(about0)), 0, MAX_ABOUT);
+    const who = cpSlice(squash(cleanText(who0 === null || who0 === undefined ? "" : pyStr(who0))), 0, MAX_NAME) || DEFAULT_WHO;
+    const facts = mapping(facts0, "facts");
+    this.clipNote(who, "facts", facts);
+    let lines: string[];
+    if (offline === null || offline === undefined) lines = [];
+    else if (typeof offline === "string") lines = [offline];
+    else if (Array.isArray(offline) && offline.every((x) => typeof x === "string")) lines = offline as string[];
+    else throw new KinloomError(400, 'remark: offline must be a line or a list of lines, like ["Would you look at that!"], got ' + pyRepr(offline));
+    const limit = boxLimit(maxChars);
+    if (this.provider !== null && about) {
+      const r = await this.call("remark", who, prompts.remarkSystem(who, this.written(), limit),
+        this.context(session, null, about) + prompts.factsBlock(facts) + prompts.remarkUser(about), true, true, 120);
+      const data = r.ok ? findJson(r.text) : null;
+      const line = isObj(data) ? data.line : null;
+      const said = typeof line === "string" ? this.validRemark(line, facts, about, limit) : "";
+      if (said) {
+        this.log("remark", who, said, { about });
+        return { text: said, source: "model", actions: [] };
+      }
+    }
+    const usable = lines.filter((t) => [...t.matchAll(PLACEHOLDER_RE)].every((m) => Object.prototype.hasOwnProperty.call(facts, m[1])));
+    let said = "";
+    if (usable.length) {
+      const key = session + "\u0000" + who;
+      const turn = this.remarkTurns.get(key) || 0;
+      this.remarkTurns.set(key, turn + 1);
+      trim(this.remarkTurns);
+      said = fitChars(fillLine(usable[turn % usable.length], facts), limit);
+    }
+    this.statsOf.offline_answers++;
+    this.log("remark", who, said, { about, source: "offline" });
+    if (!said) this.tellEmpty(session, who, "remark", "remark by " + who + ' answered "" (give it offline=[...] lines, said when no model answers)');
+    return { text: said, source: "offline", actions: [] };
+  }
+
+  /** The remark as said: one short line, the filter passed, no numbers the game did not give; else "". */
+  private validRemark(line: string, facts: Record<string, any>, about: string, limit: number | null): string {
+    const text = pyStrip(pyStrip(pyStrip(cleanText(line)), '"'));
+    if (!text || !this.allowed(text) || META.test(text) || PROMPTISH.test(text) || text.includes("{")) return "";
+    const allowed = allowedNumbers(facts, about);
+    for (const m of text.matchAll(NUMBER_RE)) if (!numberOk(m[0], allowed)) return "";
+    return capText(text, REMARK_WORDS, limit);
   }
 
   /** budget: seconds for everything here (the asking again included). */
@@ -6033,7 +6466,8 @@ export class Brain {
           need("name");
           if (typeof body.message !== "string") throw new KinloomError(400, "missing 'message' (\"\" when the character speaks first)");
           const speaker = body.speaker || "player";
-          const s = await this.chat(session, name, body.message, facts(), speaker, null, null, body.max_chars ?? null, image());
+          const s = await this.chat(session, name, body.message, facts(), speaker, null, null, body.max_chars ?? null, image(),
+            body.refused ?? null, body.drop === true);
           return { text: s.text, declared: this.isDeclared(session, name), ...this.feelings(session, name, speaker), ...this.replyExtra(s, body) };
         }
         case "lore": {
@@ -6046,7 +6480,14 @@ export class Brain {
         case "create": {
           need("what");
           if (!("example" in body)) throw new KinloomError(400, "missing 'example' (an example answer: it is also the offline answer)");
-          return { value: await this.create(session, body.what, body.example, body.context ?? null, body.count ?? null, !!body.instant, null, image()) };
+          const [value, source, streamed] = await this.create(session, body.what, body.example, body.context ?? null, body.count ?? null,
+            !!body.instant, null, image(), body.offline ?? null, body.refused ?? null, typeof body.__item === "function" ? body.__item : null);
+          return { value, source, streamed };
+        }
+        case "remark": {
+          if (typeof body.about !== "string") throw new KinloomError(400, "missing 'about' (what just happened, as text)");
+          const s = await this.remark(session, body.about, body.who ?? null, facts(), body.offline ?? null, body.max_chars ?? null);
+          return { text: s.text, source: s.source };
         }
         case "tools": {
           if (!("tools" in body)) return { tools: this.tools(session) };
@@ -6152,7 +6593,8 @@ export class Brain {
   /** chat() with the reply streamed: pieces as they are written, then what the server's "done" event carries. */
   async chatStream(session: string, body: Record<string, any>, onPiece: (piece: string) => void): Promise<Record<string, any>> {
     const speaker = body.speaker || "player";
-    const s = await this.chat(session, body.name, body.message, body.facts ?? null, speaker, onPiece, null, body.max_chars ?? null, body.image || null);
+    const s = await this.chat(session, body.name, body.message, body.facts ?? null, speaker, onPiece, null, body.max_chars ?? null, body.image || null,
+      body.refused ?? null, body.drop === true);
     return { done: true, text: s.text, ...this.feelings(session, body.name, speaker), ...this.replyExtra(s, body) };
   }
 
@@ -6218,6 +6660,9 @@ export function vector(fn: string, args: any[]): any {
     case "worn": return worn(args[0]);
     case "drop_narrated": return dropNarrated(args[0], args[1], args[2]);
     case "inner": return innerOfReply(args[0]);
+    case "reason": return reason(args[0]);
+    case "refused_note": return refusedNote(args[0], args[1], args[2]);
+    case "items": { const it = new Items(); const out: string[] = []; for (const p of args[0]) out.push(...it.feed(p)); return out; }
     case "card": return soulCard(args[0], args[1]);
     case "describe_card": return describeCard(args[0]);
     case "mood_now": return moodNow(args[0], args[1], args[2]);
@@ -6295,6 +6740,9 @@ function promptVector(name: string, spec: any, a: any[]): string {
     case "message_block": return prompts.messageBlock(a[0], a[1]);
     case "bond_block": return prompts.bondBlock(a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8], a[9] ?? SECRET_TRUST);
     case "steer_block": return prompts.steerBlock(a[0] ?? "");
+    case "remark_system": return prompts.remarkSystem(a[0], a[1], a[2] ?? null);
+    case "remark_user": return prompts.remarkUser(a[0]);
+    case "refused_block": return prompts.refusedBlock(a[0] ?? null);
     case "deeds_user": return prompts.deedsUser(a[0], a[1], a[2], a[3]);
     case "soul_user": return prompts.soulUser(a[0], a[1]);
     case "repair": return prompts.repair(a[0]);

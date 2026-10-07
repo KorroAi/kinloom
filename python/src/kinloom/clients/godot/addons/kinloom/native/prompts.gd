@@ -31,9 +31,43 @@ static func head(task: String, c, language: String) -> String:
 const CLIP := 4000
 
 
+## A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted.
+static func short_value(v: Variant) -> Variant:
+	if v is String:
+		return v if v.length() <= 80 else v.substr(0, 80) + "..."
+	if v is Array:
+		if v.size() <= 3:
+			return v
+		var out: Array = v.slice(0, 3)
+		out.append("(%d more)" % (v.size() - 3))
+		return out
+	if v is Dictionary:
+		return v if Py.dumps(v, false).length() <= 200 else "(%d fields)" % v.size()
+	return v
+
+
+## obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones matter
+## most): the last values are shortened first, then replaced by "(cut)". Anything else is cut.
 static func clip(obj: Variant, limit := CLIP) -> String:
 	var text := Py.dumps(obj, false)
-	return text if text.length() <= limit else text.substr(0, limit) + "..."
+	if text.length() <= limit:
+		return text
+	if obj is Dictionary and not obj.is_empty():
+		var keys: Array = obj.keys()
+		var pairs: Array = []           # '"key": value', as the whole object writes it
+		var size := 0
+		for k in keys:
+			pairs.append(Py.dumps(str(k), false) + ": " + Py.dumps(obj[k], false))
+			size += pairs[-1].length() + 2          # with the braces and the ", " between pairs
+		for cut in [false, true]:
+			for i in range(keys.size() - 1, -1, -1):
+				var fresh: String = Py.dumps(str(keys[i]), false) + ": " + Py.dumps("(cut)" if cut else short_value(obj[keys[i]]), false)
+				size += fresh.length() - pairs[i].length()
+				pairs[i] = fresh
+				if size <= limit:
+					return "{" + ", ".join(pairs) + "}"
+		text = "{" + ", ".join(pairs) + "}"
+	return text.substr(0, limit) + "..."
 
 
 static func feeling(v: float) -> String:
@@ -125,6 +159,28 @@ static func picture_block(pictures: bool, speaker := "") -> String:
 	if speaker != "":
 		return "A picture comes with this moment: what " + speaker + " shows you, or what you see right now. Look at it.\n"
 	return "A picture comes with this request: look at it and use what it shows.\n"
+
+
+## Someone in the crowd (no declared character) says one line about what just happened.
+static func remark_system(who: String, language: String, chars := 0) -> String:
+	return "\n".join(["Kinloom task: remark",
+		"You are " + who + " in a video game world. Something just happened in front of you.",
+		"Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words" +
+			(" and at most %d characters" % chars if chars > 0 else "") + ".",
+		"Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.",
+		write_in(language), DATA_RULE, 'Answer as JSON: {"line": "what you say"}'])
+
+
+static func remark_user(about: String) -> String:
+	return "What just happened: " + about + "\nSay your line now."
+
+
+## The game refused the last answer (create's check): its reason, once, with the answer it refused.
+static func refused_block(refused: Variant) -> String:
+	if refused == null:
+		return ""
+	return "The game refused your last answer: " + str(refused.why) + "\nThe refused answer: " + clip(refused.answer, 1500) + \
+		"\nAnswer again: keep what was fine, fix that.\n"
 
 
 ## What the game decided for this reply (steer): the model makes it happen, in the character's words.

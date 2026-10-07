@@ -87,6 +87,43 @@ namespace Kinloom
 
         private sealed class Decision { public Dictionary<string, object> Value = new Dictionary<string, object>(); public bool Busy; public DateTime At = DateTime.MinValue; }
         private sealed class Pending { public List<KinloomAction> Ready = new List<KinloomAction>(); public bool Busy; public DateTime At = DateTime.MinValue; }
+        private readonly Dictionary<string, List<KinloomAction>> _lastDo = new Dictionary<string, List<KinloomAction>>();   // chat's check
+        private readonly Dictionary<string, Dictionary<string, object>> _decideRefused = new Dictionary<string, Dictionary<string, object>>();
+        private readonly Dictionary<string, object> _decideOk = new Dictionary<string, object>();
+        private readonly Dictionary<string, int> _remarkTurns = new Dictionary<string, int>();   // offline remarks in turn (relay)
+
+        /// <summary>What a game's check returned, as why it refuses ("" when it accepts): null, "" or true accept; false refuses.</summary>
+        public static string Reason(object? verdict)
+        {
+            if (verdict == null || (verdict is bool t && t) || (verdict is string e && e.Length == 0)) return "";
+            if (verdict is bool) return "it breaks the game's rules";
+            var why = Py.Slice(Py.Squash(Text.Clean(Py.Str(verdict))), 0, 300);
+            return why.Length > 0 ? why : "refused";
+        }
+
+        /// <summary>Reason(verdict()); a check that throws refuses ("the game's check failed"), never breaking the call.</summary>
+        private static string Judged(Func<object?> verdict)
+        {
+            try { return Reason(verdict()); }
+            catch (Exception e) { Warn("[kinloom] the game's check failed: " + e.Message); return "the game's check failed"; }
+        }
+
+        /// <summary>The oldest entries go once a facade table passes 2000 (decisions refused or accepted, remarks in turn).</summary>
+        private static void Cap<V>(Dictionary<string, V> table)
+        {
+            while (table.Count > 2000) table.Remove(table.Keys.First());
+        }
+
+        /// <summary>What a character remembers when the game refused one of its actions (Act's check).</summary>
+        public static string RefusedNote(string tool, object? args, string why) => "The game did not let me " + tool + " " + Py.Dumps(args, false) + ": " + why;
+
+        private static object? Clone(object? v) => Py.Loads(Py.Dumps(v));
+
+        private void Give(Action<object?> each, object? item)
+        {
+            try { each(Clone(item)); }
+            catch (Exception e) { Warn("[kinloom] create: each() failed: " + e.Message); }
+        }
 
         /// <summary>Where `kinloom serve` runs.</summary>
         public string Url;
@@ -186,10 +223,60 @@ namespace Kinloom
         /// GIF or WebP bytes; Unity: texture.EncodeToPNG()), for a model that sees.
         /// onPiece: the reply as it is written (streaming), for a dialogue box that fills as the character speaks.</summary>
         public async Task<string> Chat(string name, string message, Dictionary<string, object>? facts = null, string speaker = "player",
-                                       byte[]? image = null, Action<string>? onPiece = null)
+                                       byte[]? image = null, Action<string>? onPiece = null, Func<string, string?>? check = null)
         {
             var body = new Dictionary<string, object> { ["name"] = name, ["message"] = message, ["facts"] = facts ?? new Dictionary<string, object>(), ["speaker"] = speaker, ["do"] = true };
             if (image != null && image.Length > 0) body["image"] = Convert.ToBase64String(image);
+            if (check == null) return await ChatOnce(name, body, onPiece).ConfigureAwait(false);
+            // the game's rules for what is said: a refused reply is taken back and asked again once, then the offline reply
+            // awaited on the caller's context: check and onPiece run on the game's thread (Unity: the main thread)
+            var text = await ChatOnce(name, body, null);
+            foreach (var drop in new[] { false, true })
+            {
+                lock (_gate) if (_sources.TryGetValue(name, out var src) && src == "offline") break;
+                var why = Judged(() => check(text));
+                if (why.Length == 0) break;
+                lock (_gate)
+                {
+                    if (_lastDo.TryGetValue(name, out var taken)) PendingOf(name).Ready.RemoveAll(a => taken.Contains(a));
+                }
+                var again = new Dictionary<string, object>(body) { ["refused"] = new Dictionary<string, object> { ["answer"] = text, ["why"] = why }, ["drop"] = drop };
+                text = await ChatOnce(name, again, null);
+            }
+            if (onPiece != null && text.Length > 0)
+            {
+                try { onPiece(text); } catch (Exception e) { Warn("[kinloom] chat: onPiece failed: " + e.Message); }
+            }
+            return text;
+        }
+
+        /// <summary>A short line from someone in the crowd about what just happened (no character to declare), ~1 s. who: who
+        /// says it ("an old fisherman"); offline: your own lines ({fact} placeholders), said in turn without a model.</summary>
+        public async Task<string> Remark(string about, string who = "", Dictionary<string, object>? facts = null, IList<string>? offline = null, int maxChars = 0)
+        {
+            var body = new Dictionary<string, object> { ["about"] = about, ["facts"] = facts ?? new Dictionary<string, object>() };
+            if (who.Length > 0) body["who"] = who;
+            if (offline != null) body["offline"] = offline.Cast<object>().ToList();
+            if (maxChars > 0) body["max_chars"] = (long)maxChars;
+            var r = await Post("remark", body, ChatTimeout).ConfigureAwait(false);
+            if (r != null && r.GetValueOrDefault("text") is string said) return said;
+            var f = facts ?? new Dictionary<string, object>();
+            var usable = (offline ?? new List<string>()).Where(t => Lines.Placeholder.Matches(t).Cast<Match>().All(m => f.ContainsKey(m.Groups[1].Value))).ToList();
+            if (usable.Count == 0) return "";
+            int turn;
+            lock (_gate)
+            {
+                var key = Py.Slice(Text.Clean(who), 0, 48);       // as the brain names who speaks
+                if (key.Length == 0) key = "someone in the crowd";
+                turn = _remarkTurns.TryGetValue(key, out var t) ? t : 0;
+                _remarkTurns[key] = turn + 1;
+                Cap(_remarkTurns);
+            }
+            return Souls.FitChars(Lines.Fill(usable[turn % usable.Count], f), maxChars > 0 ? Math.Max(10, Math.Min(2000, maxChars)) : (int?)null);
+        }
+
+        private async Task<string> ChatOnce(string name, Dictionary<string, object> body, Action<string>? onPiece)
+        {
             // pieces arrive on the thread that called Chat (Unity: the main thread), in order, before Chat returns there
             var ctx = SynchronizationContext.Current;
             Action<string>? piece = onPiece == null ? null : ctx == null ? onPiece : (s => ctx.Post(_ => onPiece(s), null));
@@ -205,8 +292,12 @@ namespace Kinloom
                 }
             }
             Redeclare(name, r);
-            if (r.TryGetValue("do", out var did) && did is List<object> decided)
-                lock (_gate) PendingOf(name).Ready.AddRange(ToActions(decided));
+            var decidedNow = r.TryGetValue("do", out var did) && did is List<object> decided ? ToActions(decided).ToList() : new List<KinloomAction>();
+            lock (_gate)
+            {
+                _lastDo[name] = decidedNow;
+                PendingOf(name).Ready.AddRange(decidedNow);
+            }
             return r.TryGetValue("text", out var t) ? t as string ?? "" : "";
         }
 
@@ -275,8 +366,11 @@ namespace Kinloom
             });
 
         /// <summary>Instant: the latest decision shaped like `choices` (refreshed in the background).</summary>
-        public Dictionary<string, object> Decide(string name, Dictionary<string, object> situation, Dictionary<string, object> choices)
+        public Dictionary<string, object> Decide(string name, Dictionary<string, object> situation, Dictionary<string, object> choices,
+                                                 Func<object?, string?>? check = null)
         {
+            if (check != null)
+                return (Dictionary<string, object>)Checked(name + "|" + Json.Write(choices), situation, s => Decide(name, s, choices), check, DefaultOf(choices));
             string key = name + "|" + Json.Write(choices);
             Decision d;
             bool refresh;
@@ -306,8 +400,9 @@ namespace Kinloom
         }
 
         /// <summary>Instant: one of the options (a list of choices), refreshed in the background.</summary>
-        public object Decide(string name, Dictionary<string, object> situation, List<object> options)
+        public object Decide(string name, Dictionary<string, object> situation, List<object> options, Func<object?, string?>? check = null)
         {
+            if (check != null) return Checked(name + "|" + Json.Write(options), situation, s => Decide(name, s, options), check, DefaultOf(options));
             string key = name + "|" + Json.Write(options);
             Decision d;
             bool refresh;
@@ -332,6 +427,32 @@ namespace Kinloom
             lock (_gate) return d.Value["choice"];
         }
 
+        /// <summary>Decide with the game's rules: a refused decision is not used (the last accepted one is, else the example)
+        /// and the next decisions are made knowing why.</summary>
+        private object Checked(string key, Dictionary<string, object> situation, Func<Dictionary<string, object>, object> decide, Func<object?, string?> check,
+                               object fallback)
+        {
+            Dictionary<string, object>? note;
+            lock (_gate) _decideRefused.TryGetValue(key, out note);
+            var sit = situation;
+            if (note != null) sit = new Dictionary<string, object>(situation) { ["the game refused your last decision"] = note };
+            var value = decide(sit);
+            var why = Judged(() => check(Clone(value)));
+            lock (_gate)
+            {
+                if (why.Length == 0)
+                {
+                    _decideRefused.Remove(key);
+                    _decideOk[key] = value;
+                    Cap(_decideOk);
+                    return value;
+                }
+                _decideRefused[key] = new Dictionary<string, object> { ["decision"] = value, ["why"] = why };
+                Cap(_decideRefused);
+                return _decideOk.TryGetValue(key, out var ok) ? Clone(ok)! : fallback;
+            }
+        }
+
         /// <summary>Instant: tool calls chosen since the last call.</summary>
         /// <summary>Who the character is and feels: card, mood {word, level}, bonds {speaker: {talks, feeling}}, memories,
         /// conversation (with speaker). Null when the server is not running.</summary>
@@ -344,11 +465,14 @@ namespace Kinloom
 
         /// <summary>What the player could say now to name, for games without a keyboard: one reply per example, in its order,
         /// each keeping that example's intent, written for this moment. The examples are the offline answer.</summary>
-        public async Task<List<string>> Suggest(string name, IList<string> examples, string speaker = "player", Dictionary<string, object>? facts = null)
+        public async Task<List<string>> Suggest(string name, IList<string> examples, string speaker = "player", Dictionary<string, object>? facts = null,
+                                                Func<string, string?>? check = null)
         {
             var r = await Post("suggest", new Dictionary<string, object> { ["name"] = name, ["examples"] = examples.Cast<object>().ToList(), ["speaker"] = speaker,
-                ["facts"] = facts ?? new Dictionary<string, object>() }, ChatTimeout).ConfigureAwait(false);
-            return r != null && r.GetValueOrDefault("replies") is IList l ? l.Cast<object>().Select(Py.Str).ToList() : examples.ToList();
+                ["facts"] = facts ?? new Dictionary<string, object>() }, ChatTimeout);   // check runs on the caller's context
+            var replies = r != null && r.GetValueOrDefault("replies") is IList l ? l.Cast<object>().Select(Py.Str).ToList() : examples.ToList();
+            if (check == null) return replies;
+            return replies.Select((t, i) => Judged(() => check(t)).Length > 0 && i < examples.Count ? examples[i] : t).ToList();   // refused: its example
         }
 
         /// <summary>What the game decides happens in name's next reply ("admit you were in the office at 12:30"): the model
@@ -386,7 +510,24 @@ namespace Kinloom
 
         /// <summary>Tool calls chosen since the last call (on their own, or while talking). think false: only what they
         /// decided while talking (no model call of their own).</summary>
-        public List<KinloomAction> Act(string name, Dictionary<string, object>? situation = null, bool think = true)
+        public List<KinloomAction> Act(string name, Dictionary<string, object>? situation = null, bool think = true,
+                                       Func<string, Dictionary<string, object>, string?>? check = null)
+        {
+            var got = ActNow(name, situation, think);
+            if (check == null) return got;
+            // the game's rules: a refused action is not returned, and the character remembers why
+            var kept = new List<KinloomAction>();
+            foreach (var a in got)
+            {
+                var why = Judged(() => check(a.Tool, (Dictionary<string, object>)Clone(a.Args)!));
+                if (why.Length == 0) { kept.Add(a); continue; }
+                _ = Post("remember", new Dictionary<string, object> { ["name"] = name, ["note"] = RefusedNote(a.Tool, a.Args, why), ["importance"] = 0.6 },
+                    TimeSpan.FromSeconds(3));
+            }
+            return kept;
+        }
+
+        private List<KinloomAction> ActNow(string name, Dictionary<string, object>? situation, bool think)
         {
             Pending p;
             List<KinloomAction> ready;
@@ -416,22 +557,91 @@ namespace Kinloom
         }
 
         /// <summary>Content shaped like the example (which is also the offline answer). image: a picture the model looks
-        /// at (PNG, JPEG, GIF or WebP bytes).</summary>
+        /// at (PNG, JPEG, GIF or WebP bytes). check: the game's own rules; it returns null or "" to accept the answer, or
+        /// why it refuses it: the model hears the reason once, then the offline answer is used (with count/instant,
+        /// refused items are replaced). offline: the game's own offline answer, shaped like the example. each: every item
+        /// of a list answer as soon as it is ready (native: as the model writes it, on the caller's context), refused
+        /// items left out.</summary>
         public async Task<object?> Create(string what, object example, Dictionary<string, object>? context = null, int count = 0, bool instant = false,
-                                          byte[]? image = null)
+                                          byte[]? image = null, Func<object?, string?>? check = null, object? offline = null, Action<object?>? each = null)
         {
             if (count > 0 && example is System.Collections.IList one && one.Count == 1 && one[0] != null) example = one[0]!;   // [item] + count
+            object? fallback = DefaultOf(example);
+            if (offline != null)
+            {
+                var (ok, v, err) = Shape.Of(example).Check(offline);
+                if (!ok) throw new ArgumentException("create: offline must be shaped like the example: " + err);
+                fallback = v;
+            }
             var body = new Dictionary<string, object> { ["what"] = what, ["example"] = example, ["context"] = context ?? new Dictionary<string, object>(), ["instant"] = instant };
             if (image != null && image.Length > 0) body["image"] = Convert.ToBase64String(image);
             if (count > 0) body["count"] = count;
-            var r = await Post("create", body, instant ? TimeSpan.FromSeconds(2) : ChatTimeout);
-            if (r == null || !r.ContainsKey("value"))
-            {
-                var fallback = DefaultOf(example);
-                return count > 0 ? Enumerable.Repeat(fallback, count).ToList<object?>() : fallback;
-            }
-            return r["value"];
+            if (offline != null) body["offline"] = fallback!;
+            bool listed = count > 0 || Shape.Of(example).Kind == "list";
+            return await Created(body, count, instant, check, fallback, true, each, listed).ConfigureAwait(false);
         }
+
+        /// <summary>One create request, then the game's check: a list item by item (in native mode as the model writes, each
+        /// item handed to each at once), anything else whole (refused: sent back once with its reason).</summary>
+        private async Task<object?> Created(Dictionary<string, object> body, int count, bool instant, Func<object?, string?>? check, object? fallback,
+                                            bool retry, Action<object?>? each, bool listed)
+        {
+            object? Copy() => Clone(fallback);
+            object? Out(object? v)
+            {
+                if (each != null) foreach (var x in listed && v is IList l ? l.Cast<object?>().ToList() : new List<object?> { v }) Give(each, x);
+                return v;
+            }
+            if (each != null && listed && _brain != null)
+            {
+                // native: the brain hands over each item as the model writes it, on the provider's thread; the game's check
+                // and each run on the caller's context (Unity: the main thread), the stream waiting for them
+                var ctx = SynchronizationContext.Current;
+                bool Hook(object? x)
+                {
+                    if (check != null && WhyOf(check, x).Length > 0) return false;
+                    Give(each, x);
+                    return true;
+                }
+                body["__item"] = new Func<object?, bool>(x =>
+                {
+                    if (ctx == null || SynchronizationContext.Current == ctx) return Hook(x);
+                    bool kept = false;
+                    var done = new ManualResetEventSlim(false);
+                    ctx.Post(_ => { try { kept = Hook(x); } finally { done.Set(); } }, null);
+                    return done.Wait(TimeSpan.FromSeconds(10)) && kept;   // the game's thread blocked: the item is left out
+                });
+            }
+            var r = await Post("create", body, instant ? TimeSpan.FromSeconds(2) : ChatTimeout);
+            body.Remove("__item");
+            if (r == null || !r.ContainsKey("value"))
+                return Out(count > 0 ? Enumerable.Range(0, count).Select(_ => Copy()).ToList() : Copy());
+            var value = r["value"];
+            bool offlineAnswer = r.TryGetValue("source", out var src) && src as string == "offline";
+            if (listed && value is IList list)
+            {
+                var items = list.Cast<object?>().ToList();
+                int streamed = r.TryGetValue("streamed", out var sc) && sc != null ? (int)Py.D(sc) : 0;
+                if (streamed > 0)
+                {
+                    if (each != null) foreach (var x in items.Skip(streamed)) Give(each, x);     // the offline filling
+                    return items;
+                }
+                if (check != null && !offlineAnswer) items = items.Where(x => WhyOf(check, x).Length == 0).ToList();
+                if (count > 0) items = items.Concat(Enumerable.Range(0, Math.Max(0, count - items.Count)).Select(_ => Copy())).ToList();
+                else if (items.Count == 0) return Out(Copy());
+                return Out(items);
+            }
+            if (check == null || offlineAnswer) return Out(value);
+            var why = WhyOf(check, value);
+            if (why.Length == 0) return Out(value);
+            if (!retry || instant) return Out(Copy());
+            var again = new Dictionary<string, object>(body) { ["refused"] = new Dictionary<string, object?> { ["answer"] = value, ["why"] = why } };
+            return await Created(again, 0, false, check, fallback, false, each, listed).ConfigureAwait(false);
+        }
+
+        /// <summary>Why the game's check refuses an answer ("" when it accepts it).</summary>
+        private static string WhyOf(Func<object?, string?> check, object? value) => Judged(() => check(Clone(value)));
 
         /// <summary>What the game can do, declared once: {"open_door": {"door": "north"}}. Characters use them by name
         /// (options "tools": new List&lt;object&gt; {"open_door"}, or "all"); Act returns the calls. Returns the names.</summary>
@@ -916,7 +1126,14 @@ namespace Kinloom
         private async Task<Dictionary<string, object>?> Local(HttpMethod method, string verb, Dictionary<string, object>? body)
         {
             string v = verb;
+            object? hook = null;
+            if (body != null && body.TryGetValue("__item", out hook))
+            {
+                body = new Dictionary<string, object>(body);
+                body.Remove("__item");
+            }
             var b = body != null ? (Dictionary<string, object>)Json.Plain(body)! : new Dictionary<string, object>();
+            if (hook != null) b["__item"] = hook;
             if (method == HttpMethod.Get)
             {
                 var parts = verb.Split(new[] { '?' }, 2);
@@ -2037,6 +2254,68 @@ namespace Kinloom
     }
 
     /// <summary>Shapes by example: the developer shows an example answer; Kinloom validates model answers against it.</summary>
+    /// <summary>The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top
+    /// object: {"items": [...]}), each one as soon as it is complete. Feed(piece) returns the texts of the new elements.</summary>
+    internal sealed class Items
+    {
+        private string _buf = "";
+        private int _i, _start;
+        private int? _level;
+        private readonly List<char> _stack = new List<char>();
+        private bool _str, _esc, _done;
+
+        public List<string> Feed(string piece)
+        {
+            var output = new List<string>();
+            if (_done || string.IsNullOrEmpty(piece)) return output;
+            _buf += piece;
+            while (_i < _buf.Length)
+            {
+                char ch = _buf[_i];
+                if (_str)
+                {
+                    if (_esc) _esc = false;
+                    else if (ch == '\\') _esc = true;
+                    else if (ch == '"') _str = false;
+                }
+                else if (ch == '"') _str = true;
+                else if (ch == '[' || ch == '{')
+                {
+                    _stack.Add(ch);
+                    if (ch == '[' && _level == null && (_stack.Count == 1 || (_stack.Count == 2 && _stack[0] == '{')))
+                    {
+                        _level = _stack.Count;
+                        _start = _i + 1;
+                    }
+                }
+                else if (ch == ']' || ch == '}')
+                {
+                    if (ch == ']' && _level != null && _stack.Count == _level)
+                    {
+                        Emit(_buf.Substring(_start, _i - _start), output);
+                        _done = true;
+                        _i++;
+                        return output;
+                    }
+                    if (_stack.Count > 0) _stack.RemoveAt(_stack.Count - 1);
+                }
+                else if (ch == ',' && _level != null && _stack.Count == _level)
+                {
+                    Emit(_buf.Substring(_start, _i - _start), output);
+                    _start = _i + 1;
+                }
+                _i++;
+            }
+            return output;
+        }
+
+        private static void Emit(string text, List<string> output)
+        {
+            var t = Py.Strip(text);
+            if (t.Length > 0) output.Add(t);
+        }
+    }
+
     internal sealed class Shape
     {
         public const int MaxDepth = 12, MaxList = 50, MaxText = 200;
@@ -2179,6 +2458,17 @@ namespace Kinloom
                 }
                 case "list":
                 {
+                    if (value is IDictionary<string, object> wrapped)
+                    {
+                        // JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+                        var lists = wrapped.Values.Where(x => x is IList && !(x is string)).ToList();
+                        if (lists.Count > 0) value = lists[0];        // the first list, as items stream it (Items)
+                        else if (Item!.Kind == "object")
+                        {
+                            var (one, v1, _) = Item.Check(value, path + "[0]");
+                            if (one) return (true, new List<object?> { v1 }, null);
+                        }
+                    }
                     if (!(value is IList list) || value is string) return (false, null, path + " must be a list");
                     if (list.Count > MaxList) return (false, null, path + " must have at most " + MaxList + " items");
                     var output = new List<object?>();
@@ -3127,11 +3417,51 @@ namespace Kinloom
         /// <summary>Characters of facts, situation, context or state the model reads (more is cut, and journaled).</summary>
         public const int ClipLimit = 4000;
 
+        /// <summary>obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the
+        /// first ones matter most): the last values are shortened first, then replaced by "(cut)". Anything else is cut.</summary>
         public static string Clip(object? obj, int limit = ClipLimit)
         {
             var text = Py.Dumps(obj, false);
-            return Py.Len(text) <= limit ? text : Py.Slice(text, 0, limit) + "...";
+            if (Py.Len(text) <= limit) return text;
+            if (obj is IDictionary<string, object> d && d.Count > 0)
+            {
+                var keys = d.Keys.ToList();
+                string Pair(string k, object? v) => Py.Dumps(k, false) + ": " + Py.Dumps(v, false);   // as the whole object writes it
+                var pairs = keys.Select(k => Pair(k, d[k])).ToList();
+                long size = pairs.Sum(p => (long)Py.Len(p)) + 2 * pairs.Count;   // the braces and the ", " between pairs
+                foreach (var valueOf in new Func<string, object?>[] { k => Short(d[k]), k => "(cut)" })
+                {
+                    for (int i = keys.Count - 1; i >= 0; i--)
+                    {
+                        var fresh = Pair(keys[i], valueOf(keys[i]));
+                        size += Py.Len(fresh) - Py.Len(pairs[i]);
+                        pairs[i] = fresh;
+                        if (size <= limit) return "{" + string.Join(", ", pairs) + "}";
+                    }
+                }
+                text = "{" + string.Join(", ", pairs) + "}";
+            }
+            return Py.Slice(text, 0, limit) + "...";
         }
+
+        /// <summary>A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted.</summary>
+        public static object? Short(object? v)
+        {
+            if (v is string s) return Py.Len(s) <= 80 ? s : Py.Slice(s, 0, 80) + "...";
+            if (v is IDictionary<string, object> d) return Py.Len(Py.Dumps(d, false)) <= 200 ? (object)d : "(" + d.Count + " fields)";
+            if (v is IList l && l.Count > 3) return new List<object?> { l[0], l[1], l[2], "(" + (l.Count - 3) + " more)" };
+            return v;
+        }
+
+        /// <summary>Someone in the crowd (no declared character) says one line about what just happened.</summary>
+        public static string RemarkSystem(string who, string language, int? chars = null) => string.Join("\n", new[] {
+            "Kinloom task: remark", "You are " + who + " in a video game world. Something just happened in front of you.",
+            "Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words" +
+                (chars.HasValue && chars.Value > 0 ? " and at most " + chars.Value + " characters" : "") + ".",
+            "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.",
+            WriteIn(language), DataRule, "Answer as JSON: {\"line\": \"what you say\"}" });
+
+        public static string RemarkUser(string about) => "What just happened: " + about + "\nSay your line now.";
 
         public static string Feeling(double v) => v <= -0.6 ? "hates" : v < -0.1 ? "distrusts" : v >= 0.6 ? "trusts deeply" : v > 0.1 ? "likes" : "";
 
@@ -3182,6 +3512,11 @@ namespace Kinloom
             if (!string.IsNullOrEmpty(speaker)) return "A picture comes with this moment: what " + speaker + " shows you, or what you see right now. Look at it.\n";
             return "A picture comes with this request: look at it and use what it shows.\n";
         }
+
+        /// <summary>The game refused the last answer (create's check): its reason, once, with the answer it refused.</summary>
+        public static string RefusedBlock(IDictionary<string, object?>? refused) => refused == null ? ""
+            : "The game refused your last answer: " + refused["why"] + "\nThe refused answer: " + Clip(refused["answer"], 1500) +
+              "\nAnswer again: keep what was fine, fix that.\n";
 
         /// <summary>What the game decided for this reply (steer): the model makes it happen, in the character's words.</summary>
         public static string SteerBlock(string steer) => steer.Length == 0 ? ""
@@ -3633,6 +3968,19 @@ namespace Kinloom
                     notes.AddRange(sorted);
                 }
                 _dirty = true;
+            }
+            Schedule();
+        }
+
+        /// <summary>Removes the latest note with exactly this text (a reply the game refused is not remembered).</summary>
+        public void TakeBack(string session, string scope, string text)
+        {
+            text = Py.Slice(Py.Squash(text ?? ""), 0, MaxNote);
+            lock (_lock)
+            {
+                if (!_notes.TryGetValue(session + "\u0000" + scope, out var notes)) return;
+                for (int i = notes.Count - 1; i >= 0; i--)
+                    if (notes[i]["text"] as string == text) { notes.RemoveAt(i); _dirty = true; break; }
             }
             Schedule();
         }
@@ -5356,6 +5704,9 @@ namespace Kinloom
         private const int MaxSteer = 300;
         private const double DefaultReplyTimeout = 8.0;
         private readonly Dictionary<string, string> _steers = new Dictionary<string, string>();   // session|name -> the next reply's steer
+        private readonly Dictionary<string, Undo> _lastUndo = new Dictionary<string, Undo>();   // chat's check: what the last reply changed inside
+        private readonly Dictionary<string, List<PendingAct>> _lastDecided = new Dictionary<string, List<PendingAct>>();   // chat's check: take back
+        private readonly Dictionary<string, int> _remarkTurns = new Dictionary<string, int>();   // offline remarks said in turn
         private double _replyTimeout = DefaultReplyTimeout;
 
         private readonly object _lock = new object();
@@ -6104,11 +6455,29 @@ namespace Kinloom
             Memory.Notes(session, name).Where(n => n.TryGetValue("about", out var a) && a as string == speaker && Py.D(n["importance"]) >= 0.6)
                 .OrderByDescending(n => Py.D(n["importance"])).ThenByDescending(n => Py.D(n["t"])).Take(k).OrderBy(n => Py.D(n["t"])).Select(n => (string)n["text"]).ToList();
 
-        private List<PendingAct> Inner(string session, Character c, string speaker, Dictionary<string, object>? data)
+        /// <summary>What a reply changed inside, to put back if the game refuses it (chat's check).</summary>
+        private sealed class Undo
         {
+            public bool HasMood, HasRise, HasGesture;
+            public Souls.Mood? Mood;
+            public (double start, double gained, double last)? Rise;
+            public string? Seen, Shown;
+            public double Feel;
+            public List<string> Notes = new List<string>();
+        }
+
+        private List<PendingAct> Inner(string session, Character c, string speaker, Dictionary<string, object>? data, Undo? undo = null)
+        {
+            undo ??= new Undo();
             var i = Souls.InnerOfReply(data);
             var key = K(session, c.Name);
-            if (i.Mood != null && Allowed(i.Mood)) lock (_lock) _moods[key] = new Souls.Mood { Word = i.Mood, Level = i.Intensity, T = Clock() };
+            if (i.Mood != null && Allowed(i.Mood))
+                lock (_lock)
+                {
+                    undo.HasMood = true;
+                    undo.Mood = _moods.TryGetValue(key, out var was) ? was : null;
+                    _moods[key] = new Souls.Mood { Word = i.Mood, Level = i.Intensity, T = Clock() };
+                }
             if (i.Feel.HasValue && i.Feel.Value != 0)
             {
                 double change = i.Feel.Value;
@@ -6118,6 +6487,8 @@ namespace Kinloom
                     {
                         double now = Wall();
                         var rkey = K(session, c.Name, speaker);
+                        undo.HasRise = true;
+                        undo.Rise = _rises.TryGetValue(rkey, out var rise) ? rise : ((double, double, double)?)null;
                         var (start, gained, last) = _rises.TryGetValue(rkey, out var r) ? r : (now, 0.0, -1e18);
                         if (now - last > Souls.NewTalk) { start = now; gained = 0.0; }
                         change = Math.Max(0.0, Math.Min(change, c.WarmUp - gained));
@@ -6127,16 +6498,31 @@ namespace Kinloom
                     }
                     if (change < i.Feel.Value) Log("refused", c.Name, "feel: " + speaker + " already won " + Py.Fixed(c.WarmUp, 1, "+") + " this conversation");
                 }
-                if (change != 0) Feel(session, c.Name, speaker, change);
+                if (change != 0)
+                {
+                    double before = Opinion(session, c.Name, speaker);
+                    undo.Feel = Feel(session, c.Name, speaker, change) - before;
+                }
             }
-            if (i.Self.Length > 0 && Allowed(i.Self)) Memory.Add(session, c.Name, i.Self, 0.9, new Dictionary<string, object?> { ["about"] = Lines.SelfScope });
+            if (i.Self.Length > 0 && Allowed(i.Self))
+            {
+                Memory.Add(session, c.Name, i.Self, 0.9, new Dictionary<string, object?> { ["about"] = Lines.SelfScope });
+                undo.Notes.Add(i.Self);
+            }
             if (i.Remember.Length > 0)
             {
-                if (Allowed(i.Remember)) Memory.Add(session, c.Name, i.Remember, 0.8, new Dictionary<string, object?> { ["about"] = speaker });
+                if (Allowed(i.Remember))
+                {
+                    Memory.Add(session, c.Name, i.Remember, 0.8, new Dictionary<string, object?> { ["about"] = speaker });
+                    undo.Notes.Add(i.Remember);
+                }
                 else Log("refused", c.Name, "remember: blocked by the content filter");
             }
             lock (_lock)
             {
+                undo.HasGesture = true;
+                undo.Seen = _gestureSeen.TryGetValue(key, out var seenBefore) ? seenBefore : null;
+                undo.Shown = _gestures.TryGetValue(key, out var shownBefore) ? shownBefore : null;
                 bool fresh = i.Gesture.Length > 0 && Allowed(i.Gesture) && !Souls.SameAction(i.Gesture, _gestureSeen.TryGetValue(key, out var seen) ? seen : null);
                 _gestureSeen[key] = i.Gesture.ToLowerInvariant();
                 if (fresh) _gestures[key] = i.Gesture; else _gestures.Remove(key);
@@ -6451,14 +6837,16 @@ namespace Kinloom
             return asObject || !(value is Dictionary<string, object> vd) ? value : vd.GetValueOrDefault("choice") ?? value;
         }
 
+        /// <summary>onText: the answer's pieces as they come; used(): true when part of it was already used (then no repair).</summary>
         private async Task<object?> Structured(string kind, string name, string system, string user, Shape shape, bool foreground, int maxTokens = 500,
-                                               double? timeout = null, List<ModelPicture>? images = null)
+                                               double? timeout = null, List<ModelPicture>? images = null, Action<string>? onText = null, Func<bool>? used = null)
         {
-            var r = await Call(kind, name, system, user, true, foreground, maxTokens, null, timeout, images).ConfigureAwait(false);
+            var r = await Call(kind, name, system, user, true, foreground, maxTokens, onText, timeout, images).ConfigureAwait(false);
             if (!r.Ok) return null;
             var (ok, value, error) = shape.Parse(r.Text);
             if (ok && !Allowed(value)) { Log("refused", name, kind + ": blocked by the content filter"); return null; }
             if (ok) return value;
+            if (used != null && used()) return null;
             Log("repair", name, kind + ": " + error);
             if (error == Text.Cut) maxTokens = Math.Min(4000, maxTokens * 2);   // stopped by the token limit: room to finish
             r = await Call(kind, name, system, user + Prompts.Repair(error!), true, foreground, maxTokens, null, timeout, images).ConfigureAwait(false);
@@ -6905,11 +7293,17 @@ namespace Kinloom
 
         // ---------------- create ----------------
 
-        public async Task<object?> Create(string session, object? what0, object? example, object? context = null, object? count = null, bool instant = false,
-                                          double? timeout = null, object? image = null)
+        /// <summary>(value, "model" or "offline", how many items onItem already got). offline: the game's own offline answer; refused: {answer, why} the game
+        /// refused last time (create's check).</summary>
+        public async Task<(object? value, string source, int streamed)> Create(string session, object? what0, object? example, object? context = null,
+                                          object? count = null, bool instant = false, double? timeout = null, object? image = null, object? offline = null,
+                                          object? refused0 = null, Func<object?, bool>? onItem = null)
         {
             if (Kinloom.Character.Truthy(count) && example is IList one && one.Count == 1) example = one[0];
             var shape = Shape.Of(example);
+            var fallback = OfflineAnswer(shape, offline);
+            object? Copy() => Py.Loads(Py.Dumps(fallback));
+            var refused = Refusal(refused0);
             var what = Text.Clean(Py.Str(what0));
             ClipNote(Py.Slice(what, 0, Kinloom.Character.MaxWhat), "what", what, Kinloom.Character.MaxWhat, true);
             ClipNote(Py.Slice(what, 0, Kinloom.Character.MaxWhat), "context", context);
@@ -6918,30 +7312,153 @@ namespace Kinloom
             if (instant)
             {
                 if (pictures.Count > 0) Log("refused", what, "image: not used with instant=True (those items are made ahead)");
-                return FromPool(session, what, shape, context);
+                var (has, item) = FromPool(session, what, shape, context);
+                return has ? (item, "model", 0) : (Copy(), "offline", 0);
             }
             if (Kinloom.Character.Truthy(count))
             {
                 int n = Math.Max(1, Math.Min(50, (int)Math.Truncate(Kinloom.Character.ArgNum(count, "count"))));
-                var items = await CreateMany(session, what, shape, context, n, true, timeout, pictures).ConfigureAwait(false);
-                return items.Concat(Enumerable.Range(0, n - items.Count).Select(_ => shape.Default())).ToList();
+                var streamedMany = new List<object?>();
+                var feedMany = onItem != null ? Streamer(shape, onItem, streamedMany, n) : null;
+                var items = await CreateMany(session, what, shape, context, n, true, timeout, pictures, feedMany?.Feed).ConfigureAwait(false);
+                feedMany?.Close();
+                lock (streamedMany) if (streamedMany.Count > 0) items = streamedMany.ToList();
+                return (items.Concat(Enumerable.Range(0, n - items.Count).Select(_ => Copy())).ToList(), items.Count > 0 ? "model" : "offline", streamedMany.Count);
             }
-            if (Provider == null) return shape.Default();
+            if (Provider == null) return (Copy(), "offline", 0);
+            if (refused != null) Log("refused", what, "create: the game refused it: " + refused["why"]);
             var system = Prompts.CreateSystem(what, shape, Written());
-            var user = Context(session, null, what) + Prompts.ContextBlock(context) + Prompts.PictureBlock(pictures.Count);
-            var value = await Structured("create", what, system, user, shape, true, 1500, timeout, pictures).ConfigureAwait(false);
-            if (value == null) { Count("offline_answers"); return shape.Default(); }
+            var user = Context(session, null, what) + Prompts.ContextBlock(context) + Prompts.PictureBlock(pictures.Count) + Prompts.RefusedBlock(refused);
+            var streamed = new List<object?>();
+            var feed = onItem != null && shape.Kind == "list" ? Streamer(shape.Item!, onItem, streamed, MaxStreamed) : null;
+            var value = await Structured("create", what, system, user, shape, true, 1500, timeout, pictures, feed?.Feed,
+                feed != null ? () => { lock (streamed) return streamed.Count > 0; } : (Func<bool>?)null).ConfigureAwait(false);
+            feed?.Close();
+            lock (streamed) if (streamed.Count > 0) value = streamed.ToList();
+            if (value == null) { Count("offline_answers"); return (Copy(), "offline", 0); }
             Log("create", what, Py.Slice(Py.Dumps(value), 0, 300));
-            return value;
+            return (value, "model", streamed.Count);
+        }
+
+        private const int MaxStreamed = 200;     // items of one list answer handed over as they come
+        private const int MaxAbout = 300, RemarkWords = 20;
+        private const string DefaultWho = "someone in the crowd";
+
+        /// <summary>onText for a list answer: each finished item, valid and allowed, goes to onItem at once (kept when accepted).</summary>
+        /// <summary>A list answer's onText (Feed) and Close(): after Close (the call returned), a stream that goes on (a
+        /// call given up on) hands nothing more over. kept is locked while an item is handed over.</summary>
+        private sealed class ItemFeed { public Action<string> Feed = _ => { }; public Action Close = () => { }; }
+
+        private ItemFeed Streamer(Shape itemShape, Func<object?, bool> onItem, List<object?> kept, int limit)
+        {
+            var items = new Items();
+            bool open = true;
+            return new ItemFeed
+            {
+                Feed = piece =>
+                {
+                    lock (kept)
+                    {
+                        if (!open) return;
+                        foreach (var text in items.Feed(piece))
+                        {
+                            if (kept.Count >= limit) return;
+                            var (ok, v, _) = itemShape.Parse(text);
+                            if (!ok || !Allowed(v) || !onItem(v)) continue;
+                            kept.Add(v);
+                        }
+                    }
+                },
+                Close = () => { lock (kept) open = false; },
+            };
+        }
+
+        /// <summary>A short line said out loud by someone in the crowd (no character to declare) about what just happened.
+        /// offline: the game's own lines ({fact} placeholders), taken in turn when no model answers.</summary>
+        public async Task<Said> Remark(string session, object? about0, object? who0 = null, object? facts0 = null, object? offline = null, object? maxChars = null)
+        {
+            if (!(about0 is string a0)) throw new ArgumentException("remark: about must be a string (what just happened), got " + Py.PyRepr(about0));
+            var about = Py.Slice(Py.Squash(Text.Clean(a0)), 0, MaxAbout);
+            var whoText = Py.Slice(Py.Squash(Text.Clean(who0 == null ? "" : Py.Str(who0))), 0, Kinloom.Character.MaxName);
+            var who = whoText.Length > 0 ? whoText : DefaultWho;
+            var facts = Mapping(facts0, "facts");
+            ClipNote(who, "facts", facts);
+            List<string> lines;
+            if (offline == null) lines = new List<string>();
+            else if (offline is string one) lines = new List<string> { one };
+            else if (offline is IList many && many.Cast<object?>().All(x => x is string)) lines = many.Cast<string>().ToList();
+            else throw new ArgumentException("remark: offline must be a line or a list of lines, like [\"Would you look at that!\"], got " + Py.PyRepr(offline));
+            int? limit = BoxLimit(maxChars);
+            if (Provider != null && about.Length > 0)
+            {
+                var r = await Call("remark", who, Prompts.RemarkSystem(who, Written(), limit),
+                    Context(session, null, about) + Prompts.FactsBlock(facts) + Prompts.RemarkUser(about), true, true, 120, null, null, null).ConfigureAwait(false);
+                var data = r.Ok ? Text.FindJson(r.Text) : null;
+                var said = data is Dictionary<string, object> dd && dd.GetValueOrDefault("line") is string line ? ValidRemark(line, facts, about, limit) : "";
+                if (said.Length > 0)
+                {
+                    Log("remark", who, said, new Dictionary<string, object?> { ["about"] = about });
+                    return new Said { Text = said, Source = "model" };
+                }
+            }
+            var usable = lines.Where(t => Lines.Placeholder.Matches(t).Cast<Match>().All(m => facts.ContainsKey(m.Groups[1].Value))).ToList();
+            string spoken = "";
+            if (usable.Count > 0)
+            {
+                int turn;
+                lock (_lock)
+                {
+                    bool fresh = !_remarkTurns.TryGetValue(K(session, who), out var t);
+                    turn = fresh ? 0 : t;
+                    _remarkTurns[K(session, who)] = turn + 1;
+                    if (fresh) Added(_remarkTurns, K(session, who));
+                }
+                spoken = Souls.FitChars(Lines.Fill(usable[turn % usable.Count], facts), limit);
+            }
+            Count("offline_answers");
+            Log("remark", who, spoken, new Dictionary<string, object?> { ["about"] = about, ["source"] = "offline" });
+            if (spoken.Length == 0) TellEmpty(session, who, "remark", "remark by " + who + " answered \"\" (give it offline=[...] lines, said when no model answers)");
+            return new Said { Text = spoken, Source = "offline" };
+        }
+
+        /// <summary>The remark as said: one short line, the filter passed, no numbers the game did not give; else "".</summary>
+        private string ValidRemark(string line, Dictionary<string, object> facts, string about, int? limit)
+        {
+            var text = Py.Strip(Py.Strip(Py.Strip(Text.Clean(line)), "\""));
+            if (text.Length == 0 || !Allowed(text) || Lines.Meta.IsMatch(text) || Lines.Promptish.IsMatch(text) || text.Contains("{")) return "";
+            var allowed = Lines.AllowedNumbers(facts, about);
+            foreach (Match m in Lines.NumberRe.Matches(text)) if (!Lines.NumberOk(m.Value, allowed)) return "";
+            return Souls.Cap(text, RemarkWords, limit);
+        }
+
+        private const int MaxWhy = 300;          // why the game refused a created answer (create's check), in characters
+
+        /// <summary>The game's own offline answer (create's offline), checked against the example's shape.</summary>
+        private static object? OfflineAnswer(Shape shape, object? offline)
+        {
+            if (offline == null) return shape.Default();
+            var (ok, v, err) = shape.Check(offline);
+            if (!ok) throw new ArgumentException("create: offline must be shaped like the example: " + err);
+            return v;
+        }
+
+        /// <summary>{answer, why}: an answer the game refused (sent back once with create's check), or null.</summary>
+        private static Dictionary<string, object?>? Refusal(object? r)
+        {
+            if (r == null) return null;
+            if (!(r is IDictionary<string, object> d) || !d.ContainsKey("answer") || !(d.TryGetValue("why", out var w) && w is string why0))
+                throw new ArgumentException("create: refused must be {\"answer\": the refused answer, \"why\": \"the reason\"}, got " + Py.PyRepr(r));
+            var why = Py.Slice(Py.Squash(Text.Clean(why0)), 0, MaxWhy);
+            return why.Length > 0 ? new Dictionary<string, object?> { ["answer"] = d["answer"], ["why"] = why } : null;
         }
 
         private async Task<List<object?>> CreateMany(string session, string what, Shape shape, object? context, int count, bool foreground, double? timeout = null,
-                                                     List<ModelPicture>? pictures = null)
+                                                     List<ModelPicture>? pictures = null, Action<string>? onText = null)
         {
             if (Provider == null) return new List<object?>();
             var system = Prompts.CreateManySystem(what, shape, count, Written());
             var user = Context(session, null, what) + Prompts.ContextBlock(context) + Prompts.PictureBlock(pictures?.Count ?? 0);
-            var r = await Call("create", what, system, user, true, foreground, Math.Min(4000, 200 + 150 * count), null, timeout, pictures).ConfigureAwait(false);
+            var r = await Call("create", what, system, user, true, foreground, Math.Min(4000, 200 + 150 * count), onText, timeout, pictures).ConfigureAwait(false);
             if (!r.Ok) return new List<object?>();
             var data = Text.FindJson(r.Text);
             var raw = data is Dictionary<string, object> d ? d.GetValueOrDefault("items") as List<object> : data as List<object>;
@@ -6956,7 +7473,7 @@ namespace Kinloom
             return items;
         }
 
-        private object? FromPool(string session, string what, Shape shape, object? context)
+        private (bool has, object? item) FromPool(string session, string what, Shape shape, object? context)
         {
             var key = K(session, what, shape.Signature());
             Pool pool;
@@ -6981,13 +7498,15 @@ namespace Kinloom
                     finally { lock (_lock) pool.Filling = false; }
                 });
             }
-            return has ? item : shape.Default();
+            return (has, item);
         }
 
         // ---------------- chat ----------------
 
+        /// <summary>refused0: {answer, why}, the reply to this same message the game refused: taken back (words, memory of
+        /// it, its actions) and asked again knowing why; drop: taken back and answered offline (refused twice).</summary>
         public async Task<Said> Chat(string session, object? name, object? message0, object? facts0 = null, object? speaker0 = null, Action<string>? stream = null,
-                                     double? timeout = null, object? maxChars = null, object? image = null)
+                                     double? timeout = null, object? maxChars = null, object? image = null, object? refused0 = null, bool drop = false)
         {
             var c = Char(session, name);
             double began = Http.Now;
@@ -6995,6 +7514,12 @@ namespace Kinloom
             int? limit = BoxLimit(maxChars) ?? c.MaxChars;
             var message = Py.Slice(Text.Clean(message0 ?? ""), 0, 1000);
             var speaker = NameOf(speaker0) ?? "player";
+            var refused = Refusal(refused0);
+            if (refused != null)
+            {
+                TakeBack(session, c, speaker, message, Py.Str(refused["answer"]));
+                Log("refused", c.Name, "chat: the game refused the reply: " + refused["why"]);
+            }
             var facts = Mapping(facts0, "facts");
             ClipNote(c.Name, "facts", facts);
             var hkey = K(session, c.Name, speaker);
@@ -7038,7 +7563,7 @@ namespace Kinloom
                 source = "prepared";
                 stream?.Invoke(reply);
             }
-            else if (Provider != null)
+            else if (Provider != null && !drop)
             {
                 var (word, level) = MoodOf(session, c);
                 var system = Prompts.ChatSystem(c, Lang(c, true), CardLines(c), Lore(session));
@@ -7050,7 +7575,7 @@ namespace Kinloom
                     Prompts.BoxBlock(BoxLimit(maxChars));
                 var allowed = Lines.AllowedNumbers(facts, state, message, steer, c.Personality, Souls.Texts(c.Card), Memory.Recall(session, new[] { c.Name, "world" }, message),
                     Known(session, c.Name, speaker));
-                string repair = "";
+                string repair = refused != null ? "\n\n" + Prompts.RefusedBlock(refused) : "";
                 bool streamed = false;
                 List<string> mine;
                 lock (_lock) mine = _said.TryGetValue(K(session, c.Name), out var m0) ? m0.Skip(Math.Max(0, m0.Count - 6)).ToList() : new List<string>();
@@ -7171,7 +7696,15 @@ namespace Kinloom
                     var found = await Deeds(c, speaker, message, reply, Math.Max(1.5, left)).ConfigureAwait(false);
                     if (found.Count > 0) inner = new Dictionary<string, object>(inner ?? new Dictionary<string, object>()) { ["do"] = found };
                 }
-                decided = Inner(session, c, speaker, inner);
+                var undo = new Undo();
+                decided = Inner(session, c, speaker, inner, undo);
+                lock (_lock)
+                {
+                    bool fresh = !_lastDecided.ContainsKey(K(session, c.Name));
+                    _lastDecided[K(session, c.Name)] = decided.ToList();
+                    _lastUndo[K(session, c.Name)] = undo;
+                    if (fresh) { Added(_lastDecided, K(session, c.Name)); Added(_lastUndo, K(session, c.Name)); }
+                }
                 if (source == "prepared") PrepareGreeting(session, c);   // the next stranger's, with the mood this one left
             }
             else if (reply == null)
@@ -7222,6 +7755,40 @@ namespace Kinloom
             if (inner == null) detail["offline"] = true;
             Log("chat", c.Name, reply, detail);
             return new Said { Text = reply, Source = source, Actions = decided };
+        }
+
+        /// <summary>The reply the game refused: out of the conversation, the memory and the actions waiting for act().</summary>
+        private void TakeBack(string session, Character c, string speaker, string message, string answer)
+        {
+            Undo? undo = null;
+            lock (_lock)
+            {
+                if (_history.TryGetValue(K(session, c.Name, speaker), out var h) && h.Count > 0 && h[h.Count - 1].Item1 == c.Name && h[h.Count - 1].Item2 == answer)
+                {
+                    h.RemoveAt(h.Count - 1);
+                    if (message.Length > 0 && h.Count > 0 && h[h.Count - 1].Item1 == speaker && h[h.Count - 1].Item2 == message) h.RemoveAt(h.Count - 1);
+                }
+                if (_said.TryGetValue(K(session, c.Name), out var said) && said.Count > 0 && said[said.Count - 1] == answer) said.RemoveAt(said.Count - 1);
+                if (_lastDecided.TryGetValue(K(session, c.Name), out var acts)) { foreach (var a in acts) a.Taken = true; _lastDecided.Remove(K(session, c.Name)); }
+                if (_lastUndo.TryGetValue(K(session, c.Name), out undo)) _lastUndo.Remove(K(session, c.Name));
+                if (undo != null)
+                {
+                    var key = K(session, c.Name);
+                    if (undo.HasMood) { if (undo.Mood == null) _moods.Remove(key); else _moods[key] = undo.Mood; }
+                    if (undo.HasRise) { if (undo.Rise == null) _rises.Remove(K(session, c.Name, speaker)); else _rises[K(session, c.Name, speaker)] = undo.Rise.Value; }
+                    if (undo.HasGesture)
+                    {
+                        if (undo.Seen == null) _gestureSeen.Remove(key); else _gestureSeen[key] = undo.Seen;
+                        if (undo.Shown == null) _gestures.Remove(key); else _gestures[key] = undo.Shown;
+                    }
+                }
+            }
+            if (undo != null)          // the feeling it moved, the memories it wrote: not kept either
+            {
+                if (undo.Feel != 0) Feel(session, c.Name, speaker, -undo.Feel);
+                foreach (var note in undo.Notes) Memory.TakeBack(session, c.Name, note);
+            }
+            if (message.Length > 0) Memory.TakeBack(session, c.Name, speaker + " said: " + Py.Slice(message, 0, 120) + " / I answered: " + Py.Slice(answer, 0, 160));
         }
 
         /// <summary>budget: seconds for everything here (the asking again included).</summary>
@@ -7796,7 +8363,8 @@ namespace Kinloom
                         Need("name");
                         if (!(B("message") is string msg)) throw new KinloomException(400, "missing 'message' (\"\" when the character speaks first)");
                         var speaker = B("speaker") is string sp && sp.Length > 0 ? sp : "player";
-                        var s = await Chat(session, name, msg, Facts(), speaker, null, null, B("max_chars"), Image()).ConfigureAwait(false);
+                        var s = await Chat(session, name, msg, Facts(), speaker, null, null, B("max_chars"), Image(), B("refused"),
+                                           B("drop") is bool dr && dr).ConfigureAwait(false);
                         var r = new Dictionary<string, object?> { ["text"] = s.Text, ["declared"] = IsDeclared(session, name) };
                         foreach (var p in Feelings(session, name, speaker)) r[p.Key] = p.Value;
                         foreach (var p in ReplyExtra(s, body)) r[p.Key] = p.Value;
@@ -7816,7 +8384,15 @@ namespace Kinloom
                     case "create":
                         Need("what");
                         if (!body.ContainsKey("example")) throw new KinloomException(400, "missing 'example' (an example answer: it is also the offline answer)");
-                        return new Dictionary<string, object?> { ["value"] = await Create(session, B("what"), B("example"), B("context"), B("count"), Kinloom.Character.Truthy(B("instant")), null, Image()).ConfigureAwait(false) };
+                        var (made, source, streamedCount) = await Create(session, B("what"), B("example"), B("context"), B("count"),
+                            Kinloom.Character.Truthy(B("instant")), null, Image(), B("offline"), B("refused"), B("__item") as Func<object?, bool>).ConfigureAwait(false);
+                        return new Dictionary<string, object?> { ["value"] = made, ["source"] = source, ["streamed"] = (long)streamedCount };
+                    case "remark":
+                    {
+                        if (!(B("about") is string ab)) throw new KinloomException(400, "missing 'about' (what just happened, as text)");
+                        var said = await Remark(session, ab, B("who"), Facts(), B("offline"), B("max_chars")).ConfigureAwait(false);
+                        return new Dictionary<string, object?> { ["text"] = said.Text, ["source"] = said.Source };
+                    }
                     case "tools":
                         if (!body.ContainsKey("tools")) return new Dictionary<string, object?> { ["tools"] = Tools(session).Cast<object>().ToList() };
                         if (!(B("tools") is IDictionary<string, object>)) throw new KinloomException(400, "'tools' must be an object {name: example args}");
@@ -7935,7 +8511,8 @@ namespace Kinloom
         {
             var speaker = body.GetValueOrDefault("speaker") is string sp && sp.Length > 0 ? sp : "player";
             var s = await Chat(session, body.GetValueOrDefault("name"), body.GetValueOrDefault("message"), body.GetValueOrDefault("facts"), speaker, onPiece, null,
-                body.GetValueOrDefault("max_chars"), body.GetValueOrDefault("image")).ConfigureAwait(false);
+                body.GetValueOrDefault("max_chars"), body.GetValueOrDefault("image"), body.GetValueOrDefault("refused"),
+                body.GetValueOrDefault("drop") is bool dr && dr).ConfigureAwait(false);
             var r = new Dictionary<string, object?> { ["done"] = true, ["text"] = s.Text };
             foreach (var p in Feelings(session, body.GetValueOrDefault("name"), speaker)) r[p.Key] = p.Value;
             foreach (var p in ReplyExtra(s, body)) r[p.Key] = p.Value;
@@ -8064,6 +8641,9 @@ namespace Kinloom
                 case "worn": { var (p, o) = Souls.Worn(Strings(a[0])); return L(p, o); }
                 case "drop_narrated": { var (s, n) = Souls.DropNarrated((string)a[0], (string)a[1], Strings(a[2])); return L(s, n); }
                 case "inner": return Souls.InnerOfReply(a[0]).ToDict();
+                case "reason": return KinloomClient.Reason(a[0]);
+                case "refused_note": return KinloomClient.RefusedNote((string)a[0]!, a[1], (string)a[2]!);
+                case "items": { var it = new Items(); var got = new List<object?>(); foreach (var p in (IList)a[0]!) got.AddRange(it.Feed((string)p!)); return got; }
                 case "card": return Souls.Card(a[0], (string)a[1]);
                 case "describe_card": return Souls.Describe((IDictionary<string, object>)a[0]);
                 case "mood_now":
@@ -8172,6 +8752,9 @@ namespace Kinloom
                     return Prompts.BondBlock(S(0)!, a[1] is IDictionary<string, object> b ? (int?)(int)Py.D(b["talks"]) : null, S(2)!, Py.D(a[3]), Strings(a[4]), S(5)!, S(6)!, S(7)!, (bool)a[8],
                         a.Count > 9 && a[9] != null ? Py.D(a[9]) : Souls.SecretTrust);
                 case "steer_block": return Prompts.SteerBlock(S(0) ?? "");
+                case "remark_system": return Prompts.RemarkSystem(S(0)!, S(1)!, IntOrNull(a[2]));
+                case "remark_user": return Prompts.RemarkUser(S(0)!);
+                case "refused_block": return Prompts.RefusedBlock(a[0] is IDictionary<string, object> rb ? rb.ToDictionary(kv => kv.Key, kv => (object?)kv.Value) : null);
                 case "deeds_user": return Prompts.DeedsUser(S(0)!, S(1)!, S(2)!, S(3)!);
                 case "soul_user": return Prompts.SoulUser(S(0)!, Strings(a[1]));
                 case "repair": return Prompts.Repair(S(0)!);

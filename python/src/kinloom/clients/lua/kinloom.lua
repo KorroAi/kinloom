@@ -2365,6 +2365,19 @@ function Shape:check(value, path)
     if Py.len(v) > self.max_len then return false, nil, format("%s must be at most %d characters", path, self.max_len) end
     return true, v, nil
   elseif kind == "list" then
+    if Py.is_obj(value) and next(value) ~= nil then
+      -- JSON mode makes models wrap a list in an object ({"list": [...]}, {"stalls": [...]}) or answer one item
+      local first = nil
+      for _, x in Py.items(value) do
+        if type(x) == "table" and x ~= NULL and Py.is_array(x) then first = x; break end
+      end
+      if first then
+        value = first          -- the first list, as items stream it (Items)
+      elseif self.item.kind == "object" then
+        local ok, v = self.item:check(value, path .. "[0]")
+        if ok then return true, Py.arr({ v }), nil end
+      end
+    end
     if type(value) ~= "table" or not (Py.is_array(value) or (next(value) == nil and not ORDER[value])) or value == NULL then
       return false, nil, path .. " must be a list"
     end
@@ -2414,6 +2427,56 @@ function Shape:check(value, path)
 end
 
 --- A model's answer read and checked: ok, value, error.
+--- The elements of the first JSON list in a text that arrives in pieces (a list, or a list value of the top object:
+--- {"items": [...]}), each one as soon as it is complete. feed(piece) returns the texts of the new elements.
+Shape.Items = {}
+Shape.Items.__index = Shape.Items
+
+function Shape.Items.new()
+  return setmetatable({ buf = "", i = 1, start = 1, level = nil, stack = {}, in_string = false, escape = false, done = false }, Shape.Items)
+end
+
+function Shape.Items:_emit(from, to, out)
+  local t = Py.strip(self.buf:sub(from, to))
+  if t ~= "" then out[#out + 1] = t end
+end
+
+function Shape.Items:feed(piece)
+  local out = Py.arr({})
+  if self.done or piece == nil or piece == "" then return out end
+  self.buf = self.buf .. piece
+  local stack = self.stack
+  while self.i <= #self.buf do
+    local ch = self.buf:sub(self.i, self.i)
+    if self.in_string then
+      if self.escape then self.escape = false
+      elseif ch == "\\" then self.escape = true
+      elseif ch == '"' then self.in_string = false end
+    elseif ch == '"' then
+      self.in_string = true
+    elseif ch == "[" or ch == "{" then
+      stack[#stack + 1] = ch
+      if ch == "[" and self.level == nil and (#stack == 1 or (#stack == 2 and stack[1] == "{")) then
+        self.level = #stack
+        self.start = self.i + 1
+      end
+    elseif ch == "]" or ch == "}" then
+      if ch == "]" and self.level ~= nil and #stack == self.level then
+        self:_emit(self.start, self.i - 1, out)
+        self.done = true
+        self.i = self.i + 1
+        return out
+      end
+      if #stack > 0 then stack[#stack] = nil end
+    elseif ch == "," and self.level ~= nil and #stack == self.level then
+      self:_emit(self.start, self.i - 1, out)
+      self.start = self.i + 1
+    end
+    self.i = self.i + 1
+  end
+  return out
+end
+
 function Shape:parse(answer)
   local data = Py.find_json(answer)
   if data == nil then return false, nil, Py.cut_off(answer) and Py.CUT or "the answer was not JSON" end
@@ -3366,10 +3429,40 @@ end
 --- Characters of facts, situation, context or state the model reads (more is cut, and journaled).
 Prompts.CLIP = 4000
 
+--- A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted.
+function Prompts.short_value(v)
+  if type(v) == "string" then return Py.len(v) <= 80 and v or Py.head(v, 80) .. "..." end
+  if Py.is_array(v) then
+    if #v <= 3 then return v end
+    return Py.arr({ v[1], v[2], v[3], string.format("(%d more)", #v - 3) })
+  end
+  if Py.is_obj(v) and Py.len(Py.dumps(v, false)) > 200 then return string.format("(%d fields)", #Py.keys(v)) end
+  return v
+end
+
+--- obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones matter
+--- most): the last values are shortened first, then replaced by "(cut)". Anything else is cut.
 function Prompts.clip(obj, limit)
   limit = limit or Prompts.CLIP
   local text = Py.dumps(obj, false)
   if Py.len(text) <= limit then return text end
+  if Py.is_obj(obj) and #Py.keys(obj) > 0 then
+    local keys, pairs_, size = Py.keys(obj), {}, 0   -- '"key": value', as the whole object writes it
+    local function pair(k, v) return Py.dumps(tostring(k), false) .. ": " .. Py.dumps(v, false) end
+    for i, k in ipairs(keys) do
+      pairs_[i] = pair(k, obj[k])
+      size = size + Py.len(pairs_[i]) + 2   -- with the braces and the ", " between pairs
+    end
+    for round = 1, 2 do
+      for i = #keys, 1, -1 do
+        local fresh = pair(keys[i], round == 1 and Prompts.short_value(obj[keys[i]]) or "(cut)")
+        size = size + Py.len(fresh) - Py.len(pairs_[i])
+        pairs_[i] = fresh
+        if size <= limit then return "{" .. table.concat(pairs_, ", ") .. "}" end
+      end
+    end
+    text = "{" .. table.concat(pairs_, ", ") .. "}"
+  end
   return Py.head(text, limit) .. "..."
 end
 
@@ -3616,6 +3709,25 @@ function Prompts.soul_user(seed, lore)
     world = "World facts (true; the inner life must fit them):\n" .. lines_text(l) .. "\n"
   end
   return world .. "Description from the game: " .. seed .. "\n"
+end
+
+--- Someone in the crowd (no declared character) says one line about what just happened.
+function Prompts.remark_system(who, language, chars)
+  return lines_text({ "Kinloom task: remark",
+    "You are " .. who .. " in a video game world. Something just happened in front of you.",
+    "Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words" ..
+      ((chars and chars > 0) and (" and at most " .. math.floor(chars) .. " characters") or "") .. ".",
+    "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.",
+    Prompts.write_in(language), DATA_RULE, 'Answer as JSON: {"line": "what you say"}' })
+end
+
+function Prompts.remark_user(about) return "What just happened: " .. about .. "\nSay your line now." end
+
+--- The game refused the last answer (create's check): its reason, once, with the answer it refused.
+function Prompts.refused_block(refused)
+  if refused == nil or refused == NULL then return "" end
+  return "The game refused your last answer: " .. refused.why .. "\nThe refused answer: " .. Prompts.clip(refused.answer, 1500) ..
+    "\nAnswer again: keep what was fine, fix that.\n"
 end
 
 --- What the game decided for this reply (steer): the model makes it happen, in the character's words.
@@ -3957,6 +4069,19 @@ function Memory:add(session, scope, text, importance, meta)
     for i, n in ipairs(by_worth) do notes[i] = n end
   end
   self:changed()
+end
+
+--- Removes the latest note with exactly this text (a reply the game refused is not remembered).
+function Memory:take_back(session, scope, text)
+  local t = Py.head(Py.squash(Py.text_of(text)), MAX_NOTE)
+  local notes = self:_peek(session, scope)
+  for i = #notes, 1, -1 do
+    if notes[i].text == t then
+      table.remove(notes, i)
+      self:changed()
+      return
+    end
+  end
 end
 
 --- Copies of the notes of a scope, oldest first.
@@ -5961,6 +6086,7 @@ local CONFIG_KEYS = { personality = true, soul = true, lines = true, offline = t
   max_chars = true, every = true, language = true, group = true, trust = true, invent = true, voice = true,
   warmth = true, secret_trust = true, warm_up = true }
 local MAX_STEER = 300
+local MAX_WHY = 300          -- why the game refused a created answer (create's check), in characters
 local REPLY_TIMEOUT = 8.0
 local FAILED = setmetatable({}, { __mode = "k" })   -- coroutine -> what to do when it fails
 Model.on_error = function(why) end
@@ -5980,7 +6106,7 @@ function Brain.new(o)
     cfg_declared = {}, banks = {}, decisions = {}, pending = {}, pools = {}, history = {}, state_of = {}, minds = Py.obj(),
     opinions_by = {}, moods = {}, gestures = {}, gesture_seen = {}, lore_by = {}, cfg_chars = Py.obj(), cfg_lore = {}, cfg_tools = Py.obj(),
     tool_sets = {}, blind_told = false, card_waiters = {}, greetings = {}, greeting_busy = {}, bonds = {}, said_by = {}, switches = 0,
-    rises = {}, key_order = {}, per_session = {}, steers = {}, reply_timeout = REPLY_TIMEOUT, events = 0, spreads = 0, empty_told = {}, n_empty = 0, journal_entries = {}, busy = 0, running = 0, queue = {},
+    rises = {}, key_order = {}, per_session = {}, steers = {}, last_decided = {}, last_undo = {}, remark_turns = {}, reply_timeout = REPLY_TIMEOUT, events = 0, spreads = 0, empty_told = {}, n_empty = 0, journal_entries = {}, busy = 0, running = 0, queue = {},
     waiters = {}, voice_cache = {}, voice_order = {}, closed = false, provider = nil, voice = nil, call_timeout = 12.0, _fault = nil,
     _fault_type = false }, Brain)
   self.stats_of = { calls = 0, failures = 0, input_tokens = 0, cached_tokens = 0, output_tokens = 0, latency = 0.0, offline_answers = 0,
@@ -6564,15 +6690,22 @@ function Brain:_known(session, name, speaker, k)
 end
 
 --- What changed inside after a reply: mood, feelings, memories, gesture, the actions decided while talking.
-function Brain:_inner(session, c, speaker, data)
+--- undo: filled with what to put back if the game refuses the reply (chat's check).
+function Brain:_inner(session, c, speaker, data, undo)
+  undo = undo or {}
+  undo.notes = {}
   local i = Souls.inner_of_reply(data)
   local key = session .. SEP .. c.name
-  if i.mood and self:_allowed(i.mood) then self.moods[key] = { word = i.mood, level = i.intensity, t = self.clock() } end
+  if i.mood and self:_allowed(i.mood) then
+    undo.mood = { self.moods[key] }
+    self.moods[key] = { word = i.mood, level = i.intensity, t = self.clock() }
+  end
   if i.feel and i.feel ~= 0 then
     local change = i.feel
     if change > 0 then
       local now = self.wall()
       local rkey = key .. SEP .. speaker
+      undo.rise = { self.rises[rkey] }
       local rise = self.rises[rkey] or { now, 0.0, -1e18 }
       if now - rise[3] > Souls.NEW_TALK then rise = { now, 0.0, rise[3] } end
       change = math.max(0.0, math.min(change, c.warm_up - rise[2]))
@@ -6582,13 +6715,22 @@ function Brain:_inner(session, c, speaker, data)
         self:_log("refused", c.name, "feel: " .. speaker .. " already won " .. Py.fixed(c.warm_up, 1, true) .. " this conversation")
       end
     end
-    if change ~= 0 then self:feel(session, c.name, speaker, change) end
+    if change ~= 0 then
+      local before = self:opinion(session, c.name, speaker)
+      undo.feel = self:feel(session, c.name, speaker, change) - before
+    end
   end
-  if i.self ~= "" and self:_allowed(i.self) then self.memory:add(session, c.name, i.self, 0.9, { about = Lines.SELF }) end
+  if i.self ~= "" and self:_allowed(i.self) then
+    self.memory:add(session, c.name, i.self, 0.9, { about = Lines.SELF })
+    undo.notes[#undo.notes + 1] = i.self
+  end
   if i.remember ~= "" then
-    if self:_allowed(i.remember) then self.memory:add(session, c.name, i.remember, 0.8, { about = speaker })
+    if self:_allowed(i.remember) then
+      self.memory:add(session, c.name, i.remember, 0.8, { about = speaker })
+      undo.notes[#undo.notes + 1] = i.remember
     else self:_log("refused", c.name, "remember: blocked by the content filter") end
   end
+  undo.gesture = { self.gesture_seen[key], self.gestures[key] }
   local fresh = i.gesture ~= "" and self:_allowed(i.gesture) and not Souls.same_action(i.gesture, self.gesture_seen[key] or "")
   self.gesture_seen[key] = Py.lower(i.gesture)
   self.gestures[key] = fresh and i.gesture or nil
@@ -6926,9 +7068,10 @@ function Brain:decide(session, name, situation0, choices, every)
   return value
 end
 
-function Brain:_structured(kind, name, system, user, shape, foreground, max_tokens, timeout, images)
+--- on_text: the answer's pieces as they come; used(): true when part of it was already used (then no repair).
+function Brain:_structured(kind, name, system, user, shape, foreground, max_tokens, timeout, images, on_text, used)
   max_tokens = max_tokens or 500
-  local r = self:_ask(kind, name, system, user, true, foreground, max_tokens, nil, timeout, images)
+  local r = self:_ask(kind, name, system, user, true, foreground, max_tokens, on_text, timeout, images)
   if not r.ok then return nil end
   local ok, value, why = shape:parse(r.text)
   if ok and not self:_allowed(value) then
@@ -6936,6 +7079,7 @@ function Brain:_structured(kind, name, system, user, shape, foreground, max_toke
     return nil
   end
   if ok then return value end
+  if used and used() then return nil end
   self:_log("repair", name, kind .. ": " .. tostring(why))
   if why == Py.CUT then max_tokens = math.min(4000, max_tokens * 2) end   -- stopped by the token limit: room to finish
   r = self:_ask(kind, name, system, user .. Prompts.repair(tostring(why)), true, foreground, max_tokens, nil, timeout, images)
@@ -7400,12 +7544,51 @@ end
 
 -- ---------------- create ----------------
 
-function Brain:create(session, what0, example, ctx, count, instant, timeout, image)
+Brain.MAX_STREAMED = 200   -- items of one list answer handed over as they come
+Brain.MAX_ABOUT = 300      -- characters of what a remark is about
+Brain.REMARK_WORDS = 20
+Brain.DEFAULT_WHO = "someone in the crowd"
+
+--- What a game's check returned, as why it refuses ("" when it accepts): nil, "" or true accept; false refuses.
+function Brain.reason(verdict)
+  if verdict == nil or verdict == NULL or verdict == true or verdict == "" then return "" end
+  if verdict == false then return "it breaks the game's rules" end
+  local why = Py.head(Py.squash(Py.clean(Py.text_of(verdict))), MAX_WHY)
+  return why ~= "" and why or "refused"
+end
+
+--- What a character remembers when the game refused one of its actions (act's check).
+function Brain.refused_note(tool, args, why)
+  return "The game did not let me " .. tool .. " " .. Py.dumps(args, false) .. ": " .. why
+end
+
+--- value, "model" or "offline", streamed (nil after _raise). offline: the game's own offline answer; refused0: {answer,
+--- why} the game refused last time (create's check). on_item(item): for a list answer, each item as soon as the model has
+--- written it, false when the game refuses it (left out); streamed: how many items it already got.
+function Brain:create(session, what0, example, ctx, count, instant, timeout, image, offline, refused0, on_item)
   if Py.truthy(count) and Py.is_array(example) and #example == 1 then example = example[1] end
   local shape, why = Shape.of(example)
   if not shape then
     self:_raise(why)
     return nil
+  end
+  local fallback = shape:default()
+  if not Py.is_null(offline) then
+    local ok, v, err = shape:check(offline)
+    if not ok then
+      self:_raise("create: offline must be shaped like the example: " .. tostring(err))
+      return nil
+    end
+    fallback = v
+  end
+  local refused
+  if not Py.is_null(refused0) then
+    if not Py.is_obj(refused0) or refused0.answer == nil or type(refused0.why) ~= "string" then
+      self:_raise('create: refused must be {"answer": the refused answer, "why": "the reason"}, got ' .. Py.py_repr(refused0))
+      return nil
+    end
+    local reason = Py.head(Py.squash(Py.clean(refused0.why)), MAX_WHY)
+    if reason ~= "" then refused = { answer = refused0.answer, why = reason } end
   end
   local what = Py.clean(Py.text_of(what0))
   self:_clip_note(Py.head(what, Lines.MAX_WHAT), "what", what, Lines.MAX_WHAT, true)
@@ -7414,7 +7597,9 @@ function Brain:create(session, what0, example, ctx, count, instant, timeout, ima
   local pictures = not Py.is_null(image) and self:_pictures(what, image) or {}
   if instant then
     if #pictures > 0 then self:_log("refused", what, "image: not used with instant=True (those items are made ahead)") end
-    return self:_from_pool(session, what, shape, ctx)
+    local has, item = self:_from_pool(session, what, shape, ctx)
+    if has then return item, "model", 0 end
+    return Py.deep(fallback), "offline", 0
   end
   if Py.truthy(count) then
     local v, w = Lines.arg_num(count, "count")
@@ -7423,28 +7608,155 @@ function Brain:create(session, what0, example, ctx, count, instant, timeout, ima
       return nil
     end
     local n = math.max(1, math.min(50, floor(v)))
-    local items = self:_create_many(session, what, shape, ctx, n, true, timeout, pictures)
-    while #items < n do items[#items + 1] = shape:default() end
-    return items
+    local streamed = Py.arr({})
+    local gate = { open = true }
+    local feed = on_item and self:_streamer(shape, on_item, streamed, n, gate) or nil
+    local items = self:_create_many(session, what, shape, ctx, n, true, timeout, pictures, feed)
+    gate.open = false
+    if #streamed > 0 then items = Py.copy(streamed) end
+    local source = #items > 0 and "model" or "offline"
+    while #items < n do items[#items + 1] = Py.deep(fallback) end
+    return items, source, #streamed
   end
-  if self.provider == nil then return shape:default() end
+  if self.provider == nil then return Py.deep(fallback), "offline", 0 end
+  if refused then self:_log("refused", what, "create: the game refused it: " .. refused.why) end
   local system = Prompts.create_system(what, shape, self:_written())
-  local user = self:_context(session, nil, what) .. Prompts.context_block(ctx) .. Prompts.picture_block(#pictures > 0)
-  local value = self:_structured("create", what, system, user, shape, true, 1500, timeout, pictures)
+  local user = self:_context(session, nil, what) .. Prompts.context_block(ctx) .. Prompts.picture_block(#pictures > 0) ..
+    Prompts.refused_block(refused)
+  local kept = Py.arr({})
+  local gate = { open = true }
+  local feed = (on_item and shape.kind == "list") and self:_streamer(shape.item, on_item, kept, Brain.MAX_STREAMED, gate) or nil
+  local value = self:_structured("create", what, system, user, shape, true, 1500, timeout, pictures, feed,
+    feed and function() return #kept > 0 end or nil)
+  gate.open = false
+  if #kept > 0 then value = Py.copy(kept) end
   if value == nil then
     self.stats_of.offline_answers = self.stats_of.offline_answers + 1
-    return shape:default()
+    return Py.deep(fallback), "offline", 0
   end
   self:_log("create", what, Py.head(Py.dumps(value), 300))
-  return value
+  return value, "model", #kept
 end
 
-function Brain:_create_many(session, what, shape, ctx, count, foreground, timeout, pictures)
+--- on_text for a list answer: each finished item, valid and allowed, goes to on_item at once (kept when accepted).
+--- gate.open false (the call returned): a stream that goes on (a call given up on) hands nothing more over.
+function Brain:_streamer(item_shape, on_item, kept, limit, gate)
+  local items = Shape.Items.new()
+  return function(piece)
+    if not gate.open then return end
+    for _, t in ipairs(items:feed(piece)) do
+      if #kept >= limit then return end
+      local ok, value = item_shape:parse(t)
+      if ok and self:_allowed(value) and on_item(value) then kept[#kept + 1] = value end
+    end
+  end
+end
+
+--- {text, source}: a short line said out loud by someone in the crowd (no character to declare) about what just
+--- happened. offline: the game's own lines ({fact} placeholders), taken in turn when no model answers.
+function Brain:remark(session, about0, who0, facts0, offline, max_chars)
+  if type(about0) ~= "string" then
+    self:_raise("remark: about must be a string (what just happened), got " .. Py.py_repr(about0))
+    return {}
+  end
+  local about = Py.head(Py.squash(Py.clean(about0)), Brain.MAX_ABOUT)
+  local who = Py.head(Py.squash(Py.clean(Py.truthy(who0) and Py.text_of(who0) or "")), Lines.MAX_NAME)
+  if who == "" then who = Brain.DEFAULT_WHO end
+  local facts = self:_mapping(facts0, "facts")
+  if self._fault then return {} end
+  self:_clip_note(who, "facts", facts)
+  local given = {}
+  local bad_lines = 'remark: offline must be a line or a list of lines, like ["Would you look at that!"], got '
+  if type(offline) == "string" then
+    given = { offline }
+  elseif type(offline) == "table" and offline ~= NULL and (Py.is_array(offline) or next(offline) == nil) then
+    for i, x in ipairs(offline) do
+      if type(x) ~= "string" then
+        self:_raise(bad_lines .. Py.py_repr(offline))
+        return {}
+      end
+      given[i] = x
+    end
+  elseif not Py.is_null(offline) then
+    self:_raise(bad_lines .. Py.py_repr(offline))
+    return {}
+  end
+  local limit = Lines.box_limit(max_chars)
+  if self.provider ~= nil and about ~= "" then
+    local r = self:_ask("remark", who, Prompts.remark_system(who, self:_written(), limit),
+      self:_context(session, nil, about) .. Prompts.facts_block(facts) .. Prompts.remark_user(about), true, true, 120)
+    local data = r.ok and Py.find_json(r.text) or nil
+    local line = Py.is_obj(data) and data.line or nil
+    local said = type(line) == "string" and self:_valid_remark(line, facts, about, limit) or ""
+    if said ~= "" then
+      self:_log("remark", who, said, { about = about })
+      return { text = said, source = "model" }
+    end
+  end
+  local usable = {}
+  for _, t in ipairs(given) do
+    local ok = true
+    for _, p in ipairs(Lines.placeholders(t)) do
+      if facts[p] == nil then ok = false end
+    end
+    if ok then usable[#usable + 1] = t end
+  end
+  local spoken = ""
+  if #usable > 0 then
+    local key = session .. SEP .. who
+    local turn = self.remark_turns[key] or 0
+    make_room(self, "remark_turns", key)
+    self.remark_turns[key] = turn + 1
+    spoken = Stream.fit_chars(Lines.fill(usable[turn % #usable + 1], facts), limit)
+  end
+  self.stats_of.offline_answers = self.stats_of.offline_answers + 1
+  self:_log("remark", who, spoken, { about = about, source = "offline" })
+  if spoken == "" then
+    self:_tell_empty(session, who, "remark", "remark by " .. who .. ' answered "" (give it offline=[...] lines, said when no model answers)')
+  end
+  return { text = spoken, source = "offline" }
+end
+
+--- The remark as said: one short line, the filter passed, no numbers the game did not give; else "".
+function Brain:_valid_remark(line, facts, about, limit)
+  local t = Py.strip(Py.strip_chars(Py.strip(Py.clean(line)), '"'))
+  if t == "" or not self:_allowed(t) or Py.re(Lines.META):search(t) or Py.re(Lines.PROMPTISH):search(t) or t:find("{", 1, true) then
+    return ""
+  end
+  if #Lines.bad_numbers(t, Lines.allowed_numbers({ n = 2, facts, about })) > 0 then return "" end
+  return Stream.cap(t, Brain.REMARK_WORDS, limit)
+end
+
+--- The reply the game refused: out of the conversation, the memory and the actions waiting for act().
+function Brain:_take_back(session, c, speaker, message, answer)
+  local h = self.history[session .. SEP .. c.name .. SEP .. speaker]
+  if h and #h > 0 and h[#h][1] == c.name and h[#h][2] == answer then
+    h[#h] = nil
+    if message ~= "" and #h > 0 and h[#h][1] == speaker and h[#h][2] == message then h[#h] = nil end
+  end
+  local said = self.said_by[session .. SEP .. c.name]
+  if said and #said > 0 and said[#said] == answer then said[#said] = nil end
+  for _, a in ipairs(self.last_decided[session .. SEP .. c.name] or {}) do a.taken = true end
+  self.last_decided[session .. SEP .. c.name] = nil
+  local key = session .. SEP .. c.name
+  local undo = self.last_undo[key] or {}
+  self.last_undo[key] = nil
+  if undo.mood then self.moods[key] = undo.mood[1] end
+  if undo.rise then self.rises[key .. SEP .. speaker] = undo.rise[1] end
+  if undo.gesture then self.gesture_seen[key], self.gestures[key] = undo.gesture[1], undo.gesture[2] end
+  if undo.feel and undo.feel ~= 0 then self:feel(session, c.name, speaker, -undo.feel) end   -- what it moved and wrote
+  for _, note in ipairs(undo.notes or {}) do self.memory:take_back(session, c.name, note) end
+  if message ~= "" then
+    self.memory:take_back(session, c.name, speaker .. " said: " .. Py.head(message, 120) .. " / I answered: " .. Py.head(answer, 160))
+  end
+end
+
+function Brain:_create_many(session, what, shape, ctx, count, foreground, timeout, pictures, on_text)
   if self.provider == nil then return Py.arr({}) end
   pictures = pictures or {}
   local system = Prompts.create_many_system(what, shape, count, self:_written())
   local user = self:_context(session, nil, what) .. Prompts.context_block(ctx) .. Prompts.picture_block(#pictures > 0)
-  local r = self:_ask("create", what, system, user, true, foreground, math.min(4000, 200 + 150 * count), nil, timeout, pictures)
+  local r = self:_ask("create", what, system, user, true, foreground, math.min(4000, 200 + 150 * count), on_text, timeout, pictures)
   if not r.ok then return Py.arr({}) end
   local data = Py.find_json(r.text)
   local raw = Py.is_obj(data) and data.items or (Py.is_array(data) and data or {})
@@ -7466,7 +7778,9 @@ function Brain:_from_pool(session, what, shape, ctx)
     make_room(self, "pools", key)
     self.pools[key] = pool
   end
-  local item = #pool.items > 0 and table.remove(pool.items, 1) or nil
+  local has = #pool.items > 0
+  local item = nil
+  if has then item = table.remove(pool.items, 1) end
   if #pool.items < 2 and not pool.filling and pool.failures < 3 and self.provider ~= nil then
     pool.filling = true
     self:_background(function()
@@ -7476,14 +7790,15 @@ function Brain:_from_pool(session, what, shape, ctx)
       pool.filling = false
     end)
   end
-  if item ~= nil then return item end
-  return shape:default()
+  return has, item
 end
 
 -- ---------------- chat ----------------
 
---- {text, source, actions}. stream: a function given each piece of the reply as it comes (nil: none).
-function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, max_chars, image)
+--- {text, source, actions}. stream: a function given each piece of the reply as it comes (nil: none). refused0: {answer,
+--- why}, the reply to this same message the game refused: taken back (words, memory of it, its actions) and asked again
+--- knowing why; drop: taken back and answered offline (refused twice).
+function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, max_chars, image, refused0, drop)
   local c = self:char_of(session, name)
   local began = self.clock()
   local pictures = not Py.is_null(image) and self:_pictures(c.name, image) or {}
@@ -7492,6 +7807,19 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
   local message = Py.head(Py.clean(Py.truthy(message0) and Py.text_of(message0) or ""), 1000)
   local speaker = Lines.name_of(speaker0)
   if speaker == nil or speaker == "" then speaker = "player" end
+  local refused
+  if not Py.is_null(refused0) then
+    if not Py.is_obj(refused0) or refused0.answer == nil or type(refused0.why) ~= "string" then
+      self:_raise('create: refused must be {"answer": the refused answer, "why": "the reason"}, got ' .. Py.py_repr(refused0))
+      return {}
+    end
+    local rwhy = Py.head(Py.squash(Py.clean(refused0.why)), MAX_WHY)
+    if rwhy ~= "" then refused = { answer = refused0.answer, why = rwhy } end
+  end
+  if refused then
+    self:_take_back(session, c, speaker, message, Py.text_of(refused.answer))
+    self:_log("refused", c.name, "chat: the game refused the reply: " .. refused.why)
+  end
   local facts = self:_mapping(facts0, "facts")
   if self._fault then return {} end
   self:_clip_note(c.name, "facts", facts)
@@ -7522,7 +7850,7 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
     inner = prepared[2]
     source = "prepared"
     if stream then stream(reply) end
-  elseif self.provider ~= nil then
+  elseif self.provider ~= nil and not drop then
     local word, level = self:_mood(session, c)
     local system = Prompts.chat_system(c, self:_lang(c, true), self:_card_lines(c), self:lore(session))
     local mine_said = {}
@@ -7536,7 +7864,7 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
       Prompts.message_block(speaker, message) .. Prompts.box_block(box)
     local allowed = Lines.allowed_numbers({ n = 8, facts, st, message, steer, c.personality, Souls.texts(c.card),
       self.memory:recall(session, { c.name, "world" }, message), self:_known(session, c.name, speaker) })
-    local repair, streamed = "", false
+    local repair, streamed = refused and "\n\n" .. Prompts.refused_block(refused) or "", false
     local mine = Py.last(self.said_by[session .. SEP .. c.name] or {}, 6)
     -- A steer is the game's own decision: it may reveal a secret.
     local hidden = (self:opinion(session, c.name, speaker) < c.secret_trust and steer == "") and Souls.secrets(c.card) or {}
@@ -7660,7 +7988,12 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
         Py.put(inner, "do", found)
       end
     end
-    decided = self:_inner(session, c, speaker, inner)
+    local undo = {}
+    decided = self:_inner(session, c, speaker, inner, undo)
+    make_room(self, "last_decided", session .. SEP .. c.name)
+    self.last_decided[session .. SEP .. c.name] = decided
+    make_room(self, "last_undo", session .. SEP .. c.name)
+    self.last_undo[session .. SEP .. c.name] = undo
     if source == "prepared" then self:_prepare_greeting(session, c) end
   elseif reply == nil then
     inner = nil
@@ -8475,7 +8808,7 @@ function Brain:_verb(verb, body, session)
     if miss then return err(400, miss) end
     if type(body.message) ~= "string" then return err(400, "missing 'message' (\"\" when the character speaks first)") end
     local speaker = Py.truthy(body.speaker) and body.speaker or "player"
-    local s = self:chat(session, name, body.message, facts, speaker, nil, nil, body.max_chars, image)
+    local s = self:chat(session, name, body.message, facts, speaker, nil, nil, body.max_chars, image, body.refused, Py.truthy(body.drop))
     if self._fault then return 200, {} end
     local out = { text = s.text, declared = self:is_declared(session, name) }
     for k, v in pairs(self:_feelings(session, name, speaker)) do out[k] = v end
@@ -8510,9 +8843,17 @@ function Brain:_verb(verb, body, session)
     miss = missing(body, { "what" })
     if miss then return err(400, miss) end
     if body.example == nil then return err(400, "missing 'example' (an example answer: it is also the offline answer)") end
-    local value = self:create(session, body.what, body.example, body.context ~= NULL and body.context or nil,
-      body.count ~= NULL and body.count or nil, Py.truthy(body.instant), nil, image)
-    return 200, { value = null_if_nil(value) }
+    local value, source, streamed = self:create(session, body.what, body.example, body.context ~= NULL and body.context or nil,
+      body.count ~= NULL and body.count or nil, Py.truthy(body.instant), nil, image, body.offline, body.refused)
+    return 200, { value = null_if_nil(value), source = source or "offline", streamed = streamed or 0 }
+  elseif verb == "remark" then
+    if type(body.about) ~= "string" then return err(400, "missing 'about' (what just happened, as text)") end
+    if not Py.is_null(facts) and not Py.is_obj(facts) and not (type(facts) == "table" and next(facts) == nil) then
+      return err(400, "'facts' must be an object {name: value}")
+    end
+    local s = self:remark(session, body.about, body.who, facts, body.offline, body.max_chars)
+    if self._fault then return 200, {} end
+    return 200, { text = s.text, source = s.source }
   elseif verb == "tools" then
     if body.tools == nil then return 200, { tools = self:tools(session) } end
     if not Py.is_obj(body.tools) and not (type(body.tools) == "table" and next(body.tools) == nil) then
@@ -8666,7 +9007,7 @@ function Brain:chat_stream(session, body, on_piece)
   self._fault, self._fault_type = nil, false
   local speaker = Py.truthy(body.speaker) and body.speaker or "player"
   local image = Py.truthy(body.image) and body.image or nil
-  local s = self:chat(session, body.name, body.message, body.facts, speaker, on_piece, nil, body.max_chars, image)
+  local s = self:chat(session, body.name, body.message, body.facts, speaker, on_piece, nil, body.max_chars, image, body.refused, Py.truthy(body.drop))
   if self._fault then
     local why = self._fault_type and ("chat: a field has the wrong type (" .. self._fault .. ")") or ("chat: " .. self._fault)
     self._fault = nil
@@ -8681,6 +9022,20 @@ end
 function Brain:_feelings(session, name, speaker)
   local s = self:soul(session, name)
   return { mood = s.mood.word, feeling = self:opinion(session, name, speaker), gesture = s.gesture }
+end
+
+--- create for the client's each: the brain hands every item of a list answer to on_item as the model writes it.
+function Brain:create_stream(session, body, on_item)
+  self._fault, self._fault_type = nil, false
+  local image = Py.truthy(body.image) and body.image or nil
+  local value, source, streamed = self:create(session, body.what, body.example, body.context ~= NULL and body.context or nil,
+    body.count ~= NULL and body.count or nil, Py.truthy(body.instant), nil, image, body.offline, body.refused, on_item)
+  if self._fault then
+    local why = self._fault_type and ("create: a field has the wrong type (" .. self._fault .. ")") or ("example: " .. self._fault)
+    self._fault = nil
+    return 400, { error = why }
+  end
+  return 200, { value = null_if_nil(value), source = source or "offline", streamed = streamed or 0 }
 end
 
 function Brain:_reply_extra(s, body)
@@ -8748,6 +9103,10 @@ local function prompt(name, spec, a)
     return P.bond_block(a[1], arg(a, 2), a[3], a[4], a[5], a[6], a[7], arg(a, 8, ""), arg(a, 9, false), arg(a, 10, Souls.SECRET_TRUST))
   elseif name == "steer_block" then
     return P.steer_block(arg(a, 1, ""))
+  elseif name == "refused_block" then
+    return P.refused_block(arg(a, 1, nil))
+  elseif name == "remark_system" then return P.remark_system(a[1], a[2], arg(a, 3, 0))
+  elseif name == "remark_user" then return P.remark_user(a[1])
   elseif name == "deeds_user" then return P.deeds_user(a[1], a[2], arg(a, 3, ""), a[4])
   elseif name == "soul_user" then return P.soul_user(a[1], arg(a, 2, {}))
   elseif name == "repair" then return P.repair(a[1])
@@ -8810,6 +9169,14 @@ function Vectors.vector(fn, a)
     local said, narrated = Souls.drop_narrated(a[1], arg(a, 2, ""), arg(a, 3, {}))
     return pair(said, narrated)
   elseif fn == "inner" then return Souls.inner_of_reply(a[1])
+  elseif fn == "reason" then return Brain.reason(a[1])
+  elseif fn == "refused_note" then return Brain.refused_note(a[1], a[2], a[3])
+  elseif fn == "items" then
+    local it, got = Shape.Items.new(), Py.arr({})
+    for _, p in ipairs(a[1]) do
+      for _, t in ipairs(it:feed(p)) do got[#got + 1] = t end
+    end
+    return got
   elseif fn == "card" then return Souls.card(a[1], arg(a, 2, ""))
   elseif fn == "describe_card" then return Souls.describe(a[1])
   elseif fn == "mood_now" then
@@ -8924,7 +9291,10 @@ end
 
 Kinloom.vectors = Vectors
 
-return { Brain = Brain, Py = Py, Model = Model, Vectors = Vectors, NULL = NULL }
+--- An offline line with its facts filled in, fitted to a box (the client's remark when no server answers).
+function Brain.fit_line(template, facts, chars) return Stream.fit_chars(Lines.fill(template, facts), chars) end
+
+return { Brain = Brain, Py = Py, Model = Model, Vectors = Vectors, NULL = NULL, Shape = Shape }
 end)()
 -- ======== end of the native engine ========
 
@@ -9046,7 +9416,7 @@ function Kinloom:update()
 end
 
 -- A verb answered by the native brain, in a coroutine: at once with a blocking transport, else at a later update().
-function Kinloom:_native(verb, body, callback, on_piece)
+function Kinloom:_native(verb, body, callback, on_piece, on_item)
   local brain = self.brain
   brain:pump()
   local plain = Native.Py.plain(body)
@@ -9066,6 +9436,7 @@ function Kinloom:_native(verb, body, callback, on_piece)
   brain:_spawn(function()
     local status, answer
     if on_piece then status, answer = brain:chat_stream(self.session, plain, on_piece)
+    elseif on_item then status, answer = brain:create_stream(self.session, plain, on_item)
     else status, answer = brain:handle(verb, plain, self.session) end
     finish(status, answer)
   end, function() finish(nil) end)
@@ -9200,26 +9571,95 @@ function Kinloom:_pending(name)
   return a
 end
 
+--- reason(verdict()); a check that raises refuses ("the game's check failed"), never breaking the call.
+local function judged(verdict, ...)
+  local ok, r = pcall(verdict, ...)
+  if ok then return Native.Brain.reason(r) end
+  if io and io.stderr then pcall(io.stderr.write, io.stderr, "[kinloom] the game's check failed: " .. tostring(r) .. "\n") end
+  return "the game's check failed"
+end
+
+local function why_of(check, value)
+  return judged(check, Native.Py.deep(value))
+end
+
+--- Hands one item to the game's each; one that raises is told, never carried into Kinloom.
+local function give(each, item)
+  local ok, err = pcall(each, Native.Py.deep(item))
+  if not ok and io and io.stderr then pcall(io.stderr.write, io.stderr, "[kinloom] create: each failed: " .. tostring(err) .. "\n") end
+end
+
+--- Keeps a facade table under 2000 entries (decisions refused or accepted, remarks in turn): call before adding key.
+local CAP_ORDER = setmetatable({}, { __mode = "k" })
+local function cap(t, key)
+  if t[key] ~= nil then return end
+  local q = CAP_ORDER[t]
+  if not q then q = { head = 1, tail = 0 }; CAP_ORDER[t] = q end
+  q.tail = q.tail + 1
+  q[q.tail] = key
+  while q.tail - q.head + 1 > 2000 do
+    t[q[q.head]] = nil
+    q[q.head] = nil
+    q.head = q.head + 1
+  end
+end
+
 --- A conversation reply grounded in the facts and the character's memory (~1 s). callback(text).
 --- speaker: who talks (the character's feelings and memories of them shape the reply). message "": the speaker came
 --- up to the character, who speaks first. What they decide while talking comes out of act(name, {}, false) at once.
 --- image: a picture with the message (PNG, JPEG, GIF or WebP bytes as a Lua string), for a model that sees.
 --- on_piece(text): each piece of the reply as it is written (native mode; relay mode gives the whole reply once).
-function Kinloom:chat(name, message, facts, callback, speaker, image, on_piece)
-  local result
+--- check(reply): the game's rules for what is said: nil, "" or true accept it; a reason (text) or false refuses it: the
+--- reply is taken back (words, memory, actions) and asked again once knowing why, then the offline reply is used
+--- (on_piece then gets the reply once, at the end).
+function Kinloom:chat(name, message, facts, callback, speaker, image, on_piece, check)
   local body = { name = name, message = message, facts = facts or {}, speaker = speaker or "player", ["do"] = true }
   if image and image ~= "" then body.image = Kinloom.base64_encode(image) end
+  if type(check) ~= "function" then return self:_chat_once(name, body, on_piece, callback) end
+  local result
+  local function finish(text)
+    result = text
+    if on_piece and text ~= "" then
+      local ok, err = pcall(on_piece, text)
+      if not ok and io and io.stderr then pcall(io.stderr.write, io.stderr, "[kinloom] chat: on_piece failed: " .. tostring(err) .. "\n") end
+    end
+    if callback then callback(text) end
+  end
+  local function round(text, n)
+    if n > 2 or self._sources[name] == "offline" then return finish(text) end
+    local why = judged(check, text)
+    if why == "" then return finish(text) end
+    local taken = {}     -- this reply's own actions only (an equal one from an earlier reply stays)
+    for _, t in ipairs((self._last_do or {})[name] or {}) do taken[t] = true end
+    local a, kept = self:_pending(name), {}
+    for _, x in ipairs(a.ready) do if not taken[x] then kept[#kept + 1] = x end end
+    a.ready = kept
+    local again = Native.Py.copy(body)
+    again.refused = { answer = text, why = why }
+    again.drop = n == 2
+    self:_chat_once(name, again, nil, function(t) round(t, n + 1) end)
+  end
+  self:_chat_once(name, body, nil, function(t) round(t, 1) end)
+  return result
+end
+
+function Kinloom:_chat_once(name, body, on_piece, callback)
+  local result
+  self._last_do = self._last_do or {}
   local function answered(r)
     if r and on_piece and not self.brain and (r.text or "") ~= "" then on_piece(r.text) end
     self._sources[name] = r and (r.source or "model") or "offline"
     if r then
       self:_redeclare(name, r)
       result = r.text or ""
-      local a = self:_pending(name)
+      local a, decided = self:_pending(name), {}
       for _, action in ipairs(type(r["do"]) == "table" and r["do"] or {}) do
-        a.ready[#a.ready + 1] = { tool = action.tool, args = action.args or {} }
+        decided[#decided + 1] = { tool = action.tool, args = action.args or {} }
+        a.ready[#a.ready + 1] = decided[#decided]
       end
+      self._last_do[name] = decided
     else
+      self._last_do[name] = nil
       local o = (self._chars[name] or {}).offline or ""
       if type(o) == "table" then o = #o > 0 and tostring(o[math.random(#o)]) or "" end   -- several offline replies
       result = o
@@ -9234,14 +9674,36 @@ end
 --- Relay: seconds between decide/act requests: a quarter of the character's `every` (8 s by default: every 2 s; the
 --- server refreshes early when the situation changes after every/4), never more than 4 times a second.
 function Kinloom:_poll_every(name)
+  if self.brain then return 0.25 end   -- native: the brain keeps its own pace
   local every = (self._chars[name] or {}).every
   every = (type(every) == "number" and every == every and every < math.huge and every > 0) and every or 8.0
   return math.max(0.25, every / 4)
 end
 
---- Instant: the latest decision shaped like `choices` (the model refreshes it in the background).
-function Kinloom:decide(name, situation, choices)
+--- Instant: the latest decision shaped like `choices` (the model refreshes it in the background). check(decision): the
+--- game's rules: a decision it refuses (it returns why) is not used (the last accepted one is, else the default) and the
+--- next decisions are made knowing why.
+function Kinloom:decide(name, situation, choices, check)
   local key = name .. "|" .. encode(choices)
+  if type(check) ~= "function" then return self:_decide_now(key, name, situation, choices) end
+  self._decide_refused, self._decide_ok = self._decide_refused or {}, self._decide_ok or {}
+  local sit = type(situation) == "table" and Native.Py.copy(situation) or (situation == nil and {} or { situation = situation })
+  if self._decide_refused[key] then sit["the game refused your last decision"] = self._decide_refused[key] end
+  local value = self:_decide_now(key, name, sit, choices)
+  local why = judged(check, Native.Py.deep(value))
+  if why == "" then
+    self._decide_refused[key] = nil
+    cap(self._decide_ok, key)
+    self._decide_ok[key] = value
+    return value
+  end
+  cap(self._decide_refused, key)
+  self._decide_refused[key] = Kinloom.ordered({ decision = value, why = why }, { "decision", "why" })
+  if self._decide_ok[key] ~= nil then return Native.Py.deep(self._decide_ok[key]) end
+  return Kinloom.default_of(choices)
+end
+
+function Kinloom:_decide_now(key, name, situation, choices)
   local d = self._decisions[key]
   if not d then
     d = { value = Kinloom.default_of(choices), busy = false, at = -1 }
@@ -9259,11 +9721,23 @@ function Kinloom:decide(name, situation, choices)
 end
 
 --- Instant: the tool calls { {tool = "boost", args = {...}}, ... } the character chose since the last call.
---- think false: only what the character decided while talking (no model call of its own).
-function Kinloom:act(name, situation, think)
+--- think false: only what the character decided while talking (no model call of its own). check(tool, args): the game's
+--- rules: an action it refuses (it returns why) is not returned, and the character remembers why.
+function Kinloom:act(name, situation, think, check)
   local a = self:_pending(name)
   local ready = a.ready
   a.ready = {}
+  if type(check) == "function" then
+    local kept = {}
+    for _, action in ipairs(ready) do
+      local why = judged(check, action.tool, Native.Py.deep(action.args))
+      if why == "" then kept[#kept + 1] = action
+      else
+        self:_post("remember", { name = name, note = Native.Brain.refused_note(action.tool, action.args, why), importance = 0.6 }, 3)
+      end
+    end
+    ready = kept
+  end
   local now = self._clock()
   if not a.busy and (a.at < 0 or now - a.at >= self:_poll_every(name)) then
     a.busy, a.at = true, now
@@ -9277,29 +9751,103 @@ function Kinloom:act(name, situation, think)
   return ready
 end
 
+--- Why the game's check refuses an answer ("" when it accepts it).
+--- Hands each item of a list answer (or the answer) to the game's each.
+local function deliver(each, listed, value)
+  if each then
+    if listed and type(value) == "table" then
+      for _, x in ipairs(value) do give(each, x) end
+    else
+      give(each, value)
+    end
+  end
+  return value
+end
+
 --- Content shaped like the example (also the offline answer). opts: context, count, instant, image (a picture the
---- model looks at: PNG, JPEG, GIF or WebP bytes). callback(value).
+--- model looks at: PNG, JPEG, GIF or WebP bytes), check, offline. callback(value).
+--- check(answer): the game's own rules: nil, "" or true accept the answer; a reason (text) or false refuses it, and the
+--- model hears the reason once before the offline answer is used (with count/instant, refused items are replaced).
+--- offline: the game's own offline answer, shaped like the example. each(item): every item of a list answer as soon as
+--- it is ready (native mode: as the model writes it), refused items left out.
 function Kinloom:create(what, example, opts, callback)
   opts = opts or {}
   if opts.count and opts.count > 0 and type(example) == "table" and #example == 1 then example = example[1] end  -- [item] + count
+  local fallback = Kinloom.default_of(example)
+  local shape, err = Native.Shape.of(example)
+  local listed = (opts.count and opts.count > 0) or (shape ~= nil and shape.kind == "list")
+  if opts.offline ~= nil then
+    local ok, v
+    if shape then ok, v, err = shape:check(opts.offline) end
+    if ok then
+      fallback = v
+    elseif io and io.stderr then
+      pcall(io.stderr.write, io.stderr, "[kinloom] create: offline must be shaped like the example: " .. tostring(err) .. " (the example is used)\n")
+    end
+  end
   local body = { what = what, example = example, context = opts.context or {}, instant = opts.instant or false }
   if opts.image and opts.image ~= "" then body.image = Kinloom.base64_encode(opts.image) end
   if opts.count and opts.count > 0 then body.count = opts.count end
+  if opts.offline ~= nil then body.offline = fallback end
   local result
-  self:_post("create", body, opts.instant and 2 or self.chat_timeout, function(r)
-    if r and r.value ~= nil then
-      result = r.value
-    else
-      result = Kinloom.default_of(example)
-      if body.count then
-        local many = {}
-        for i = 1, body.count do many[i] = Kinloom.default_of(example) end
-        result = many
-      end
-    end
-    if callback then callback(result) end
-  end)
+  local each = type(opts.each) == "function" and opts.each or nil
+  self:_created(body, body.count or 0, opts.instant or false, opts.check, fallback, true, function(v)
+    result = v
+    if callback then callback(v) end
+  end, each, listed)
   return result
+end
+
+--- One create request, then the game's check: a list item by item (in native mode as the model writes, each item
+--- handed to each at once), anything else whole (refused: sent back once with its reason).
+function Kinloom:_created(body, count, instant, check, fallback, retry, done, each, listed)
+  if type(check) ~= "function" then check = nil end
+  local function answered(r)
+    if not (r and r.value ~= nil) then
+      if count > 0 then
+        local many = {}
+        for i = 1, count do many[i] = Native.Py.deep(fallback) end
+        return done(deliver(each, listed, many))
+      end
+      return done(deliver(each, listed, Native.Py.deep(fallback)))
+    end
+    local value = r.value
+    local offline_answer = r.source == "offline"
+    if listed and type(value) == "table" then
+      local streamed = tonumber(r.streamed) or 0
+      if streamed > 0 then          -- checked and handed over already; the rest is the offline filling
+        if each then for i = streamed + 1, #value do give(each, value[i]) end end
+        return done(value)
+      end
+      local items = {}
+      for _, x in ipairs(value) do
+        if not check or offline_answer or why_of(check, x) == "" then items[#items + 1] = x end
+      end
+      if count > 0 then
+        while #items < count do items[#items + 1] = Native.Py.deep(fallback) end
+      elseif #items == 0 then
+        return done(deliver(each, listed, Native.Py.deep(fallback)))
+      end
+      return done(deliver(each, listed, items))
+    end
+    if not check or offline_answer then return done(deliver(each, listed, value)) end
+    local why = why_of(check, value)
+    if why == "" then return done(deliver(each, listed, value)) end
+    if instant or not retry then return done(deliver(each, listed, Native.Py.deep(fallback))) end
+    local again = Native.Py.copy(body)
+    again.refused = { answer = value, why = why }
+    self:_created(again, 0, false, check, fallback, false, done, each, listed)
+  end
+  if self.brain and each and listed then
+    -- native: the brain hands over each item as the model writes it
+    local hook = function(x)
+      if check and why_of(check, x) ~= "" then return false end
+      give(each, x)
+      return true
+    end
+    return self:_native("create", body, answered, nil, hook)
+  end
+  self:_post("create", body, instant and 2 or self.chat_timeout, answered)
 end
 
 --- What the game can do, declared once: {open_door = {door = "north"}}. Characters use them by name (options tools =
@@ -9543,13 +10091,58 @@ end
 
 --- What the player could say now to name, for games without a keyboard: one reply per example, in its order, each keeping
 --- that example's intent, written for this moment. The examples are the offline answer.
-function Kinloom:suggest(name, examples, speaker, facts, callback)
+--- check(reply): the game's rules: a reply it refuses is replaced by its example.
+function Kinloom:suggest(name, examples, speaker, facts, callback, check)
   local result = examples
   self:_post("suggest", { name = name, examples = examples, speaker = speaker or "player", facts = facts or {} }, self.chat_timeout, function(r)
     result = examples
     if r and type(r.replies) == "table" then
       result = {}
       for i, x in ipairs(r.replies) do result[i] = tostring(x) end
+      if type(check) == "function" then
+        for i = 1, math.min(#result, #examples) do
+          if judged(check, result[i]) ~= "" then result[i] = tostring(examples[i]) end
+        end
+      end
+    end
+    if callback then callback(result) end
+  end)
+  return result
+end
+
+--- A short line from someone in the crowd about what just happened (no character to declare), ~1 s. opts: who ("an old
+--- fisherman", nil for anyone), facts, offline (your own lines, {fact} placeholders, said in turn without a model),
+--- max_chars. callback(text).
+function Kinloom:remark(about, opts, callback)
+  opts = opts or {}
+  local facts = opts.facts or {}
+  local offline = type(opts.offline) == "string" and { opts.offline } or opts.offline or {}
+  local body = { about = about, facts = facts }
+  if opts.who and opts.who ~= "" then body.who = opts.who end
+  if #offline > 0 then body.offline = offline end
+  if opts.max_chars and opts.max_chars > 0 then body.max_chars = opts.max_chars end
+  local result
+  self:_post("remark", body, self.chat_timeout, function(r)
+    if r and type(r.text) == "string" then
+      result = r.text
+    else
+      result = ""
+      local usable = {}
+      for _, t in ipairs(offline) do
+        local ok = true
+        for p in tostring(t):gmatch("{([%a_][%w_]*)}") do if facts[p] == nil then ok = false end end
+        if ok then usable[#usable + 1] = tostring(t) end
+      end
+      if #usable > 0 then
+        self._remark_turns = self._remark_turns or {}
+        local key = Native.Py.head(Native.Py.squash(Native.Py.clean(opts.who or "")), 48)   -- as the brain names who speaks
+        if key == "" then key = "someone in the crowd" end
+        local turn = self._remark_turns[key] or 0
+        cap(self._remark_turns, key)
+        self._remark_turns[key] = turn + 1
+        local limit = (opts.max_chars or 0) > 0 and math.max(10, math.min(2000, opts.max_chars)) or 0
+        result = Native.Brain.fit_line(usable[turn % #usable + 1], facts, limit)
+      end
     end
     if callback then callback(result) end
   end)

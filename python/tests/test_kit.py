@@ -102,7 +102,8 @@ def test_init_writes_every_agent_format_and_keeps_existing_text(tmp_path):
     assert agents.count(init.START) == 1 and "kinloom recipe" in agents and "from kinloom import Kinloom" in agents
     # read in every session: kept short (every call shown once). 5134 -> 5613 on 2026-10-01: tools() and image= shown
     # once, and the rule that the model (a key or the agent's plan) is the developer's choice; 6251 on 2026-10-03: the
-    # v1 calls (suggest, converse, save/load, inspect) and `kinloom ship`
+    # v1 calls (suggest, converse, save/load, inspect) and `kinloom ship`; 6291 on 2026-10-07: create's check= and
+    # offline= (comments shortened elsewhere); then each=, remark and check= everywhere (comments shortened again)
     assert len(agents) < 6300
     init.setup(str(tmp_path), agents="all")
     assert (tmp_path / "AGENTS.md").read_text(encoding="utf-8") == agents
@@ -299,11 +300,11 @@ def garbage(kind, system, user):
 COOKBOOK = blocks(os.path.join(KIT, "cookbook.md"), "python")
 
 
-def test_cookbook_has_31_patterns():
-    assert len(COOKBOOK) == 34
+def test_cookbook_has_39_patterns():
+    assert len(COOKBOOK) == 39
 
 
-@pytest.mark.parametrize("i", range(31))
+@pytest.mark.parametrize("i", list(range(31)) + [34, 35, 36, 37, 38])
 def test_cookbook_pattern_runs_offline_and_with_a_hostile_model(i):
     _run_python(COOKBOOK[i], None)
     _run_python(COOKBOOK[i], Scripted(garbage))
@@ -321,6 +322,17 @@ def test_cookbook_offline_answers_have_the_example_shapes():
     kl = Kinloom(provider=None, memory_path=None)
     exec(COOKBOOK[8], {"kl": kl}, ns)                             # enemy tactics
     assert ns["orders"] == {"formation": "flank", "target": "player", "use_grenade": False, "spread": 4.5}
+    exec(COOKBOOK[34], {"kl": kl}, ns)                            # the game's rules decide
+    assert ns["plan"] == {"name": "Hut", "width": 3, "depth": 3, "near": "Old Well", "say": "A small hut by the well."}
+    exec(COOKBOOK[35], {"kl": kl}, ns)                            # challenges the game checks
+    assert ns["decree"]["goal"] == "tall" and ns["done"] is True
+    g = {"kl": kl}
+    exec(COOKBOOK[36], g)                                         # items as they are written
+    assert g["town"] == g["placed"] == [{"kind": "well", "x": 10, "name": "Old Well"}]
+    exec(COOKBOOK[37], {"kl": kl, "print": lambda *a: None}, ns)  # bystanders
+    assert ns["shout"] == "Would you look at that!"
+    exec(COOKBOOK[38], {"kl": kl, "print": lambda *a: None}, ns)  # the game's rules on talk and deeds
+    assert ns["reply"] == "Follow the lights." and ns["move"] == "wait"
     exec(COOKBOOK[16], {"kl": kl}, ns)                            # generators
     assert len(ns["swords"]) == 10 and ns["swords"][0]["damage"] == 13
     exec(COOKBOOK[5], {"kl": kl}, ns)                             # commentator

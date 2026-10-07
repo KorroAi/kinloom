@@ -67,6 +67,9 @@ Kinloom knows nothing about your game and imposes nothing: you pick the call by 
 |---|---|---|
 | A choice or numbers, every frame | `decide` | instantly, from a cached answer refreshed in the background |
 | Data, text or lists of any shape | `create` | in about 1-2 s, or instantly from a pool written ahead |
+| Items shown as they are written | `create(..., each=)` | each item of a list as soon as the model writes it |
+| Your rules on what the model makes, says and does | `check=` on `create`, `chat`, `decide`, `act`, `suggest` | refused: fixed once with your reason, then your offline answer |
+| A line from a passer-by, no character to declare | `remark` | one short line in that voice; offline, your lines in turn |
 | The AI to use your game's functions | `tools`, `act` | validated calls only, with arguments of the declared shape |
 | A line when something happens | `say` | instantly: lines written ahead, filled with your facts only |
 | Free conversation with a character | `chat`, `speak`, `listen` | about 1 s, streamed; voice both ways, the system voice with no key |
@@ -205,7 +208,7 @@ macOS and Windows; it has not run yet, as the repository has not been pushed wit
 | [python/README.md](python/README.md) | The full guide: every call, souls, voice, minds, the world, models, tools, safety |
 | [calls.md](python/src/kinloom/kit/calls.md) | Every call in every language |
 | [Engine guides](python/src/kinloom/kit/engines) | Setup notes per engine |
-| [cookbook.md](python/src/kinloom/kit/cookbook.md) | 34 patterns, from free conversation to units that learn and the AI checked in CI |
+| [cookbook.md](python/src/kinloom/kit/cookbook.md) | 39 patterns, from free conversation to units that learn and the AI checked in CI |
 | [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) | Releases, how to contribute, how to report a vulnerability |
 
 ## The legacy C# runtime

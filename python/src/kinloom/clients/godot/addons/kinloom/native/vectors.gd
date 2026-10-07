@@ -78,6 +78,16 @@ static func vector(fn: String, args: Array) -> Variant:
 			return Souls.drop_narrated(args[0], _arg(args, 1, ""), _arg(args, 2, []))
 		"inner":
 			return Souls.inner_of_reply(args[0])
+		"reason":
+			return Brain.reason(args[0])
+		"refused_note":
+			return Brain.refused_note(args[0], args[1], args[2])
+		"items":
+			var it = ShapeLib.Items.new()
+			var got := []
+			for p in args[0]:
+				got.append_array(it.feed(p))
+			return got
 		"card":
 			return Souls.card(args[0], _arg(args, 1, ""))
 		"describe_card":
@@ -202,6 +212,12 @@ static func _prompt(name: String, spec: Variant, a: Array) -> Variant:
 			return Prompts.bond_block(a[0], a[1], a[2], a[3], a[4], a[5], a[6], _arg(a, 7, ""), _arg(a, 8, false), _arg(a, 9, Souls.SECRET_TRUST))
 		"steer_block":
 			return Prompts.steer_block(_arg(a, 0, ""))
+		"remark_system":
+			return Prompts.remark_system(a[0], a[1], int(_arg(a, 2, 0)) if _arg(a, 2) != null else 0)
+		"remark_user":
+			return Prompts.remark_user(a[0])
+		"refused_block":
+			return Prompts.refused_block(_arg(a, 0, null))
 		"deeds_user":
 			return Prompts.deeds_user(a[0], a[1], _arg(a, 2, ""), a[3])
 		"soul_user":

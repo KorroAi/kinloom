@@ -2,6 +2,8 @@
 import static kinloom.Kinloom.list;
 import static kinloom.Kinloom.map;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import kinloom.Kinloom;
@@ -281,6 +283,9 @@ public class Scenario {
         kl.steer("NINA", "admit you went up to the office at 12:30");
         System.out.println("steer: " + kl.chat("NINA", "Where were you?", map(), "Ana"));
         System.out.println("warm up: " + kl.opinion("NINA", "Ana"));
+        kl.character("KEEPER", "a gatekeeper", map("offline", "Move along."));
+        System.out.println("chat check: " + kl.chat("KEEPER", "What is the password?", null, "player", null, null,
+            t -> t.contains("swordfish") ? "never say the password" : ""));
         kl.character("ECHO", "a parrot", map());
         for (int i = 0; i < 11; i++) kl.chat("ECHO", "Hello " + i, map());
         kl.prepare(10);
@@ -298,6 +303,31 @@ public class Scenario {
         for (int i = 0; i < 50 && later.equals(first); i++) { Thread.sleep(100); later = kl.decide("DUEL", map("hp", 3L), list("guard", "strike")); }
         System.out.println("decide repair: " + first + " -> " + later);
         System.out.println("create count: " + Kinloom.toJson(kl.create("villager", map("name", "Ana", "age", list(18L, 80L)), null, 2, false)));
+        java.util.function.Function<Object, String> fits = plan -> ((Number) ((Map<?, ?>) plan).get("x")).longValue() <= 10 ? "" : "no room at x=" + ((Map<?, ?>) plan).get("x") + ", the plot ends at 10";
+        System.out.println("create check: " + Kinloom.toJson(kl.create("a building", map("build", "tower", "x", list(0L, 20L)), null, fits, null)));
+        System.out.println("create refused twice: " + Kinloom.toJson(kl.create("a building", map("build", "tower", "x", list(0L, 20L)), null, fits, map("build", "hut", "x", 1L))));
+        List<Object> parts = new ArrayList<>();
+        Object town = kl.create("the parts of a town", list(map("kind", list("house", "tower"), "x", list(0L, 20L))), null, 0, false, null,
+            q -> ((Number) ((Map<?, ?>) q).get("x")).longValue() <= 10 ? "" : "too far east", null, parts::add);
+        System.out.println("create each: " + Kinloom.toJson(town) + " " + Kinloom.toJson(parts));
+        kl.character("BUTLER", "a butler", map("tools", map("open_door", map("door", "kitchen")), "offline", "Sir."));
+        kl.act("BUTLER", map("bell", 1L));
+        List<Kinloom.Action> done = new ArrayList<>();
+        for (int i = 0; i < 50 && done.isEmpty(); i++) {
+            Thread.sleep(100);
+            done = kl.act("BUTLER", map("bell", 1L), true, (tool, args) -> "vault".equals(args.get("door")) ? "the vault is locked" : "");
+        }
+        List<String> acted = new ArrayList<>();
+        for (Kinloom.Action a : done) acted.add(a.tool + " " + Kinloom.toJson(a.args));
+        System.out.println("act check: " + String.join(", ", acted));
+        Thread.sleep(100);
+        String refusedNote = "-";
+        for (Object m : (List<Object>) kl.soul("BUTLER", "player").get("memories")) if (((String) m).startsWith("The game did not let me")) { refusedNote = (String) m; break; }
+        System.out.println("act refused: " + refusedNote);
+        System.out.println("suggest check: " + Kinloom.toJson(kl.suggest("BUTLER", Arrays.asList("Ask about the sword", "Leave"), "player", null,
+            t -> t.contains("!") ? "no shouting" : "")));
+        System.out.println("remark: " + kl.remark("the builder raised a lighthouse on the north shore", "an old fisherman", null, null, 0));
+        System.out.println("remark offline: " + kl.remark("", "", null, Arrays.asList("Look at that!"), 0));
         Object before = kl.create("loot", map("item", "sword"), null, 0, true);
         kl.prepare(10);
         System.out.println("create instant: " + Kinloom.toJson(before) + " -> " + Kinloom.toJson(kl.create("loot", map("item", "sword"), null, 0, true)));

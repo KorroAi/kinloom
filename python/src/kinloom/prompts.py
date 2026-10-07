@@ -35,9 +35,40 @@ def _head(task, c, language):
 CLIP = 4000   # characters of facts, situation, context or state the model reads (more is cut, and journaled)
 
 
+def _dumps(obj):
+    return json.dumps(obj, ensure_ascii=False, default=str)
+
+
+def _short(v):
+    """A value made shorter for a context that is too long: long text cut, long lists trimmed, big objects counted."""
+    if isinstance(v, str):
+        return v if len(v) <= 80 else v[:80] + "..."
+    if isinstance(v, (list, tuple)):
+        return list(v) if len(v) <= 3 else list(v[:3]) + ["(%d more)" % (len(v) - 3)]
+    if isinstance(v, dict):
+        return v if len(_dumps(v)) <= 200 else "(%d fields)" % len(v)
+    return v
+
+
 def _clip(obj, limit=CLIP):
-    text = json.dumps(obj, ensure_ascii=False, default=str)
-    return text if len(text) <= limit else text[:limit] + "..."
+    """obj as JSON in at most `limit` characters. An object too long keeps every key, in its order (the first ones
+    matter most: put them first): the last values are shortened first, then replaced by "(cut)". Anything else is cut."""
+    text = _dumps(obj)
+    if len(text) <= limit:
+        return text
+    if isinstance(obj, dict) and obj:
+        keys = list(obj)
+        pairs = [_dumps({k: obj[k]})[1:-1] for k in keys]     # '"key": value', as the whole object writes it
+        size = sum(len(p) for p in pairs) + 2 * len(pairs)       # the braces and the ", " between pairs
+        for value_of in (lambda k: _short(obj[k]), lambda k: "(cut)"):
+            for i in reversed(range(len(keys))):
+                new = _dumps({keys[i]: value_of(keys[i])})[1:-1]
+                size += len(new) - len(pairs[i])
+                pairs[i] = new
+                if size <= limit:
+                    return "{" + ", ".join(pairs) + "}"
+        text = "{" + ", ".join(pairs) + "}"
+    return text[:limit] + "..."
 
 
 def feeling(v):
@@ -103,6 +134,14 @@ def picture_block(pictures, speaker=None):
     return "A picture comes with this request: look at it and use what it shows.\n"
 
 
+def refused_block(refused):
+    """The game refused the last answer (create's check): its reason, once, with the answer it refused."""
+    if not refused:
+        return ""
+    return ("The game refused your last answer: %s\nThe refused answer: %s\nAnswer again: keep what was fine, fix that.\n"
+            % (refused["why"], _clip(refused["answer"], 1500)))
+
+
 def steer_block(steer):
     """What the game decided for this reply (Kinloom.steer): the model makes it happen, in the character's words."""
     if not steer:
@@ -165,6 +204,24 @@ def act_system(c, language):
         "\n".join(tools),
         'Answer as JSON: {"actions": [{"tool": "<name>", "args": {...}}]}. Use at most 3 actions; an empty list is fine.',
     ])
+
+
+def remark_system(who, language, chars=None):
+    """Someone in the crowd (no declared character) says one line about what just happened."""
+    return "\n".join([
+        "Kinloom task: remark",
+        "You are %s in a video game world. Something just happened in front of you." % who,
+        "Say one short line out loud about it, in your own voice: surprised, warm, funny or grumpy, at most 14 words%s."
+        % ((" and at most %d characters" % chars) if chars else ""),
+        "Speak as a person in that world: never mention games, players or AI. Use only numbers given in the facts.",
+        write_in(language),
+        _DATA,
+        'Answer as JSON: {"line": "what you say"}',
+    ])
+
+
+def remark_user(about):
+    return "What just happened: %s\nSay your line now." % about
 
 
 def create_system(what, shape, language):

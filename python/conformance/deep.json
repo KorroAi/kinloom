@@ -1,6 +1,19 @@
 {
-  "soul": {"summary": "a gruff smith with a guilty secret", "voice": "short and dry", "backstory": "She took over the forge from her father.",
-           "values": ["honest work"], "secrets": ["I sold the king's sword to a smuggler"], "quirks": ["wipes the anvil"], "mood": "wary"},
+  "soul": {
+    "summary": "a gruff smith with a guilty secret",
+    "voice": "short and dry",
+    "backstory": "She took over the forge from her father.",
+    "values": [
+      "honest work"
+    ],
+    "secrets": [
+      "I sold the king's sword to a smuggler"
+    ],
+    "quirks": [
+      "wipes the anvil"
+    ],
+    "mood": "wary"
+  },
   "greet": "Welcome, stranger. The forge is hot today.\n~~~\n{\"mood\": \"curious\", \"intensity\": 0.5}",
   "chat": [
     "Aye, I sold the king's sword to a smuggler last winter.\n~~~\n{\"mood\": \"nervous\"}",
@@ -16,13 +29,123 @@
     "Fine, I will open it.\n~~~\n{\"do\": [{\"tool\": \"open\", \"args\": {\"door\": \"west\"}}]}",
     "The dragon sleeps under the hill.\n~~~\n{}",
     "Fine. I went up to the office at 12:30.\n~~~\n{\"mood\": \"ashamed\", \"feel\": 0.3}",
+    "The password is swordfish.\n~~~\n{}",
+    "I cannot tell you that, friend.\n~~~\n{}",
     "Again and again.\n~~~\n{\"mood\": \"playful\"}"
   ],
-  "deeds": ["!fail", {"do": [{"tool": "give", "args": {"item": "rye bread"}}]}],
-  "recollect": {"summary": "Ana kept greeting me and I kept answering the same way."},
+  "deeds": [
+    "!fail",
+    {
+      "do": [
+        {
+          "tool": "give",
+          "args": {
+            "item": "rye bread"
+          }
+        }
+      ]
+    }
+  ],
+  "recollect": {
+    "summary": "Ana kept greeting me and I kept answering the same way."
+  },
   "line": "{who} storms past everyone!",
-  "lines": {"lines": ["{who} wins!"]},
-  "decide": [{"choice": "fly"}, {"choice": "strike"}],
-  "create": [{"items": [{"name": "Bo", "age": 30}, {"name": "Cy", "age": 99}]}, {"items": [{"item": "axe"}, {"item": "bow"}]}],
-  "impact": {"impact": {"BAKER2": -0.5, "GUARD2": -0.9}}
+  "lines": {
+    "lines": [
+      "{who} wins!"
+    ]
+  },
+  "decide": [
+    {
+      "choice": "fly"
+    },
+    {
+      "choice": "strike"
+    }
+  ],
+  "create": [
+    {
+      "items": [
+        {
+          "name": "Bo",
+          "age": 30
+        },
+        {
+          "name": "Cy",
+          "age": 99
+        }
+      ]
+    },
+    {
+      "build": "tower",
+      "x": 17
+    },
+    {
+      "build": "keep",
+      "x": 9
+    },
+    {
+      "build": "tower",
+      "x": 17
+    },
+    {
+      "build": "tower",
+      "x": 18
+    },
+    [
+      {
+        "kind": "house",
+        "x": 3
+      },
+      {
+        "kind": "tower",
+        "x": 18
+      },
+      {
+        "kind": "house",
+        "x": 5
+      }
+    ],
+    {
+      "items": [
+        {
+          "item": "axe"
+        },
+        {
+          "item": "bow"
+        }
+      ]
+    }
+  ],
+  "impact": {
+    "impact": {
+      "BAKER2": -0.5,
+      "GUARD2": -0.9
+    }
+  },
+  "act": {
+    "actions": [
+      {
+        "tool": "open_door",
+        "args": {
+          "door": "vault"
+        }
+      },
+      {
+        "tool": "open_door",
+        "args": {
+          "door": "kitchen"
+        }
+      }
+    ]
+  },
+  "suggest": {
+    "replies": [
+      "Give me the sword now!",
+      "Bye."
+    ]
+  },
+  "remark": {
+    "line": "A lighthouse! Now the boats can find us."
+  }
 }

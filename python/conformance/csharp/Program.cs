@@ -265,6 +265,8 @@ static class Program
         await kl.Steer("NINA", "admit you went up to the office at 12:30");
         Console.WriteLine("steer: " + await kl.Chat("NINA", "Where were you?", null, "Ana"));
         Console.WriteLine("warm up: " + N(await kl.Opinion("NINA", "Ana")));
+        kl.Character("KEEPER", "a gatekeeper", D(("offline", "Move along.")));
+        Console.WriteLine("chat check: " + await kl.Chat("KEEPER", "What is the password?", check: t => t.Contains("swordfish") ? "never say the password" : ""));
         kl.Character("ECHO", "a parrot");
         for (int i = 0; i < 11; i++) await kl.Chat("ECHO", "Hello " + i);
         await kl.Prepare(10);
@@ -281,6 +283,29 @@ static class Program
         for (int i = 0; i < 50 && Equals(later, first); i++) { await Task.Delay(100); later = kl.Decide("DUEL", D(("hp", 3L)), L("guard", "strike")); }
         Console.WriteLine("decide repair: " + first + " -> " + later);
         Console.WriteLine("create count: " + J(await kl.Create("villager", D(("name", "Ana"), ("age", L(18L, 80L))), null, 2)));
+        Func<object?, string?> fits = plan => Convert.ToInt64(((IDictionary<string, object>)plan!)["x"]) <= 10 ? "" : "no room at x=" + ((IDictionary<string, object>)plan!)["x"] + ", the plot ends at 10";
+        Console.WriteLine("create check: " + J(await kl.Create("a building", D(("build", "tower"), ("x", L(0L, 20L))), check: fits)));
+        Console.WriteLine("create refused twice: " + J(await kl.Create("a building", D(("build", "tower"), ("x", L(0L, 20L))), check: fits, offline: D(("build", "hut"), ("x", 1L)))));
+        var parts = new List<object?>();
+        var town = await kl.Create("the parts of a town", L(D(("kind", L("house", "tower")), ("x", L(0L, 20L)))), each: p => parts.Add(p),
+            check: q => Convert.ToInt64(((IDictionary<string, object>)q!)["x"]) <= 10 ? "" : "too far east");
+        Console.WriteLine("create each: " + J(town) + " " + J(parts));
+        kl.Character("BUTLER", "a butler", D(("tools", D(("open_door", D(("door", "kitchen"))))), ("offline", "Sir.")));
+        kl.Act("BUTLER", D(("bell", 1L)));
+        var done = new List<KinloomAction>();
+        for (int i = 0; i < 50 && done.Count == 0; i++)
+        {
+            await Task.Delay(100);
+            done = kl.Act("BUTLER", D(("bell", 1L)), true, (tool, args) => args.TryGetValue("door", out var door) && door as string == "vault" ? "the vault is locked" : "");
+        }
+        Console.WriteLine("act check: " + string.Join(", ", done.Select(a => a.Tool + " " + J(a.Args))));
+        await Task.Delay(100);
+        var butler = await kl.Soul("BUTLER");
+        var refusedNote = butler != null && butler["memories"] is IList mems ? mems.Cast<object>().Select(m => m.ToString()!).FirstOrDefault(m => m.StartsWith("The game did not let me")) : null;
+        Console.WriteLine("act refused: " + (refusedNote ?? "-"));
+        Console.WriteLine("suggest check: " + J(await kl.Suggest("BUTLER", new[] { "Ask about the sword", "Leave" }, check: t => t.Contains("!") ? "no shouting" : "")));
+        Console.WriteLine("remark: " + await kl.Remark("the builder raised a lighthouse on the north shore", "an old fisherman"));
+        Console.WriteLine("remark offline: " + await kl.Remark("", offline: new[] { "Look at that!" }));
         var before = await kl.Create("loot", D(("item", "sword")), null, 0, true);
         await kl.Prepare(10);
         Console.WriteLine("create instant: " + J(before) + " -> " + J(await kl.Create("loot", D(("item", "sword")), null, 0, true)));

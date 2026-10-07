@@ -2,6 +2,59 @@
 
 ## Unreleased
 
+Learned from the demo games (The Plot, the Isaac mod), in Python and every SDK:
+
+- `create(..., check=, offline=)`: the game's rules in the loop. `check(answer)` returns nothing to accept the answer
+  or why it breaks a rule (no room, too expensive, an unknown name); the model hears the reason once, then the game's
+  own `offline` answer (checked against the example's shape) is used. With `count`/`instant`, refused items are
+  replaced. With a real model, ten building requests on a crowded plot: 3/10 plans fit the rules without it, 10/10
+  with it, all written by the model, 17 calls instead of 10 (`proof/rules`).
+- `/v1/create` answers `"source": "model"|"offline"` and takes `"offline"` and `"refused": {"answer", "why"}`: relay
+  clients run the check in the game. Game refusals show in the journal as `refused`.
+- Cookbook: 35 (the game's rules decide what the model may make), 36 (challenges the game can check: the model picks
+  the goal among the game's own); `kinloom recipe` routes such requests to them.
+
+Then four more, in Python and every SDK (conformance native and relay, vectors 540):
+
+- `create(..., each=fn)`: the items of a list answer reach the game as the model writes them (native SDKs and Python
+  read the model's stream; `/v1/create` with `"stream": true` sends them as server-sent events `{"item"}` then
+  `{"done", "value", "source"}`; relay clients hand them over when the answer is complete). With `check=`, refused
+  items are left out; with `count`, the list is filled with the offline answer.
+- `check=` on `chat`, `decide`, `act` and `suggest`. A refused reply is taken back (its words, the memory of it and the
+  actions it decided), asked again once with the reason, then the offline reply is used (`/v1/chat` takes
+  `"refused": {"answer", "why"}` and `"drop": true`). A refused decision is not used (the last accepted one is, else the
+  default) and the next decisions see why; a refused action is not returned and the character remembers it; a refused
+  suggestion is replaced by its example.
+- `remark(about, who=, facts=, offline=, max_chars=)` (`/v1/remark`): one short line from someone in the crowd, no
+  character to declare. Numbers only from the facts and what happened, the content filter, 20 words at most; offline, the game's lines in
+  turn.
+- Long `context`, `facts`, `situation` and `state` keep every key in its order: the last values are shortened first,
+  then replaced by "(cut)" (before, the JSON was cut in the middle, losing whatever came last).
+- Cookbook 37 (items as they are written), 38 (bystanders who react), 39 (the game's rules on what characters say,
+  decide and do); `kinloom recipe` routes for them.
+- Fixed (found with a real model, `proof/triple`): a list example without `count` often came back as the offline
+  answer. In JSON mode the model wraps the list in an object (`{"list": [...]}`) or answers one item alone; both are
+  now read as the list (two lists in one object stay an error). In the same runs, `chat(..., check=)` took a rule the model
+  broke in 4 of 6 replies to 0 of 6, every reply still the model's.
+
+Then an audit of the new calls (three reviews: the core and server, four SDKs, three SDKs and the docs), each bug
+reproduced, fixed in Python and every SDK:
+
+- A refused chat reply now also takes back what it changed inside: the feeling it moved (and the warm-up it used), its
+  mood, its gesture and the memories it wrote (before, a refused "the password is swordfish" stayed in memory).
+- Items stop when `create` returns: a call given up on (timed out) kept streaming into `each`, and the returned list
+  kept growing. In C++ that stream also ran on a destroyed brain and the game's dangling references (use after free).
+- A `check` that raises (or panics) now refuses the answer, on every call and path, and is journaled; an `each` or
+  `on_piece` that raises is told and never breaks the call (it made `create` answer offline, or `act` drop actions).
+- C#: `check`, `each` and `onPiece` run on the caller's context (Unity: the main thread), as the rest of the SDK.
+- Long contexts are clipped in linear time (8000 keys: 74 s before, 0.3 s now; a 1 MB request could take minutes).
+- A wrapped list is read as its first list, the same rule items stream by; a refused reply takes back only its own
+  actions, never an equal one still waiting from an earlier reply (Godot, Rust, C++, Lua); a non-object situation keeps
+  the refusal note (Lua crashed); decide-check, remark and take-back tables are bounded; relay `remark` names the
+  speaker and sizes the box as the brain does; `/v1/remark` counts as model work for the rate limit; a refused reply
+  that decided nothing no longer takes back an earlier reply's actions over a relay; an older server's whole answer is
+  read when `create(each=)` asked for a stream.
+
 Found by an audit (2026-10-07) of the core, the server and every SDK, each bug reproduced first:
 
 - Safety: a streamed reply reached the player before the content filter ran (the final reply was filtered, the
