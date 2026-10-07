@@ -15,6 +15,7 @@ import collections
 import copy
 import collections.abc
 import inspect
+import itertools
 import json
 import math
 import os
@@ -23,6 +24,7 @@ import re
 import tempfile
 import threading
 import time
+import weakref
 from concurrent.futures import ThreadPoolExecutor
 
 from . import config as _config
@@ -35,7 +37,7 @@ from . import voice as _voice
 from .memory import Memory
 from .providers import Reply
 from .providers import complete as _complete
-from .shapes import Shape, clean_text, find_json
+from .shapes import CUT, Shape, clean_text, find_json
 
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _DIGIT = re.compile(r"\d")
@@ -74,9 +76,34 @@ CHAT_KINDS = frozenset(("chat", "greet", "converse", "suggest", "deeds", "line")
 MAX_SUGGESTIONS = 6
 
 
+class _Follow:
+    """Another model id on whatever provider a Fallback uses now: when a dead key makes it switch, this follows
+    instead of calling the dead key forever."""
+
+    def __init__(self, fallback, model):
+        self._fallback, self._model, self._made = fallback, model, (None, None)
+        self._lock = threading.Lock()
+
+    def _now(self):
+        current = self._fallback.current
+        with self._lock:
+            if self._made[0] is not current:
+                self._made = (current, _with_model(current, self._model))
+            return self._made[1]
+
+    def complete(self, *args, **kwargs):
+        return self._now().complete(*args, **kwargs)
+
+    def __getattr__(self, name):
+        return getattr(self._now(), name)
+
+
 def _with_model(p, model):
     """The same endpoint and key with another model id."""
-    p = getattr(p, "current", p)                       # several providers: the one in use
+    if hasattr(p, "current") and hasattr(p, "rest"):    # several providers: the one in use, now and after a switch
+        _with_model(p.current, model)                  # refused now (no provider to share) rather than at the first call
+        return _Follow(p, model)
+    p = getattr(p, "current", p)
     if isinstance(p, _harness.Harness):
         return _harness.Harness(p.kind, model, p.command)
     if p is None or not hasattr(p, "complete"):
@@ -123,8 +150,10 @@ def _unstage(m):
     keep = _souls.stage_keep(m.group(1) or "")
     return " " if keep is None else keep
 MAX_NAME = 48
+MAX_WHAT = 500                                  # characters of create's `what` (more is cut, and journaled)
 MAX_EVENT = 160               # event names may describe the moment ("challenging another trainer to a battle")
 MAX_CHARACTERS = 5000         # across sessions: past this, unknown names get a throwaway character (nothing grows)
+MAX_PER_SESSION = 300         # one session (one player online) never fills the table for everyone else
 _CONFIG_KEYS = ("personality", "soul", "lines", "offline", "events", "tools", "max_words", "max_chars", "every", "language",
                 "group", "trust", "invent", "voice", "warmth", "secret_trust", "warm_up")
 MAX_STEER = 300               # what the game decides for the next reply (steer), in characters
@@ -451,6 +480,15 @@ def _name(x):
     return clean_text(str(x))[:MAX_NAME] if x not in (None, "") else None
 
 
+MAX_KEYS = 2000     # entries per cache (decisions, banks, pools...): games that put live data in keys stay bounded
+
+
+def _trim(table, cap=MAX_KEYS):
+    """The oldest entries go once a table passes its cap (dicts keep insertion order). Called under the brain's lock."""
+    while len(table) > cap:
+        del table[next(iter(table))]
+
+
 def _finite(v):
     if isinstance(v, bool) or not isinstance(v, (int, float)):
         return None
@@ -538,6 +576,13 @@ class Brain:
         self.voice_language = chosen
         self.limit = max(1, int(calls_per_minute or cfg["calls_per_minute"]))
         self.prices = prices or cfg.get("prices")
+        if self.prices is not None and not (isinstance(self.prices, dict) and all(
+                _finite(v) is not None and v >= 0 for k, v in self.prices.items() if k in ("input", "output", "cached_input"))):
+            if prices is not None:
+                raise ValueError('prices: {"input": $/M tokens, "output": ..., "cached_input": ...} as numbers, got %r' % (prices,))
+            refused.append('kinloom.json: prices must be {"input": n, "output": n, "cached_input": n} in dollars per '
+                           'million tokens, got %r (no cost is counted)' % (self.prices,))
+            self.prices = None
         # Content filter: banned words from kinloom.json and/or a function text -> True (allowed) / False (blocked).
         words = [w for w in (cfg.get("banned_words") or []) if isinstance(w, str) and w.strip()]
         self._banned = re.compile(r"\b(%s)\b" % "|".join(re.escape(w.strip()) for w in words), re.I) if words else None
@@ -564,6 +609,9 @@ class Brain:
         self.memory = Memory(memory_path)
         self._lock = threading.RLock()
         self._characters = {}                  # (session, name) -> Character
+        self._per_session = {}                 # session -> how many of them
+        self._session_used = {}                # session -> when it last used a character (the idlest goes first)
+        self._ticks = itertools.count()        # an order of use (clocks can tie)
         self._declared = set()                 # (session, name) declared by the game (not created on the fly)
         self._banks, self._decisions, self._pending, self._pools, self._history, self._state = {}, {}, {}, {}, {}, {}
         self._minds = {}                       # (session, name) -> _MindState
@@ -586,6 +634,7 @@ class Brain:
         self._greeting_busy = set()
         self._bonds = {}                       # session -> {name: {speaker: {talks, first, last}}}
         self._said = {}                        # (session, name) -> their last replies, to anyone (no echoes)
+        self._clips = set()                    # (name, label) already journaled as too long
         self._switches = 0                     # provider switches already told in the journal
         self._rises = {}                       # (session, name, speaker) -> (since, feeling gained, last) this conversation
         self._steers = {}                      # (session, name) -> what the game decided for the next reply (steer)
@@ -605,9 +654,13 @@ class Brain:
         self._busy = 0
         self._idle = threading.Condition(self._lock)
         self._closed = False
-        atexit.register(self.close)
+        # A weak reference: a brain the game drops (one per scene, per request) is freed, not kept alive until exit
+        me = weakref.ref(self)
+        atexit.register(lambda: me() is not None and me().close())
         for why in refused:
             self._log("refused", "kinloom", why)
+        if self.memory.problem:
+            self._log("error", "kinloom", self.memory.problem)
         self._refresh_config()
         if getattr(self.provider, "base_url", None) or getattr(self.provider, "starts_ahead", False):
             threading.Thread(target=_warm, args=(self.provider,), daemon=True, name="kinloom-warm").start()
@@ -692,9 +745,60 @@ class Brain:
             c = self._characters.get((session, name))
             if c is None:
                 c = Character(name)
-                if len(self._characters) < MAX_CHARACTERS:
-                    self._characters[(session, name)] = c
+                self._store(session, c)
+            elif session in self._session_used:
+                self._session_used[session] = next(self._ticks)
             return c
+
+    def _store(self, session, c):
+        """Keeps a character (under the lock). A full table first lets go of the oldest one the game never declared
+        (made on the fly from a name); a session past its share keeps nothing more. False: not stored (a throwaway)."""
+        key = (session, c.name)
+        if key in self._characters:
+            self._characters[key] = c
+            return True
+        if self._per_session.get(session, 0) >= MAX_PER_SESSION:
+            return False
+        if len(self._characters) >= MAX_CHARACTERS:
+            old = next((k for k in self._characters if k not in self._declared), None)
+            if old is not None:
+                self._evict(old)
+            else:
+                # All declared: the session used least recently lets go of its characters (a player gone for long;
+                # back, their game declares them again), never the one asking
+                idle = min((s for s in self._session_used if s != session), key=self._session_used.get, default=None)
+                if idle is None:
+                    return False
+                for k in [k for k in self._characters if k[0] == idle]:
+                    self._evict(k)
+                self._log("refused", "kinloom", "too many characters (%d): session %r, idle the longest, let go of "
+                          "its characters" % (MAX_CHARACTERS, idle[:40]))
+        self._characters[key] = c
+        self._per_session[session] = self._per_session.get(session, 0) + 1
+        self._session_used[session] = next(self._ticks)
+        return True
+
+    def _evict(self, key):
+        """A character and what it said and felt go (under the lock): nothing grows past the caps."""
+        del self._characters[key]
+        self._declared.discard(key)
+        self._game_declared.discard(key)
+        self._cfg_declared.pop(key, None)
+        for table in (self._moods, self._gestures, self._said, self._gesture_seen, self._pending, self._steers):
+            table.pop(key, None)
+        for table in (self._history, self._rises):
+            for k in [k for k in table if k[:2] == key]:
+                del table[k]
+        (self._bonds.get(key[0]) or {}).pop(key[1], None)
+        self._per_session[key[0]] -= 1
+        if not self._per_session[key[0]]:
+            del self._per_session[key[0]]
+            self._session_used.pop(key[0], None)
+
+    def stored(self, session, name):
+        """True when this character is kept (declared or met), False for a throwaway (tables full) or an unknown name."""
+        with self._lock:
+            return (session, clean_text(str(name))[:MAX_NAME] or "?") in self._characters
 
     def _log(self, kind, name, text, **detail):
         entry = {"time": time.time(), "kind": kind, "name": name, "text": text}
@@ -744,18 +848,38 @@ class Brain:
         done = threading.Event()
         provider, system = self._provider_for(kind), self._rated(system)
 
+        gate = threading.Lock()
+
         def run():
             try:
-                box["r"] = _complete(provider, system, user, json_mode=json_mode, max_tokens=max_tokens,
-                                     timeout=limit, on_text=on_text, images=images)
+                r = _complete(provider, system, user, json_mode=json_mode, max_tokens=max_tokens,
+                              timeout=limit, on_text=on_text, images=images)
             except Exception as e:  # providers never raise, but a custom one might
-                box["r"] = Reply(False, error="%s: %s" % (type(e).__name__, e))
-            done.set()
+                r = Reply(False, error="%s: %s" % (type(e).__name__, e))
+            with gate:
+                box["r"] = r
+                late = box.get("gave_up")
+                done.set()
+            if late:
+                self._late(r)
 
         threading.Thread(target=run, daemon=True, name="kinloom-call").start()
-        r = box["r"] if done.wait(limit + 0.25) else Reply(False, error="timed out after %.1f s" % limit)
+        done.wait(limit + 0.25)
+        with gate:
+            if not done.is_set():
+                box["gave_up"] = True
+            r = box.get("r") or Reply(False, error="timed out after %.1f s" % limit)
         self._account(kind, name, r)
         return r
+
+    def _late(self, r):
+        """A call given up on that answered later: its tokens were billed all the same, so they count (and the caps)."""
+        with self._lock:
+            s = self._stats
+            s["input_tokens"] += r.input_tokens
+            s["cached_tokens"] += r.cached_tokens
+            s["output_tokens"] += r.output_tokens
+            self._spent.append((time.monotonic(), self._price(r)))
 
     def _provider_for(self, kind):
         """The model of a task: conversations and what players wait for use "chat", the rest "background"."""
@@ -951,10 +1075,10 @@ class Brain:
         c = Character(name, personality, lines, offline, events, tools, max_words, every, language, group, trust, invent,
                       voice, max_chars, warmth, secret_trust, warm_up)
         with self._lock:
-            if (session, c.name) not in self._characters and len(self._characters) >= MAX_CHARACTERS:
-                self._log("refused", c.name, "too many characters (%d): not stored" % MAX_CHARACTERS)
+            if not self._store(session, c):
+                self._log("refused", c.name, "too many characters (%d in all, %d per session): not stored" % (
+                    MAX_CHARACTERS, MAX_PER_SESSION))
                 return c
-            self._characters[(session, c.name)] = c
             self._declared.add((session, c.name))
             if not _config:
                 self._game_declared.add((session, c.name))      # the game's own declaration wins over kinloom.json
@@ -1174,8 +1298,10 @@ class Brain:
                 if isinstance(saved, dict):
                     for a, row in saved.items():
                         if isinstance(row, dict):
-                            table[str(a)] = {str(b): {"talks": int(v.get("talks", 1)), "first": float(v.get("first", 0)),
-                                                      "last": float(v.get("last", 0))}
+                            # Each value checked: a hand-edited file or a loaded save never breaks chat() later
+                            table[str(a)] = {str(b): {"talks": max(1, int(min(1e9, _finite(v.get("talks")) or 1))),
+                                                      "first": _finite(v.get("first")) or float(v["last"]),
+                                                      "last": float(v["last"])}
                                              for b, v in row.items() if isinstance(v, dict) and _finite(v.get("last")) is not None}
                 self._bonds[session] = table
             return table
@@ -1202,6 +1328,7 @@ class Brain:
                         start, gained = now, 0.0
                     change = max(0.0, min(change, c.warm_up - gained))
                     self._rises[(session, c.name, speaker)] = (start, gained + change, now)
+                    _trim(self._rises)
                 if change < i["feel"]:
                     self._log("refused", c.name, "feel: %s already won %+.1f this conversation" % (speaker, c.warm_up))
             if change:
@@ -1277,6 +1404,7 @@ class Brain:
         max_chars: this box's size (else the character's): a line that fits is picked first, else one is cut."""
         c = self._char(session, name)
         facts = _mapping(facts, "facts")
+        self._clip_note(c.name, "facts", facts)
         event = _event_key(event)
         limit = _limit(max_chars) or c.max_chars
 
@@ -1287,8 +1415,9 @@ class Brain:
                            self._context(session, c.name, event) + prompts.facts_block(facts), False, True, max_tokens=120)
             if r.ok:
                 text = find_json(r.text)
-                line = text.get("line") if isinstance(text, dict) else r.text
-                ok, template = self._valid_line(str(line), set(facts), c)
+                # Only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+                line = text.get("line") if isinstance(text, dict) else None if text is not None else r.text
+                ok, template = self._valid_line(line, set(facts), c) if isinstance(line, str) else (False, None)
                 if ok:
                     said = _souls.fit_chars(fill(template, facts), limit)
                     self._log("say", c.name, said, event=event, source="fresh")
@@ -1299,6 +1428,7 @@ class Brain:
             bank = self._banks.get(key)
             if bank is None:
                 bank = self._banks[key] = _Bank()
+                _trim(self._banks)
             usable = [t for t in bank.unused if set(_PLACEHOLDER.findall(t)) <= names]
             known = [t for t in bank.templates if set(_PLACEHOLDER.findall(t)) <= names]
             template = None
@@ -1408,6 +1538,7 @@ class Brain:
             return
         with self._lock:
             bank = self._banks.setdefault(key, _Bank())
+            _trim(self._banks)
             if bank.filling or bank.failures >= 3:
                 return
             bank.filling = True
@@ -1443,12 +1574,14 @@ class Brain:
         shape = Shape.of(choices if isinstance(choices, dict) else {"choice": choices})
         key = (session, c.name, shape.signature())
         situation = situation if isinstance(situation, dict) else {"situation": situation}
+        self._clip_note(c.name, "situation", situation)
         every = c.every if every is None else max(0.2, _num(every, "every"))
         now = self.clock()
         with self._lock:
             d = self._decisions.get(key)
             if d is None:
                 d = self._decisions[key] = _Decision(shape.default())
+                _trim(self._decisions)
             due = not d.thinking and (d.at is None or now - d.at >= every or
                                       (now - d.at >= every / 4 and _changed(d.situation, situation)))
             if due:
@@ -1488,6 +1621,8 @@ class Brain:
         if ok:
             return value
         self._log("repair", name, "%s: %s" % (kind, error))
+        if error == CUT:                 # stopped by the token limit: the second try gets room to finish
+            max_tokens = min(4000, max_tokens * 2)
         r = self._call(kind, name, system, user + prompts.repair(error), True, foreground, max_tokens, timeout=timeout,
                        images=images)
         if not r.ok:
@@ -1539,10 +1674,11 @@ class Brain:
         spec = self._voice_of(session, name, text)
         key = _souls.seed_key(json.dumps([self.voice.describe(), spec, text], sort_keys=True))
         path = self._audio_path(key)
-        if os.path.exists(path):
+        try:
             with open(path, "rb") as f:
-                data = f.read()
-            return _voice.Audio(data, path, text, spec["seed"], cached=True)
+                return _voice.Audio(f.read(), path, text, spec["seed"], cached=True)
+        except OSError:          # not cached yet, or being replaced by another thread (Windows): spoken again
+            pass
         if not self.voice.local() and not self._allow(True):
             self._log("budget", who, "over budget: not spoken")
             return None
@@ -1559,10 +1695,19 @@ class Brain:
         if data is None:
             self._log("error", who, "speak: %s" % err)
             return None
-        tmp = path + ".part"
-        with open(tmp, "wb") as f:
-            f.write(data)
-        os.replace(tmp, path)
+        # The cache is a convenience: the same line spoken from two threads, or a file locked by a player (Windows),
+        # never costs the game its audio
+        tmp = "%s.%d-%d.part" % (path, os.getpid(), threading.get_ident())
+        try:
+            with open(tmp, "wb") as f:
+                f.write(data)
+            os.replace(tmp, path)
+        except OSError:
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
+            path = None
         self._voice_writes = getattr(self, "_voice_writes", 0) + 1
         if self._voice_writes % 100 == 0:
             _voice.prune(self._voice_dir)
@@ -1612,6 +1757,7 @@ class Brain:
             return []
         key = (session, c.name)
         situation = situation if isinstance(situation, dict) else ({"situation": situation} if situation is not None else {})
+        self._clip_note(c.name, "situation", situation)
         now = self.clock()
         with self._lock, _TAKE:
             entry = self._pending.setdefault(key, {"actions": [], "at": None, "thinking": False})
@@ -1662,7 +1808,7 @@ class Brain:
             if not isinstance(item, dict):
                 continue
             tool = item.get("tool") or item.get("name")
-            if tool not in c.tools:
+            if not isinstance(tool, str) or tool not in c.tools:
                 self._log("refused", c.name, "unknown tool %r" % (tool,))
                 continue
             shape, _ = c.tools[tool]
@@ -1958,7 +2104,10 @@ class Brain:
         if count and isinstance(example, list) and len(example) == 1:
             example = example[0]         # [item] with count: count items like it (agents write it; a list of lists never is)
         shape = Shape.of(example)
-        what = clean_text(what)[:200]
+        what = clean_text(what)
+        self._clip_note(what[:MAX_WHAT], "what", what, MAX_WHAT, True)
+        self._clip_note(what[:MAX_WHAT], "context", context)
+        what = what[:MAX_WHAT]
         pictures = self._pictures(what, image) if image is not None else []
         if instant:
             if pictures:
@@ -1972,7 +2121,7 @@ class Brain:
             return shape.default()
         system = prompts.create_system(what, shape, self._written())
         user = self._context(session, None, what) + prompts.context_block(context) + prompts.picture_block(pictures)
-        value = self._structured("create", what, system, user, shape, True, 800, timeout, pictures)
+        value = self._structured("create", what, system, user, shape, True, 1500, timeout, pictures)
         if value is None:
             with self._lock:
                 self._stats["offline_answers"] += 1
@@ -2005,6 +2154,7 @@ class Brain:
         key = (session, what, shape.signature())
         with self._lock:
             pool = self._pools.setdefault(key, {"items": collections.deque(), "filling": False, "failures": 0})
+            _trim(self._pools)
             item = pool["items"].popleft() if pool["items"] else None
             low = len(pool["items"]) < 2 and not pool["filling"] and pool["failures"] < 3 and self.provider is not None
             if low:
@@ -2045,11 +2195,13 @@ class Brain:
         max_chars: this box's size (else the character's). image: a picture that comes with the message (what the
         speaker shows, or what the character sees now)."""
         c = self._char(session, name)
+        began = time.monotonic()
         pictures = self._pictures(c.name, image) if image is not None else []
         limit = _limit(max_chars) or c.max_chars
         message = clean_text(message or "")[:1000]
         speaker = _name(speaker) or "player"
         facts = _mapping(facts, "facts")
+        self._clip_note(c.name, "facts", facts)
         hkey = (session, c.name, speaker)
         now = self.wall()
         table = self._bond_table(session)
@@ -2113,7 +2265,9 @@ class Brain:
                         nonlocal streamed
                         shown = cut.feed(echo.feed(unstage.feed(guard.feed(splitter.feed(piece)))))
                         if shown and not gate["shut"]:
-                            if hidden and _souls.leaks(gate["shown"] + shown, hidden, public, asked=message):
+                            # Nothing reaches the player before the checks the final reply gets: secrets, content filter
+                            if hidden and _souls.leaks(gate["shown"] + shown, hidden, public, asked=message) or \
+                                    not self._allowed(gate["shown"] + shown):
                                 gate["shut"] = True
                                 return
                             gate["shown"] += shown
@@ -2124,7 +2278,8 @@ class Brain:
                     tail = cut.feed(echo.feed(unstage.feed(guard.feed(splitter.finish()[2]) + guard.finish()) + unstage.finish()) +
                                     echo.finish())
                     tail += cut.finish()
-                    if hidden and _souls.leaks(gate["shown"] + tail, hidden, public, asked=message):
+                    if hidden and _souls.leaks(gate["shown"] + tail, hidden, public, asked=message) or \
+                            tail and not self._allowed(gate["shown"] + tail):
                         tail = ""
                     if tail and r.ok and not r.cut and not gate["shut"]:
                         streamed = True
@@ -2182,7 +2337,9 @@ class Brain:
         decided = []
         if reply is not None and stored:
             if c.tools and source == "model" and not _souls.inner(inner)["do"]:
-                found = self._deeds(c, speaker, message, reply)
+                # what the reply agreed to, within what is left of the reply's time (a player is waiting)
+                left = (timeout or self._reply_deadline()) - (time.monotonic() - began)
+                found = self._deeds(c, speaker, message, reply, max(1.5, left))
                 if found:
                     inner = dict(inner or {}, do=found)
             decided = self._inner(session, c, speaker, inner)
@@ -2228,14 +2385,17 @@ class Brain:
         self._log("chat", c.name, reply, message=message, speaker=speaker, **({"offline": True} if inner is None else {}))
         return Line(reply, source, decided)
 
-    def _deeds(self, c, speaker, message, reply):
+    def _deeds(self, c, speaker, message, reply, budget=10.0):
         """What a reply that named no tool commits the character to: one small call, only for characters with tools.
-        Measured on a real model (proof/replies): replies said yes in words and left "do" empty most of the time."""
+        Measured on a real model (proof/replies): replies said yes in words and left "do" empty most of the time.
+        budget: seconds for everything here (the asking again included)."""
         system, user = prompts.deeds_system(c), prompts.deeds_user(c.name, speaker, message, reply)
-        r = self._call("deeds", c.name, system, user, True, True, 150, timeout=min(self.call_timeout, 5.0))
-        if not r.ok:        # a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+        start = time.monotonic()
+        r = self._call("deeds", c.name, system, user, True, True, 150, timeout=min(self.call_timeout, 5.0, budget))
+        left = budget - (time.monotonic() - start)
+        if not r.ok and left >= 1.0:  # a slow or failed call: what was agreed must not be lost, ask once more if time is left
             self._log("repair", c.name, "deeds: %s; asked again" % (r.error or "failed"))
-            r = self._call("deeds", c.name, system, user, True, True, 150, timeout=min(self.call_timeout, 5.0))
+            r = self._call("deeds", c.name, system, user, True, True, 150, timeout=min(self.call_timeout, 5.0, left))
         data = find_json(r.text) if r.ok else None
         found = data.get("do") if isinstance(data, dict) else None
         return [x for x in found if isinstance(x, dict)][:3] if isinstance(found, list) else []
@@ -2276,6 +2436,7 @@ class Brain:
         for this moment). Offline, or anything wrong with an answer: the example itself."""
         c = self._char(session, name)
         facts = _mapping(facts, "facts")
+        self._clip_note(c.name, "facts", facts)
         if isinstance(examples, str) or not isinstance(examples, (list, tuple)):
             raise ValueError('examples: a list of short replies the player could say, like ["Ask about her past", "Leave"]')
         given = [clean_text(str(x))[:80] for x in examples[:MAX_SUGGESTIONS] if x is not None and clean_text(str(x))]
@@ -2638,9 +2799,24 @@ class Brain:
     def remember(self, session, name, note, importance=0.6):
         self.memory.add(session, str(name), note, importance)
 
-    def set_state(self, session, state):
+    def _clip_note(self, name, label, value, limit=prompts.CLIP, text=False):
+        """Journals, once per name and label, that the model reads only the start of something too long."""
+        if not value:
+            return
+        size = len(value) if text else len(json.dumps(value, ensure_ascii=False, default=str))
+        if size <= limit:
+            return
         with self._lock:
-            self._state[session] = _mapping(state, "state")
+            if (name, label) in self._clips:
+                return
+            self._clips.add((name, label))
+        self._log("clipped", name, "%s: %d characters, the model reads the first %d" % (label, size, limit))
+
+    def set_state(self, session, state):
+        state = _mapping(state, "state")
+        self._clip_note("state", "state", state)
+        with self._lock:
+            self._state[session] = state
 
     # ---------------- reporting ----------------
 
@@ -2959,3 +3135,9 @@ class Kinloom:
 
     def close(self):
         self.brain.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()

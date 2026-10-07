@@ -62,6 +62,7 @@
 #endif
 #include <winsock2.h>
 #include <ws2tcpip.h>
+#include <io.h>
 #ifdef _MSC_VER
 #pragma comment(lib, "ws2_32.lib")
 #endif
@@ -2492,6 +2493,75 @@ inline std::string clean(const std::string& s0) {
 }
 inline std::string clean_value(const Json& v) { return clean(py::text(v)); }
 
+inline const char* const CUT = "the answer was cut off before its end: write it shorter and complete";
+
+/// Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or npos.
+inline size_t unclosed(const std::string& t) {
+    size_t n = t.size();
+    for (size_t i = 0; i < n; i++) {
+        char c = t[i];
+        if (c != '{' && c != '[') continue;
+        size_t j = i + 1;
+        while (j < n && (t[j] == ' ' || t[j] == '\t' || t[j] == '\r' || t[j] == '\n')) j++;
+        if (j >= n) continue;
+        bool looks = t[j] != '\0' && (c == '{' ? (t[j] == '"' || t[j] == '}') : std::strchr("\"{[]-0123456789tfn", t[j]) != nullptr);
+        if (!looks) continue;
+        int depth = 0;
+        bool quoted = false;
+        size_t k = i;
+        for (; k < n; k++) {
+            char ch = t[k];
+            if (quoted) {
+                if (ch == '\\') k++;
+                else if (ch == '"') quoted = false;
+            } else if (ch == '"') quoted = true;
+            else if (ch == '{' || ch == '[') depth++;
+            else if (ch == '}' || ch == ']') {
+                if (--depth == 0) break;
+            }
+        }
+        if (k >= n) return i;
+        i = k;
+    }
+    return std::string::npos;
+}
+
+/// Where the bracket opened at `at` closes (brackets in strings skipped), or npos.
+inline size_t bracket_end(const std::string& t, size_t at) {
+    long depth = 0;
+    bool quoted = false;
+    for (size_t k = at; k < t.size(); k++) {
+        char ch = t[k];
+        if (quoted) {
+            if (ch == '\\') k++;
+            else if (ch == '"') quoted = false;
+        } else if (ch == '"') quoted = true;
+        else if (ch == '{' || ch == '[') depth++;
+        else if ((ch == '}' || ch == ']') && --depth == 0) return k;
+    }
+    return std::string::npos;
+}
+
+/// The text without commas right before } or ] (outside strings): what models often write.
+inline std::string no_trailing_commas(const std::string& t) {
+    std::string out;
+    bool quoted = false;
+    for (size_t k = 0; k < t.size(); k++) {
+        char ch = t[k];
+        if (quoted) {
+            if (ch == '\\' && k + 1 < t.size()) { out += ch; out += t[++k]; continue; }
+            if (ch == '"') quoted = false;
+        } else if (ch == '"') quoted = true;
+        else if (ch == ',') {
+            size_t j = k + 1;
+            while (j < t.size() && (t[j] == ' ' || t[j] == '\t' || t[j] == '\r' || t[j] == '\n')) j++;
+            if (j < t.size() && (t[j] == '}' || t[j] == ']')) continue;
+        }
+        out += ch;
+    }
+    return out;
+}
+
 /// The first JSON object or array in a model answer, or null.
 inline Json find_json(const std::string& text) {
     std::string t = py::strip(text);
@@ -2506,18 +2576,26 @@ inline Json find_json(const std::string& text) {
     }
     Json v;
     if (py::loads(t, v)) return v;
+    // never an object nested in JSON that stops before its end (an answer cut by the token limit)
+    size_t stop = unclosed(t);
     for (char open : {'{', '['}) {
         size_t at = t.find(open);
         int tries = 0;
-        while (at != std::string::npos && tries < 20) {
+        while (at != std::string::npos && at < stop && tries < 20) {
             size_t end;
             if (py::decode(t, at, v, end)) return v;
+            // it closes but does not parse: a trailing comma? (never its inner object)
+            size_t closing = bracket_end(t, at);
+            if (closing != std::string::npos && py::loads(no_trailing_commas(t.substr(at, closing - at + 1)), v)) return v;
             at = t.find(open, at + 1);
             tries++;
         }
     }
     return Json();
 }
+
+/// True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that.
+inline bool cut_off(const std::string& text) { return find_json(text).is_null() && unclosed(py::strip(text)) != std::string::npos; }
 
 }  // namespace text
 
@@ -2706,11 +2784,36 @@ struct Shape {
                 err = path + " must be an object with " + py::join(names, ", ");
                 return false;
             }
-            OrderedMap<Json> o;
+            // keys matched exactly, else in another case (the first such key); none of them: one wrapper is read
+            const OrderedMap<Json>& given = value.fields();
+            std::unordered_map<std::string, std::string> lower;
+            for (auto& kv : given) lower.emplace(uni::lower(kv.first), kv.first);
+            std::vector<const Json*> found;
+            bool any = false;
             for (auto& f : fields) {
-                if (value.has(f.first)) {
+                const Json* hit = nullptr;
+                if (value.has(f.first)) hit = &given.find(f.first)->second;
+                else {
+                    auto l = lower.find(uni::lower(f.first));
+                    if (l != lower.end()) hit = &given.find(l->second)->second;
+                }
+                found.push_back(hit);
+                any = any || hit != nullptr;
+            }
+            if (!fields.empty() && !any) {
+                if (given.size() == 1 && given.begin()->second.type() == Json::Object) return check(given.begin()->second, path, out, err);
+                std::vector<std::string> names;
+                for (auto& f : fields) names.push_back(f.first);
+                err = path + " must be an object with " + py::join(names, ", ");   // none of the fields: not an answer
+                return false;
+            }
+            OrderedMap<Json> o;
+            size_t i = 0;
+            for (auto& f : fields) {
+                const Json* hit = found[i++];
+                if (hit) {
                     Json v;
-                    if (!f.second.check(value[f.first], f.first, v, err)) return false;
+                    if (!f.second.check(*hit, f.first, v, err)) return false;
                     o[f.first] = v;
                 } else o[f.first] = f.second.default_value();
             }
@@ -2724,7 +2827,7 @@ struct Shape {
     /// A model's answer read and checked.
     bool parse(const std::string& answer, Json& out, std::string& err) const {
         Json data = text::find_json(answer);
-        if (data.is_null()) { err = "the answer was not JSON"; return false; }
+        if (data.is_null()) { err = text::cut_off(answer) ? text::CUT : "the answer was not JSON"; return false; }
         return check(data, "value", out, err);
     }
 
@@ -3662,7 +3765,9 @@ inline std::string head(const std::string& task, const Persona& c, const std::st
     return join(lines);
 }
 
-inline std::string clip(const Json& obj, size_t limit = 1500) {
+constexpr size_t CLIP = 4000;  // characters of facts, situation, context or state the model reads (more is cut, and journaled)
+
+inline std::string clip(const Json& obj, size_t limit = CLIP) {
     std::string t = py::dumps_text(obj);
     return py::len(t) <= limit ? t : py::head(t, limit) + "...";
 }
@@ -3996,6 +4101,8 @@ inline std::string converse_user(const std::string& a, const std::string& ctx_a,
 struct MemoryStore {
     std::function<bool(std::string&)> load;
     std::function<bool(const std::string&)> save;
+    /// What cannot be read is kept aside before anything overwrites it: its new name ("" when nothing was done). Optional.
+    std::function<std::string()> keep_aside;
 };
 
 /// A memory file (written whole, through a temporary file).
@@ -4007,18 +4114,37 @@ inline MemoryStore file_store(const std::string& path) {
         std::stringstream ss;
         ss << f.rdbuf();
         out = ss.str();
+        if (out.compare(0, 3, "\xEF\xBB\xBF") == 0) out.erase(0, 3);   // saved with a BOM (Windows editors)
         return true;
     };
     s.save = [path](const std::string& text) {
-        std::string tmp = path + ".tmp";
-        {
-            std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-            if (!f) return false;
-            f << text;
-            if (!f) return false;
-        }
-        std::remove(path.c_str());
-        return std::rename(tmp.c_str(), path.c_str()) == 0;
+        // a unique name per save (two threads never share it), synced to disk, then moved over the old file: a crash or a
+        // power loss leaves the old file or the new one, never half of one
+        static std::atomic<unsigned long long> saves{0};
+        std::string tmp = path + "." + std::to_string((unsigned long long)std::chrono::steady_clock::now().time_since_epoch().count()) + "-" +
+                          std::to_string(saves++) + ".tmp";
+        FILE* f = std::fopen(tmp.c_str(), "wb");
+        if (!f) return false;
+        bool ok = std::fwrite(text.data(), 1, text.size(), f) == text.size() && std::fflush(f) == 0;
+#ifdef _WIN32
+        ok = ok && _commit(_fileno(f)) == 0;
+#else
+        ok = ok && fsync(fileno(f)) == 0;
+#endif
+        ok = std::fclose(f) == 0 && ok;
+#ifdef _WIN32
+        ok = ok && MoveFileExA(tmp.c_str(), path.c_str(), MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH) != 0;
+#else
+        ok = ok && std::rename(tmp.c_str(), path.c_str()) == 0;
+#endif
+        if (!ok) std::remove(tmp.c_str());
+        return ok;
+    };
+    s.keep_aside = [path]() {
+        std::string aside = path + ".corrupt-" + std::to_string((long long)std::time(nullptr));
+        if (std::rename(path.c_str(), aside.c_str()) != 0) return std::string();
+        size_t slash = aside.find_last_of("/\\");
+        return slash == std::string::npos ? aside : aside.substr(slash + 1);
     };
     return s;
 }
@@ -4031,14 +4157,32 @@ public:
         if (!store_ || !store_->load) return;
         std::string text;
         Json data;
-        if (!store_->load(text) || !py::loads(text, data) || data.type() != Json::Object) return;
+        if (!store_->load(text)) return;
+        // what can be trusted is loaded, entry by entry: one bad note never costs the rest
+        bool parsed = py::loads(text, data);
+        if (!parsed || data.type() != Json::Object) {
+            problem = parsed ? "memory file is not a JSON object" : "memory file unreadable (not JSON)";
+            std::string aside = store_->keep_aside ? store_->keep_aside() : std::string();
+            if (!aside.empty()) problem += "; kept as " + aside;
+            return;
+        }
         for (auto& s : data["sessions"].fields())
             for (auto& sc : s.second.fields()) {
                 std::vector<Json> list;
-                for (auto& n : sc.second.items()) if (n.type() == Json::Object && n["text"].type() == Json::String) list.push_back(n);
-                notes_[s.first + std::string(1, '\0') + sc.first] = list;
+                for (auto& n : sc.second.items()) if (good_note(n)) list.push_back(n);
+                if (list.size() > 120) list.erase(list.begin(), list.end() - 120);
+                if (!list.empty()) notes_[s.first + std::string(1, '\0') + sc.first] = list;
             }
         for (auto& e : data["extra"].fields()) if (e.second.type() == Json::Object) extra_[e.first] = e.second;
+    }
+
+    /// What went wrong reading the stored memory, if anything (the brain journals it).
+    std::string problem;
+
+    /// A note recall() can rank: text, time and importance (a file edited by hand, or a save from elsewhere).
+    static bool good_note(const Json& n) {
+        double x;
+        return n.type() == Json::Object && n["text"].type() == Json::String && py::finite(n["t"], x) && py::finite(n["importance"], x);
     }
 
     void add(const std::string& session, const std::string& scope, const std::string& text0, double importance, const Json& meta = Json()) {
@@ -4146,7 +4290,7 @@ public:
             for (auto& kv : given.fields()) {
                 std::vector<Json> kept;
                 for (auto& n : kv.second.items())
-                    if (n.type() == Json::Object && n["text"].type() == Json::String && n["t"].is_number() && n["importance"].is_number()) kept.push_back(n);
+                    if (good_note(n)) kept.push_back(n);
                 if (kept.size() > 120) kept.erase(kept.begin(), kept.end() - 120);
                 if (!kept.empty()) notes_[prefix + kv.first] = kept;
             }
@@ -6344,6 +6488,7 @@ struct Said {
     std::vector<Act> actions;
 };
 
+constexpr size_t MAX_WHAT = 500;  // characters of create's `what` (more is cut, and journaled)
 constexpr size_t MAX_NAME = 48, MAX_EVENT = 160, MAX_LINE = 140, MAX_REPLY = 400, MAX_TOOLS = 100;
 
 inline std::string event_key(const Json& e) { return py::head(text::clean(py::text(e)), MAX_EVENT); }
@@ -6679,6 +6824,8 @@ struct JobQueue {
 };
 
 constexpr size_t MAX_SUGGESTIONS = 6;
+constexpr size_t MAX_PER_SESSION = 300;   // one session (one player online) never fills the table for everyone else
+constexpr size_t MAX_KEYS = 2000;         // entries per cache (decisions, banks, pools, rises): live data in keys stays bounded
 constexpr size_t MAX_CHARACTERS = 5000, MAX_WAITING = 50, MAX_SPEAKERS = 500, BANK_SIZE = 8, POOL_SIZE = 5;
 static const char* const DEFAULT_LANGUAGE = "English";
 constexpr double GAMMA = 0.8, COMPOUND = 0.4, HEARSAY = 0.5, RUMOR_DECAY = 0.8, MIN_RUMOR = 0.1;
@@ -6818,9 +6965,55 @@ private:
     std::unordered_set<std::string> greeting_busy_;
     std::unordered_map<std::string, OrderedMap<OrderedMap<std::array<double, 3>>>> bonds_;
     std::unordered_map<std::string, std::deque<std::string>> said_;
+    std::unordered_set<std::string> clips_;  // (name, label) already journaled as too long
     size_t switches_ = 0;
     unsigned long long events_ = 0, spreads_ = 0, mind_uids_ = 0;
     std::unordered_map<std::string, std::array<double, 3>> rises_;
+    std::deque<std::string> bank_order_, decision_order_, pool_order_, rise_order_;   // the caches' keys, oldest first
+    std::unordered_map<std::string, size_t> per_session_;                              // characters kept per session
+
+    /// Makes room for a new key in a bounded cache: past MAX_KEYS the oldest keys go (oldest inserted first, as Python's dicts).
+    template <class V>
+    static void make_room(std::unordered_map<std::string, V>& table, std::deque<std::string>& order, const std::string& key) {
+        if (table.count(key)) return;
+        while (table.size() >= MAX_KEYS && !order.empty()) {
+            table.erase(order.front());
+            order.pop_front();
+        }
+        if (order.size() >= 4 * MAX_KEYS) {
+            std::deque<std::string> kept;
+            for (auto& k : order) if (table.count(k)) kept.push_back(k);
+            order.swap(kept);
+        }
+        order.push_back(key);
+    }
+
+    /// The entry for key in a bounded cache (made, and the oldest let go, when new).
+    template <class V>
+    static V& slot(std::unordered_map<std::string, V>& table, std::deque<std::string>& order, const std::string& key) {
+        make_room(table, order, key);
+        return table[key];
+    }
+
+    /// Keeps a character (under the lock). A full table first lets go of the oldest one the game never declared (made on the fly
+    /// from a name); a session past its share keeps nothing more. False: not stored (a throwaway).
+    bool store(const std::string& session, const std::string& key, const Character& c) {
+        if (characters_.count(key)) { characters_[key] = c; return true; }
+        if (per_session_[session] >= MAX_PER_SESSION) return false;
+        if (characters_.size() >= MAX_CHARACTERS) {
+            std::string old;
+            bool found = false;
+            for (auto& kv : characters_) if (!declared_.count(kv.first)) { old = kv.first; found = true; break; }
+            if (!found) return false;
+            characters_.erase(old);
+            std::string old_session = old.substr(0, old.find('\0'));
+            auto ps = per_session_.find(old_session);
+            if (ps != per_session_.end() && --ps->second == 0) per_session_.erase(ps);
+        }
+        characters_[key] = c;
+        per_session_[session]++;
+        return true;
+    }
     std::unordered_map<std::string, std::string> steers_;     // session|name -> what the game decided for the next reply
     double reply_timeout_ = 8.0;                              // kinloom.json "reply_timeout"
     std::unordered_set<std::string> empty_told_;
@@ -6846,7 +7039,9 @@ private:
             std::stringstream ss;
             ss << f.rdbuf();
             Json file;
-            if (f && py::loads(ss.str(), file)) for (auto& kv : file.fields()) cfg[kv.first] = kv.second;
+            std::string text = ss.str();
+            if (text.compare(0, 3, "\xEF\xBB\xBF") == 0) text.erase(0, 3);   // saved with a BOM (Windows editors, PowerShell 5.1)
+            if (f && py::loads(text, file)) for (auto& kv : file.fields()) cfg[kv.first] = kv.second;
         }
         for (auto& kv : o.config.fields()) cfg[kv.first] = kv.second;
         Json c(std::move(cfg));
@@ -6862,7 +7057,17 @@ private:
         language_ = !o.language.empty() ? o.language : !cfg_language.empty() || c["language"].type() == Json::String ? cfg_language : DEFAULT_LANGUAGE;
         voice_language_ = !o.language.empty() ? o.language : (c["language"].type() == Json::String && cfg_language != DEFAULT_LANGUAGE ? cfg_language : "");
         limit_ = std::max(1LL, o.calls_per_minute > 0 ? (long long)o.calls_per_minute : (long long)py::num(c["calls_per_minute"]));
-        prices_ = o.prices.type() == Json::Object ? o.prices : c["prices"].type() == Json::Object ? c["prices"] : Json();
+        // prices: input, output and cached_input numbers from 0 (dollars per million tokens; other keys, like "source", allowed)
+        Json given_prices = !o.prices.is_null() ? o.prices : c["prices"];
+        bool prices_ok = given_prices.type() == Json::Object;
+        for (const char* k : {"input", "output", "cached_input"}) {
+            double v;
+            if (prices_ok && given_prices.has(k) && !(py::finite(given_prices[k], v) && v >= 0)) prices_ok = false;
+        }
+        prices_ = prices_ok ? given_prices : Json();
+        std::string prices_refused = given_prices.is_null() || prices_ok ? std::string() :
+            std::string(o.prices.is_null() ? "kinloom.json: " : "") + "prices must be {\"input\": n, \"output\": n, \"cached_input\": n} in dollars per million tokens, got " +
+            py::py_repr(given_prices) + " (no cost is counted)";
         std::vector<std::string> words;
         for (auto& w : c["banned_words"].items()) if (w.type() == Json::String && !py::strip(w.str()).empty()) words.push_back(Re::escape(py::strip(w.str())));
         if (!words.empty()) banned_.reset(new Re("(?<![" KINLOOM_W "])(" + py::join(words, "|") + ")(?![" KINLOOM_W "])", true));
@@ -6873,6 +7078,8 @@ private:
         has_cost_hour_ = py::finite(c["max_cost_per_hour"], max_cost_per_hour_);
         has_cost_day_ = py::finite(c["max_cost_per_day"], max_cost_per_day_);
         std::vector<std::array<std::string, 3>> later;
+        if (!prices_refused.empty()) later.push_back({"refused", "kinloom", prices_refused});
+        if (!memory_->problem.empty()) later.push_back({"error", "kinloom", memory_->problem});
         std::string why;
         if (!models_of(o.models.is_null() ? c["models"] : o.models, provider_, o.transport, models_, why)) {
             later.push_back({"refused", "kinloom", why});
@@ -6966,7 +7173,7 @@ private:
         Character c;
         Bad bad;
         CharacterDef::make(Json(n), Json(OrderedMap<Json>{}), c, bad);
-        if (characters_.size() < MAX_CHARACTERS) characters_[key] = c;
+        store(session, key, c);
         return c;
     }
 
@@ -7023,24 +7230,46 @@ private:
             std::mutex mu;
             std::condition_variable cv;
             bool done = false;
+            bool gave_up = false;     // an answer after that still books its tokens: they were billed
             ModelReply r;
         };
         auto box = std::make_shared<Box>();
-        std::thread([box, p, system, user, o]() {
+        std::weak_ptr<Brain> me = weak_from_this();
+        std::thread([box, p, system, user, o, me]() {
             ModelReply r = safe_complete(p, system, user, o);
-            std::lock_guard<std::mutex> lock(box->mu);
-            box->r = r;
-            box->done = true;
-            box->cv.notify_all();
+            bool late;
+            {
+                std::lock_guard<std::mutex> lock(box->mu);
+                box->r = r;
+                box->done = true;
+                late = box->gave_up;
+                box->cv.notify_all();
+            }
+            if (late) {
+                if (auto brain = me.lock()) brain->late(r);
+            }
         }).detach();
         ModelReply r;
         {
             std::unique_lock<std::mutex> lock(box->mu);
             if (box->cv.wait_for(lock, std::chrono::milliseconds((long long)((lim + 0.25) * 1000)), [&]() { return box->done; })) r = box->r;
-            else r = ModelReply::fail("timed out after " + py::fixed(lim, 1) + " s");
+            else {
+                box->gave_up = true;
+                r = ModelReply::fail("timed out after " + py::fixed(lim, 1) + " s");
+            }
         }
         account(kind, name, r);
         return r;
+    }
+
+    /// A call given up on that answered later: its tokens were billed all the same, so they count (and the caps).
+    void late(const ModelReply& r) {
+        double cost = price(r);
+        std::lock_guard<std::mutex> lock(mu_);
+        counts_["input_tokens"] += r.input;
+        counts_["cached_tokens"] += r.cached;
+        counts_["output_tokens"] += r.output;
+        spent_.push_back({http::now(), cost});
     }
 
     void account(const std::string& kind, const std::string& name, const ModelReply& r) {
@@ -7270,14 +7499,17 @@ public:
         bool refused = false;
         {
             std::lock_guard<std::mutex> lock(mu_);
-            if (!characters_.count(key) && characters_.size() >= MAX_CHARACTERS) refused = true;
+            if (!store(session, key, c)) refused = true;
             else {
-                characters_[key] = c;
                 declared_.insert(key);
                 if (!from_config) game_declared_.insert(key);
             }
         }
-        if (refused) { log("refused", c->name, "too many characters (" + std::to_string(MAX_CHARACTERS) + "): not stored"); return true; }
+        if (refused) {
+            log("refused", c->name, "too many characters (" + std::to_string(MAX_CHARACTERS) + " in all, " + std::to_string(MAX_PER_SESSION) +
+                                    " per session): not stored");
+            return true;
+        }
         log("character", c->name, c->personality());
         if (!c->tool_refs.empty()) bind_tools(session, c, !game_tools(session).empty());
         give_soul(session, c, spec["soul"]);
@@ -7551,8 +7783,11 @@ private:
             for (auto& b : a.second.fields()) {
                 double last, first;
                 if (!py::finite(b.second["last"], last)) continue;
-                double talks = b.second["talks"].is_number() ? b.second["talks"].num() : 1;
-                if (!py::finite(b.second["first"], first)) first = 0;
+                // each value checked: a hand-edited file or a loaded save never breaks chat() later
+                double talks;
+                if (!py::finite(b.second["talks"], talks) || talks == 0) talks = 1;
+                talks = std::max(1.0, std::trunc(std::min(1e9, talks)));
+                if (!py::finite(b.second["first"], first) || first == 0) first = last;
                 row[b.first] = {talks, first, last};
             }
             table[a.first] = row;
@@ -7595,7 +7830,7 @@ private:
                     double start = r[0], gained = r[1];
                     if (now - r[2] > souls::NEW_TALK) { start = now; gained = 0.0; }
                     change = std::max(0.0, std::min(change, c->warm_up - gained));
-                    rises_[rkey] = {start, gained + change, now};
+                    slot(rises_, rise_order_, rkey) = {start, gained + change, now};
                 }
                 if (change < i.feel) log("refused", c->name, "feel: " + speaker + " already won " + py::fixed(c->warm_up, 1, true) + " this conversation");
             }
@@ -7732,6 +7967,7 @@ public:
         Character c = character(session, name);
         Json facts;
         if (!mapping(facts0, "facts", facts, bad)) return false;
+        clip_note(c->name, "facts", facts);
         std::string ev = event_key(e);
         size_t limit = box_limit(max_chars) ? box_limit(max_chars) : c->max_chars;
         std::vector<std::string> fact_names;
@@ -7745,9 +7981,10 @@ public:
                                 context(session, &c->name, ev, true) + prompts::facts_block(facts), false, true, 120);
             if (r.ok) {
                 Json t = text::find_json(r.text);
-                Json line = t.type() == Json::Object ? t["line"] : Json(r.text);
+                // only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+                Json line = t.type() == Json::Object ? t["line"] : t.is_null() ? Json(r.text) : Json();
                 std::string v;
-                if (valid_line(py::text(line), &names, persona, v)) {
+                if (line.type() == Json::String && valid_line(line.str(), &names, persona, v)) {
                     std::string spoken = souls::fit_chars(lines::fill(v, facts), limit);
                     log("say", c->name, spoken, obj({{"event", ev}, {"source", "fresh"}}));
                     out.text = spoken;
@@ -7762,7 +7999,7 @@ public:
         bool has_chosen = false, low;
         {
             std::lock_guard<std::mutex> lock(mu_);
-            Bank& bank = banks_[key];
+            Bank& bank = slot(banks_, bank_order_, key);
             std::vector<std::string> usable, known;
             for (auto& t : bank.unused) if (covered(t)) usable.push_back(t);
             for (auto& t : bank.templates) if (covered(t)) known.push_back(t);
@@ -7891,13 +8128,13 @@ private:
         std::string key = k3(session, c->name, e);
         {
             std::lock_guard<std::mutex> lock(mu_);
-            Bank& bank = banks_[key];
+            Bank& bank = slot(banks_, bank_order_, key);
             if (bank.filling || bank.failures >= 3) return;
             bank.filling = true;
         }
         auto self = shared_from_this();
         background([self, c, session, e, named, names, chars, key]() {
-            auto done = defer([&]() { std::lock_guard<std::mutex> lock(self->mu_); self->banks_[key].filling = false; });
+            auto done = defer([&]() { std::lock_guard<std::mutex> lock(self->mu_); self->slot(self->banks_, self->bank_order_, key).filling = false; });
             Persona persona = c->persona();
             ModelReply r = self->call("lines", c->name, prompts::lines_system(persona, c->moment(e), named ? &names : nullptr, BANK_SIZE, self->lang(*c, false), chars),
                                       self->context(session, &c->name, e, true), true, false, 700);
@@ -7910,7 +8147,7 @@ private:
                     std::string v;
                     bool ok = self->valid_line(py::text(list[i]), named ? &allowed_names : nullptr, persona, v);
                     std::lock_guard<std::mutex> lock(self->mu_);
-                    Bank& bank = self->banks_[key];
+                    Bank& bank = self->slot(self->banks_, self->bank_order_, key);
                     if (ok && std::find(bank.templates.begin(), bank.templates.end(), v) == bank.templates.end()) {
                         bank.templates.push_back(v);
                         bank.unused.push_back(v);
@@ -7920,7 +8157,7 @@ private:
             }
             {
                 std::lock_guard<std::mutex> lock(self->mu_);
-                Bank& bank = self->banks_[key];
+                Bank& bank = self->slot(self->banks_, self->bank_order_, key);
                 bank.failures = added > 0 ? 0 : bank.failures + 1;
             }
             self->log("bank", c->name, std::to_string(added) + " new lines for " + e, obj({{"event", e}}));
@@ -7952,6 +8189,7 @@ public:
         if (!Shape::of(as_object ? choices : obj({{"choice", choices}}), shape, err)) return bad_arg(bad, err);
         std::string key = k3(session, c->name, shape.signature());
         Json situation = situation0.type() == Json::Object ? situation0 : obj({{"situation", situation0}});
+        clip_note(c->name, "situation", situation);
         double ev = c->every;
         if (!every.is_null()) {
             if (!arg_num(every, "every", ev, bad)) return false;
@@ -7966,6 +8204,7 @@ public:
             if (it == decisions_.end()) {
                 DecisionSlot d;
                 d.value = shape.default_value();
+                make_room(decisions_, decision_order_, key);
                 it = decisions_.emplace(key, d).first;
             }
             DecisionSlot& d = it->second;
@@ -7976,7 +8215,7 @@ public:
         if (due && provider_) {
             auto self = shared_from_this();
             background([self, c, session, key, shape, situation, as_object]() {
-                auto done = defer([&]() { std::lock_guard<std::mutex> lock(self->mu_); self->decisions_[key].thinking = false; });
+                auto done = defer([&]() { std::lock_guard<std::mutex> lock(self->mu_); self->slot(self->decisions_, self->decision_order_, key).thinking = false; });
                 std::string system = prompts::decide_system(c->persona(), shape, self->lang(*c, false));
                 std::string user = self->context(session, &c->name, py::dumps(situation), true) + prompts::situation_block(situation);
                 Json result;
@@ -7985,7 +8224,7 @@ public:
                 {
                     double t = clock();
                     std::lock_guard<std::mutex> lock(self->mu_);
-                    DecisionSlot& d = self->decisions_[key];
+                    DecisionSlot& d = self->slot(self->decisions_, self->decision_order_, key);
                     if (got) {
                         d.value = as_object ? result : result["choice"];
                         told = py::dumps(d.value);
@@ -7997,7 +8236,7 @@ public:
             });
         } else if (due) {
             std::lock_guard<std::mutex> lock(mu_);
-            DecisionSlot& d = decisions_[key];
+            DecisionSlot& d = slot(decisions_, decision_order_, key);
             d.thinking = false;
             d.at = now;
             d.has_at = true;
@@ -8020,6 +8259,7 @@ private:
             return true;
         }
         log("repair", name, kind + ": " + err);
+        if (err == text::CUT) max_tokens = std::min((size_t)4000, max_tokens * 2);  // stopped by the token limit: room to finish
         r = call(kind, name, system, user + prompts::repair(err), true, foreground, max_tokens, nullptr, timeout, images);
         if (!r.ok) return false;
         if (!shape.parse(r.text, v, err)) { log("refused", name, kind + ": " + err); return false; }
@@ -8114,6 +8354,7 @@ public:
         if (!c->has_tools()) return {};
         std::string key = k2(session, c->name);
         Json situation = situation0.type() == Json::Object ? situation0 : situation0.is_null() ? Json(OrderedMap<Json>{}) : obj({{"situation", situation0}});
+        clip_note(c->name, "situation", situation);
         double now = clock();
         std::vector<std::pair<std::string, Json>> ready;
         bool due;
@@ -8602,7 +8843,10 @@ public:
         Shape shape;
         std::string err;
         if (!Shape::of(example, shape, err)) return bad_arg(bad, err);
-        std::string what = py::head(text::clean(py::text(what0)), 200);
+        std::string what = text::clean(py::text(what0));
+        clip_note(py::head(what, MAX_WHAT), "what", Json(what), MAX_WHAT, true);
+        clip_note(py::head(what, MAX_WHAT), "context", context);
+        what = py::head(what, MAX_WHAT);
         auto pics = image.is_null() ? std::vector<Picture>{} : pictures(what, image);
         if (instant) {
             if (!pics.empty()) log("refused", what, "image: not used with instant=True (those items are made ahead)");
@@ -8622,7 +8866,7 @@ public:
         std::string system = prompts::create_system(what, shape, written());
         std::string user = context_text(session, what) + prompts::context_block(context) + prompts::picture_block(pics.size(), "");
         Json value;
-        if (!structured("create", what, system, user, shape, true, 800, timeout, pics, value)) {
+        if (!structured("create", what, system, user, shape, true, 1500, timeout, pics, value)) {
             count_offline();
             out = shape.default_value();
             return true;
@@ -8662,7 +8906,7 @@ private:
         bool has = false, low;
         {
             std::lock_guard<std::mutex> lock(mu_);
-            PoolSlot& pool = pools_[key];
+            PoolSlot& pool = slot(pools_, pool_order_, key);
             if (!pool.items.empty()) { item = pool.items.front(); pool.items.erase(pool.items.begin()); has = true; }
             low = pool.items.size() < 2 && !pool.filling && pool.failures < 3 && provider_;
             if (low) pool.filling = true;
@@ -8670,10 +8914,10 @@ private:
         if (low) {
             auto self = shared_from_this();
             background([self, session, what, shape, context, key]() {
-                auto done = defer([&]() { std::lock_guard<std::mutex> lock(self->mu_); self->pools_[key].filling = false; });
+                auto done = defer([&]() { std::lock_guard<std::mutex> lock(self->mu_); self->slot(self->pools_, self->pool_order_, key).filling = false; });
                 auto items = self->create_many(session, what, shape, context, POOL_SIZE, false, -1, {});
                 std::lock_guard<std::mutex> lock(self->mu_);
-                PoolSlot& pool = self->pools_[key];
+                PoolSlot& pool = self->slot(self->pools_, self->pool_order_, key);
                 pool.failures = items.empty() ? pool.failures + 1 : 0;
                 pool.items.insert(pool.items.end(), items.begin(), items.end());
             });
@@ -8698,12 +8942,14 @@ public:
     bool chat(const std::string& session, const Json& name, const Json& message0, const Json& facts0, const Json& speaker0, std::shared_ptr<OnText> stream, double timeout,
               const Json& max_chars, const Json& image, Said& out, Bad& bad) {
         Character c = character(session, name);
+        auto began = std::chrono::steady_clock::now();
         auto pics = image.is_null() ? std::vector<Picture>{} : pictures(c->name, image);
         size_t limit = box_limit(max_chars) ? box_limit(max_chars) : c->max_chars;
         std::string message = py::head(text::clean(message0.is_null() ? std::string() : py::text(message0)), 1000);
         std::string speaker = name_or(speaker0, "player");
         Json facts;
         if (!mapping(facts0, "facts", facts, bad)) return false;
+        clip_note(c->name, "facts", facts);
         std::string hkey = k3(session, c->name, speaker);
         double now = wall();
         {
@@ -8795,7 +9041,8 @@ public:
                                                                                                 std::forward_as_tuple(mine, c->reply_words, limit));
                 std::shared_ptr<OnText> show;
                 if (shown) {
-                    show = std::make_shared<OnText>([shown, stream, hidden, pub, message, streamed](const std::string& piece) {
+                    std::weak_ptr<Brain> me = weak_from_this();
+                    show = std::make_shared<OnText>([shown, stream, hidden, pub, message, streamed, me](const std::string& piece) {
                         std::lock_guard<std::mutex> lock(shown->first);
                         Shown& s = shown->second;
                         std::string a = s.splitter.feed(piece);
@@ -8804,7 +9051,12 @@ public:
                         std::string d = s.echo.feed(cc);
                         std::string p = s.cut.feed(d);
                         if (!p.empty() && !s.shut) {
-                            if (!hidden.empty() && !souls::leaks(s.text + p, hidden, pub, 0.5, message).empty()) { s.shut = true; return; }
+                            // nothing reaches the player before the checks the final reply gets: secrets, content filter
+                            auto brain = me.lock();
+                            if ((!hidden.empty() && !souls::leaks(s.text + p, hidden, pub, 0.5, message).empty()) || !brain || !brain->allowed_text(s.text + p)) {
+                                s.shut = true;
+                                return;
+                            }
                             s.text += p;
                             *streamed = true;
                             (*stream)(p);
@@ -8824,7 +9076,7 @@ public:
                     std::string e2 = s.echo.finish();
                     std::string tail = s.cut.feed(e1 + e2);
                     tail += s.cut.finish();
-                    if (!hidden.empty() && !souls::leaks(s.text + tail, hidden, pub, 0.5, message).empty()) tail.clear();
+                    if ((!hidden.empty() && !souls::leaks(s.text + tail, hidden, pub, 0.5, message).empty()) || (!tail.empty() && !allowed_text(s.text + tail))) tail.clear();
                     if (!tail.empty() && r.ok && !r.cut && !s.shut) { *streamed = true; (*stream)(tail); }
                 }
                 if (!r.ok) break;
@@ -8897,7 +9149,9 @@ public:
         std::vector<Act> decided;
         if (has_reply && stored) {
             if (c->has_tools() && source == "model" && souls::inner_of_reply(inner_data).act.empty()) {
-                auto found = deeds(*c, speaker, message, reply);
+                // what the reply agreed to, within what is left of the reply's time (a player is waiting)
+                double left = (timeout >= 0 ? timeout : reply_deadline()) - std::chrono::duration<double>(std::chrono::steady_clock::now() - began).count();
+                auto found = deeds(*c, speaker, message, reply, std::max(1.5, left));
                 if (!found.empty()) inner_data.fields_mut()["do"] = Json(found);
             }
             decided = inner(session, c, speaker, inner_data);
@@ -8965,12 +9219,15 @@ public:
     }
 
 private:
-    std::vector<Json> deeds(const CharacterDef& c, const std::string& speaker, const std::string& message, const std::string& reply) {
+    /// budget: seconds for everything here (the asking again included).
+    std::vector<Json> deeds(const CharacterDef& c, const std::string& speaker, const std::string& message, const std::string& reply, double budget) {
         std::string system = prompts::deeds_system(c.persona()), user = prompts::deeds_user(c.name, speaker, message, reply);
-        ModelReply r = call("deeds", c.name, system, user, true, true, 150, nullptr, std::min(call_timeout_, 5.0));
-        if (!r.ok) {        // a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+        auto start = std::chrono::steady_clock::now();
+        ModelReply r = call("deeds", c.name, system, user, true, true, 150, nullptr, std::min({call_timeout_, 5.0, budget}));
+        double left = budget - std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
+        if (!r.ok && left >= 1.0) {   // a slow or failed call: what was agreed must not be lost, ask once more if time is left
             log("repair", c.name, "deeds: " + (r.error.empty() ? std::string("failed") : r.error) + "; asked again");
-            r = call("deeds", c.name, system, user, true, true, 150, nullptr, std::min(call_timeout_, 5.0));
+            r = call("deeds", c.name, system, user, true, true, 150, nullptr, std::min({call_timeout_, 5.0, left}));
         }
         Json data = r.ok ? text::find_json(r.text) : Json();
         std::vector<Json> out;
@@ -9185,6 +9442,7 @@ public:
         Character c = character(session, name);
         Json facts;
         if (!mapping(facts0, "facts", facts, bad)) return false;
+        clip_note(c->name, "facts", facts);
         if (examples.type() != Json::Array) return bad_arg(bad, "examples: a list of short replies the player could say, like [\"Ask about her past\", \"Leave\"]");
         std::vector<std::string> given;
         const auto& list = examples.items();
@@ -9626,9 +9884,22 @@ public:
     bool set_state(const std::string& session, const Json& st, Bad& bad) {
         Json s;
         if (!mapping(st, "state", s, bad)) return false;
+        clip_note("state", "state", s);
         std::lock_guard<std::mutex> lock(mu_);
         state_[session] = s;
         return true;
+    }
+
+    /// Journals, once per name and label, that the model reads only the start of something too long.
+    void clip_note(const std::string& name, const std::string& label, const Json& value, size_t limit = prompts::CLIP, bool is_text = false) {
+        if (!py::truthy(value)) return;
+        size_t size = is_text ? py::len(value.str()) : py::len(py::dumps_text(value));
+        if (size <= limit) return;
+        {
+            std::lock_guard<std::mutex> lock(mu_);
+            if (!clips_.insert(k2(name, label)).second) return;
+        }
+        log("clipped", name, label + ": " + std::to_string(size) + " characters, the model reads the first " + std::to_string(limit));
     }
 
 private:
@@ -10154,7 +10425,13 @@ inline bool run(const std::string& fn, const std::vector<Json>& a, Json& out, st
         out = obj({{"ok", ok}, {"value", ok ? v : Json()}, {"error", ok ? Json() : Json(e)}, {"describe", shape.describe()}, {"default", shape.default_value()}});
     } else if (fn == "shape_error") out = Shape::of(arg(0), shape, err) ? Json() : Json(err);
     else if (fn == "find_json") out = arg(0).type() == Json::String ? text::find_json(arg(0).str()) : Json();
-    else if (fn == "clean_text") out = Json(text::clean(py::text(arg(0))));
+    else if (fn == "parse") {
+        if (!Shape::of(arg(0), shape, err)) return false;
+        Json v;
+        std::string e;
+        bool ok = shape.parse(text_of(arg(1)), v, e);
+        out = obj({{"ok", ok}, {"value", ok ? v : Json()}, {"error", ok ? Json() : Json(e)}});
+    } else if (fn == "clean_text") out = Json(text::clean(py::text(arg(0))));
     else if (fn == "fill") out = Json(lines::fill(text_of(arg(0)), arg(1)));
     else if (fn == "event_key") out = Json(event_key(arg(0)));
     else if (fn == "split") { auto r = souls::split(text_of(arg(0))); out = arr({Json(r.first), r.second}); }
@@ -10344,9 +10621,14 @@ public:
         while (!in_->base.empty() && in_->base.back() == '/') in_->base.pop_back();
         std::string rest = url.rfind("http://", 0) == 0 ? url.substr(7) : url.rfind("https://", 0) == 0 ? url.substr(8) : url;
         while (!rest.empty() && rest.back() == '/') rest.pop_back();
-        size_t colon = rest.rfind(':');
-        in_->host = colon == std::string::npos ? rest : rest.substr(0, colon);
-        in_->port = colon == std::string::npos ? "80" : rest.substr(colon + 1);
+        size_t slash = rest.find('/');                    // a path before /v1/ ("http://host:port/kinloom") is kept
+        std::string authority = rest.substr(0, slash);
+        in_->prefix = slash == std::string::npos ? "" : rest.substr(slash);
+        size_t close_bracket = authority.rfind(']');
+        size_t colon = authority.rfind(':');
+        if (colon != std::string::npos && close_bracket != std::string::npos && colon < close_bracket) colon = std::string::npos;   // [::1] alone
+        in_->host = colon == std::string::npos ? authority : authority.substr(0, colon);
+        in_->port = colon == std::string::npos ? "80" : authority.substr(colon + 1);
         in_->session = session;
         in_->token = token;
 #ifdef _WIN32
@@ -10421,7 +10703,8 @@ public:
             std::lock_guard<std::mutex> lock(in_->mu);
             in_->chars[name] = options;
         }
-        fire("character", options);
+        if (in_->brain) fire("character", options);
+        else declare(in_, name, options, false, Json());
     }
 
     /// A line in character with the real facts filled in. Fast: served from lines prepared in advance.
@@ -10431,12 +10714,16 @@ public:
         Json body = obj({{"name", name}, {"event", event}, {"facts", facts}});
         if (fresh) body.fields_mut()["fresh"] = true;
         if (max_chars > 0) body.fields_mut()["max_chars"] = max_chars;
+        if (!in_->brain && !fresh) return say_ahead(name, event, facts, body);
         bool ok = post(in_, "say", body, fresh ? chat_timeout_ms : 2000, r);
         set_source(name, ok, r);
         if (!ok) return offline_line(name, event, facts);
         redeclare(name, r);
         return r["text"].str();
     }
+
+    /// Milliseconds say() waits for a relay before answering from your own lines (a local server answers well within it).
+    int say_wait_ms = 30;
 
     /// Where name's last line or reply came from: "model" (written now), "prepared" (written earlier by the model),
     /// "offline" (your own lines and replies), or "" before the first one.
@@ -10493,10 +10780,14 @@ public:
         {
             std::lock_guard<std::mutex> lock(in_->mu);
             auto it = in_->decisions.find(key);
-            if (it == in_->decisions.end()) it = in_->decisions.emplace(key, Decision{default_of(choices), false, {}}).first;
+            if (it == in_->decisions.end()) {
+                Decision fresh_one;
+                fresh_one.value = default_of(choices);
+                it = in_->decisions.emplace(key, fresh_one).first;
+            }
             Decision& d = it->second;
             auto now = clock::now();
-            due = !d.busy && (d.at == clock::time_point{} || now - d.at >= std::chrono::milliseconds(250));
+            due = !d.busy && (d.at == clock::time_point{} || now - d.at >= poll_every(*in_, name));
             if (due) { d.busy = true; d.at = now; }
             value = d.value;
         }
@@ -10590,7 +10881,7 @@ public:
             Pending& p = in_->actions[name];
             ready.swap(p.ready);
             auto now = clock::now();
-            due = !p.busy && (p.at == clock::time_point{} || now - p.at >= std::chrono::milliseconds(250));
+            due = !p.busy && (p.at == clock::time_point{} || now - p.at >= poll_every(*in_, name));
             if (due) { p.busy = true; p.at = now; }
         }
         if (due) {
@@ -10826,6 +11117,13 @@ private:
         bool busy = false;
         clock::time_point at{};
     };
+    /// A say() request in progress; its answer is taken once (by the caller, or kept for the next say()).
+    struct SayFetch {
+        std::mutex mu;
+        std::condition_variable cv;
+        bool done = false, answered = false;
+        std::atomic<bool> taken{false};
+    };
     struct MindEntry {
         Json decl;
         std::shared_ptr<const minds::Compiled> compiled;
@@ -10843,6 +11141,7 @@ private:
         std::mutex mu;
         std::string host, port, session, token;
         std::map<std::string, Json> chars;
+        std::map<std::string, std::shared_future<bool>> declaring;  // relay: declarations on their way, by name
         std::map<std::string, Decision> decisions;
         std::map<std::string, Pending> actions;
         std::map<std::string, std::string> sources;
@@ -10850,6 +11149,11 @@ private:
         bool has_tools = false;
         int failures = 0;        // connections refused in a row (the offline time grows: 2, 4, 8, 10 s)
         clock::time_point down_until{};
+        clock::time_point busy_until{};   // the server answered 429: offline answers until then (it is not down)
+        bool busy_told = false;
+        std::string prefix;      // a path before /v1/
+        std::map<std::string, std::pair<std::string, std::string>> said_ahead;   // say(): answers that came late (text, source)
+        std::map<std::string, std::shared_ptr<SayFetch>> say_fetching;
         std::mt19937 rng{std::random_device{}()};
     };
     std::shared_ptr<Inner> in_;
@@ -10877,6 +11181,70 @@ private:
         return fill(usable[std::uniform_int_distribution<size_t>(0, usable.size() - 1)(in_->rng)], facts);
     }
 
+    /// Relay say() never holds the game thread: a line asked earlier is used at once, else the server gets say_wait_ms, else
+    /// your own lines answer now; a late answer is kept for the next say() of the same line and facts.
+    std::string say_ahead(const std::string& name, const std::string& event, const Json& facts, const Json& body) {
+        std::string key = name + std::string(1, '\0') + event + std::string(1, '\0') + facts.dump() + std::string(1, '\0') + body["max_chars"].dump();
+        bool has = false, start = false;
+        std::pair<std::string, std::string> got;
+        std::shared_ptr<SayFetch> fetch;
+        {
+            std::lock_guard<std::mutex> lock(in_->mu);
+            auto a = in_->said_ahead.find(key);
+            if (a != in_->said_ahead.end()) { got = a->second; has = true; in_->said_ahead.erase(a); }
+            auto f = in_->say_fetching.find(key);
+            if (f != in_->say_fetching.end()) fetch = f->second;
+            else {
+                fetch = std::make_shared<SayFetch>();
+                in_->say_fetching[key] = fetch;
+                start = true;
+            }
+        }
+        if (start) {
+            auto in = in_;
+            Kinloom me = *this;
+            std::thread([in, me, key, name, body, fetch]() mutable {
+                Json r;
+                bool ok = post(in, "say", body, 2000, r);
+                if (ok) me.redeclare(name, r);
+                {
+                    std::lock_guard<std::mutex> lock(in->mu);
+                    auto f = in->say_fetching.find(key);
+                    if (f != in->say_fetching.end() && f->second == fetch) in->say_fetching.erase(f);
+                    if (ok && !fetch->taken.exchange(true) && in->said_ahead.size() < 256)
+                        in->said_ahead[key] = {r["text"].str(), r["source"].str().empty() ? std::string("model") : r["source"].str()};
+                }
+                std::lock_guard<std::mutex> lock(fetch->mu);
+                fetch->done = true;
+                fetch->answered = ok;
+                fetch->cv.notify_all();
+            }).detach();
+        }
+        if (!has) {
+            bool answered;
+            {
+                std::unique_lock<std::mutex> lock(fetch->mu);
+                fetch->cv.wait_for(lock, std::chrono::milliseconds(std::max(0, say_wait_ms)), [&]() { return fetch->done; });
+                answered = fetch->done && fetch->answered;
+            }
+            if (answered) {
+                std::lock_guard<std::mutex> lock(in_->mu);
+                auto a = in_->said_ahead.find(key);
+                if (a != in_->said_ahead.end()) { got = a->second; has = true; in_->said_ahead.erase(a); }
+            }
+        }
+        if (!has) {
+            {
+                std::lock_guard<std::mutex> lock(in_->mu);
+                in_->sources[name] = "offline";
+            }
+            return offline_line(name, event, facts);
+        }
+        std::lock_guard<std::mutex> lock(in_->mu);
+        in_->sources[name] = got.second;
+        return got.first;
+    }
+
     void set_source(const std::string& name, bool answered, const Json& r) {
         std::lock_guard<std::mutex> lock(in_->mu);
         in_->sources[name] = !answered ? "offline" : r["source"].str().empty() ? "model" : r["source"].str();
@@ -10894,12 +11262,7 @@ private:
                 tools = in_->tools;
                 has_tools = in_->has_tools;
             }
-            auto in = in_;
-            std::thread([in, def, tools, has_tools]() {   // the server restarted: its tools, then the character
-                Json r;
-                if (has_tools) post(in, "tools", obj({{"tools", tools}}), 5000, r);
-                post(in, "character", def, 5000, r);
-            }).detach();
+            declare(in_, name, def, has_tools, tools);   // the server restarted: its tools, then the character
         }
     }
 
@@ -11045,6 +11408,38 @@ private:
         return ok;
     }
 
+    /// Relay: how often decide/act ask the server (under in->mu): a quarter of the character's `every` (8 s by default: every
+    /// 2 s; the server refreshes early when the situation changes after every/4), never more than 4 times a second.
+    static clock::duration poll_every(Inner& in, const std::string& name) {
+        double every = 8.0;
+        auto c = in.chars.find(name);
+        if (c != in.chars.end() && c->second["every"].is_number() && std::isfinite(c->second["every"].num()) && c->second["every"].num() > 0)
+            every = c->second["every"].num();
+        return std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(std::max(0.25, every / 4)));
+    }
+
+    /// HTTP 429: the server (or a proxy before it) asks for a pause: offline answers for Retry-After seconds (5 when it does not
+    /// say), without counting the server as down; told once.
+    static void busy(const std::shared_ptr<Inner>& in, const std::string& retry_after) {
+        char* end = nullptr;
+        double wait = std::strtod(retry_after.c_str(), &end);
+        if (retry_after.empty() || end == retry_after.c_str() || !std::isfinite(wait)) wait = 5;
+        wait = std::max(0.0, std::min(300.0, wait));
+        bool tell;
+        {
+            std::lock_guard<std::mutex> lock(in->mu);
+            in->busy_until = clock::now() + std::chrono::duration_cast<clock::duration>(std::chrono::duration<double>(wait));
+            tell = !in->busy_told;
+            in->busy_told = true;
+        }
+        if (tell) std::fprintf(stderr, "[kinloom] the server answered 429 (too many requests): offline answers for %g s\n", wait);
+    }
+
+    static bool paused(Inner& in) {   // under in.mu
+        auto now = clock::now();
+        return now < in.down_until || now < in.busy_until;
+    }
+
     /// Offline answers for a while: 2 s, then 4, 8, at most 10 while the server is still not there.
     static void down(const std::shared_ptr<Inner>& in) {
         std::lock_guard<std::mutex> lock(in->mu);
@@ -11054,7 +11449,35 @@ private:
 
     /// true with `out` set when the server answered 200 with JSON; false otherwise (the caller answers offline).
     static bool post(const std::shared_ptr<Inner>& in, const std::string& verb, const Json& body, int timeout_ms, Json& out) {
+        if (!in->brain && verb != "character" && verb != "tools") ready(in, body);
         return request(in, "POST", verb, &body, timeout_ms, out);
+    }
+
+    /// Relay: sends a character's declaration (after the game's tools when asked) on its own thread; calls naming it
+    /// wait for it (ready), so the server never answers them without the character's soul and tools.
+    static void declare(const std::shared_ptr<Inner>& in, const std::string& name, const Json& def, bool with_tools, const Json& tools) {
+        std::shared_future<bool> sent = std::async(std::launch::async, [in, def, with_tools, tools]() {
+            Json r;
+            if (with_tools) post(in, "tools", obj({{"tools", tools}}), 5000, r);
+            return post(in, "character", def, 5000, r);
+        }).share();
+        std::lock_guard<std::mutex> lock(in->mu);
+        in->declaring[name] = sent;
+    }
+
+    /// Waits (5 s at most) for the declarations of the characters a call names.
+    static void ready(const std::shared_ptr<Inner>& in, const Json& body) {
+        std::vector<std::shared_future<bool>> waits;
+        {
+            std::lock_guard<std::mutex> lock(in->mu);
+            for (const char* field : {"name", "a", "b"}) {
+                const Json& v = body[field];
+                if (v.type() != Json::String) continue;
+                auto it = in->declaring.find(v.str());
+                if (it != in->declaring.end()) waits.push_back(it->second);
+            }
+        }
+        for (auto& w : waits) w.wait_for(std::chrono::seconds(5));
     }
 
     static std::string env_or(const char* name, const char* fallback) {
@@ -11112,16 +11535,18 @@ private:
             std::fprintf(stderr, "[kinloom] chat: %s\n", error.c_str());
             return false;
         }
+        ready(in_, body);   // the character's declaration first, as for every other call
         {
             std::lock_guard<std::mutex> lock(in_->mu);
-            if (clock::now() < in_->down_until) return false;
+            if (paused(*in_)) return false;
         }
         Json streamed = body;
         streamed.fields_mut()["stream"] = true;
         native::Headers headers{{"X-Kinloom-Session", in_->session}, {"Content-Type", "application/json"}};
         if (!in_->token.empty()) headers.push_back({"Authorization", "Bearer " + in_->token});
-        bool done = false;
+        bool done = false, heard = false;   // heard: the server answered something (a later failure is not a server that is down)
         native::LineFn lines = [&](const std::string& line) {
+            heard = true;
             if (line.rfind("data: ", 0) != 0) return true;
             Json ev;
             if (!Json::parse(line.substr(6), ev)) return true;
@@ -11133,9 +11558,10 @@ private:
         native::HttpAnswer a;
         std::string err;
         if (!t.send("POST", in_->base + "/v1/chat", headers, streamed.dump_ordered(), chat_timeout_ms / 1000.0, &lines, a, err)) {
-            down(in_);
+            if (err != "timed out" && !heard) down(in_);     // slow or cut off: this reply is offline, the server is still there
             return false;
         }
+        if (a.status == 429) busy(in_, a.retry_after);
         return a.status == 200 && done;
     }
 
@@ -11155,6 +11581,7 @@ private:
             in->failures = 0;
         }
         if (std::strcmp(method, "GET") == 0 && a.status == 404) { out = obj({{"missing", true}}); return true; }
+        if (a.status == 429) { busy(in, a.retry_after); return false; }
         return a.status == 200 && Json::parse(a.body, out);
     }
 
@@ -11165,7 +11592,7 @@ private:
         if (in->base.rfind("https://", 0) == 0) return request_tls(in, method, verb, body, timeout_ms, out);
         {
             std::lock_guard<std::mutex> lock(in->mu);
-            if (clock::now() < in->down_until) return false;
+            if (paused(*in)) return false;
         }
         auto deadline = clock::now() + std::chrono::milliseconds(timeout_ms);
         addrinfo hints{};
@@ -11197,7 +11624,7 @@ private:
             in->failures = 0;
         }
         std::string data = body ? body->dump_ordered() : "";
-        std::string req = std::string(method) + " /v1/" + verb + " HTTP/1.1\r\nHost: " + in->host + ":" + in->port +
+        std::string req = std::string(method) + " " + in->prefix + "/v1/" + verb + " HTTP/1.1\r\nHost: " + in->host + ":" + in->port +
                           "\r\nContent-Type: application/json\r\nContent-Length: " + std::to_string(data.size()) +
                           "\r\nConnection: close\r\nX-Kinloom-Session: " + in->session + "\r\n";
         if (!in->token.empty()) req += "Authorization: Bearer " + in->token + "\r\n";
@@ -11225,6 +11652,17 @@ private:
         if (split != std::string::npos && std::strcmp(method, "GET") == 0 && raw.size() >= 12 && raw.compare(9, 3, "404") == 0) {
             out = obj({{"missing", true}});
             return true;
+        }
+        if (split != std::string::npos && raw.size() >= 12 && raw.compare(9, 3, "429") == 0) {
+            std::string retry_after;
+            std::string head = native::uni::lower(raw.substr(0, split));
+            size_t at = head.find("\r\nretry-after:");
+            if (at != std::string::npos) {
+                size_t from = at + 15, to = head.find("\r\n", from);
+                retry_after = native::py::strip(raw.substr(from, to == std::string::npos ? std::string::npos : to - from));
+            }
+            busy(in, retry_after);
+            return false;
         }
         if (split == std::string::npos || (raw.compare(0, 12, "HTTP/1.1 200") != 0 && raw.compare(0, 12, "HTTP/1.0 200") != 0)) return false;
         return Json::parse(raw.substr(split + 4), out);

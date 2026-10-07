@@ -31,10 +31,11 @@
     POST /v1/remember   {name, note, importance?}
     POST /v1/state      {state}
     GET  /v1/status · GET /v1/journal · GET /v1/stream (server-sent events) · GET / (dashboard) · GET /talk (talk to characters)
-    GET  /v1/openapi.json (this API described for any coding agent or tool)
+    GET  /v1/openapi.json (this API described for any coding agent or tool) · GET /healthz (no token, no data)
 
 Session: "session" in the body or the X-Kinloom-Session header (default "default").
-Local by default: only pages served from this machine may call it. `--public --token` for an online server.
+Local by default: only pages served from this machine may call it. `--public --token` for an online server; any
+address beyond this machine needs a token. Errors are {"error": text, "code": word}; 429 answers carry Retry-After.
 """
 import collections
 import hmac
@@ -54,12 +55,81 @@ MAX_AUDIO_BODY = 12 * 1024 * 1024     # /v1/listen carries a recording, /v1/chat
 MEDIA_PATHS = ("/v1/listen", "/v1/chat", "/v1/create", "/v1/load")   # and a save slot loaded back
 MAX_REWARDS = 1000
 LOCAL_HOSTS = {"localhost", "127.0.0.1", "[::1]", "::1"}
+TIMEOUT = 20.0                         # seconds a client may stay silent mid-request or between requests
+MAX_CONNECTIONS = 256                  # connections served at once; past it, 503 and closed
+POLL_FACTOR = 20                       # the poll budget (decide, act, reads) is this many times the talk budget
+CODES = {400: "bad_request", 401: "unauthorized", 403: "forbidden", 404: "not_found", 411: "length_required",
+         413: "too_large", 429: "rate_limited", 500: "internal", 503: "busy"}
+# What the server may keep from a player token (--player-can lists what stays allowed; default: all of it). These set
+# what the game decides (feelings, memories, state, the next reply, the game's tools and world facts); "speakers":
+# several speakers in one session (else a session speaks as the first speaker it named). A single-player game that
+# relays to a hosted server is its own authority (its session is its world): it needs them all. A shared world whose
+# own game server holds the admin token restricts players: --player-can none.
+PLAYER_OPT_IN = ("feel", "remember", "state", "steer", "tools", "lore", "speakers")
+SPEAKER_VERBS = ("chat", "suggest", "soul")
+
+
+class _Limiter:
+    """Sliding one-minute windows per key. hit() records a request in every window, or none when one is full (the
+    answer is then the seconds until it frees). Idle keys are forgotten by a sweep at most every 30 s."""
+
+    def __init__(self, clock=time.monotonic, window=60.0):
+        self.clock, self.window = clock, window
+        self._hits = {}
+        self._lock = threading.Lock()
+        self._swept = clock()
+
+    def hit(self, limits):
+        """limits: [(key, per minute)]; a falsy limit is no limit. Returns 0 (counted) or seconds to wait."""
+        now = self.clock()
+        with self._lock:
+            if now - self._swept >= 30.0:
+                self._swept = now
+                for k in [k for k, q in self._hits.items() if not q or now - q[-1] > self.window]:
+                    del self._hits[k]
+            wait = 0.0
+            for key, limit in limits:
+                q = self._hits.get(key)
+                if not limit or q is None:
+                    continue
+                while q and now - q[0] > self.window:
+                    q.popleft()
+                if len(q) >= limit:
+                    wait = max(wait, self.window - (now - q[0]))
+            if wait:
+                return max(1, int(wait + 0.999))
+            for key, limit in limits:
+                if limit:
+                    self._hits.setdefault(key, collections.deque()).append(now)
+            return 0
+
+    def size(self):
+        with self._lock:
+            return len(self._hits)
+
+
+_BUSY_BODY = b'{"error": "server busy: try again", "code": "busy"}'
+BUSY = (b"HTTP/1.1 503 Service Unavailable\r\nContent-Type: application/json\r\nRetry-After: 2\r\nConnection: close\r\n"
+        b"Content-Length: " + str(len(_BUSY_BODY)).encode() + b"\r\n\r\n" + _BUSY_BODY)
+
+
+def _clean_name(name):
+    """A character name as the brain keys it."""
+    from .brain import MAX_NAME
+    from .shapes import clean_text
+    return clean_text(str(name or ""))[:MAX_NAME]
+
+
+def _loopback(host):
+    host = (host or "").strip().lower().strip("[]")
+    return host in LOCAL_HOSTS or host.startswith("127.")
 
 
 class ApiError(Exception):
-    def __init__(self, status, message):
+    def __init__(self, status, message, code=None):
         super().__init__(message)
         self.status = status
+        self.code = code or CODES.get(status, "error")
 
 
 def _need(body, *keys):
@@ -114,12 +184,14 @@ def handle(brain, verb, body, session):
     try:
         if verb == "character":
             _need(body, "name")
-            brain.character(session, name, body.get("personality") or "", body.get("lines"), body.get("offline"), body.get("events"),
+            c = brain.character(session, name, body.get("personality") or "", body.get("lines"), body.get("offline"), body.get("events"),
                             body.get("tools"), body.get("max_words"), 8.0 if body.get("every") is None else body["every"], body.get("language"),
                             body.get("group"), body.get("soul"), body.get("trust"), body.get("invent") is not False,
                             body.get("voice"), body.get("max_chars"), body.get("warmth"), body.get("secret_trust"),
                             body.get("warm_up"))
-            return {"ok": True}
+            with brain._lock:                   # past the brain's limit the character is not kept: say so
+                stored = brain._characters.get((session, getattr(c, "name", name))) is c
+            return {"ok": True} if stored else {"ok": True, "stored": False}
         if verb == "steer":
             _need(body, "name")
             if not isinstance(body.get("text"), str):
@@ -317,23 +389,49 @@ PREPARE_MAX = 30.0                    # seconds a request may wait in /v1/prepar
 
 
 def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, allow_origins=(), player_token=None,
-                rate_per_session=None, rate_per_ip=None):
+                rate_per_session=None, rate_per_ip=None, trust_proxy=False, player_can=None, timeout=TIMEOUT,
+                max_connections=MAX_CONNECTIONS):
     """token: the admin secret (dashboard, journal, everything). player_token: the secret a shipped game carries: it
-    plays (every verb) but cannot read the journal, the live stream or the full status, and its model-backed requests
-    are limited per session and per address (rate_per_session / rate_per_ip a minute: over it, 429 and the game's
-    client answers offline). A leaked player token is bounded by these limits and by the brain's cost caps."""
+    plays but cannot read the journal, the live stream or the full status, cannot set what the game decides (feel,
+    remember, state, steer, tools, lore, characters of kinloom.json) unless player_can allows it, and speaks as one
+    speaker per session. Its requests are limited per session and per address (a minute): rate_per_session /
+    rate_per_ip for the verbs that start model work ("talk"), POLL_FACTOR times more for the rest ("poll": decide, act,
+    reads that clients repeat). Over it: 429 with Retry-After, and the game's client answers offline.
+    trust_proxy: the server sits behind a proxy (Railway, Fly.io...): the player's address is read from Fly-Client-IP
+    or the last X-Forwarded-For entry (never trust these headers without a proxy: anyone can write them).
+    Any address beyond this machine, and web pages opened from files (allow_origins "null"), need a token."""
+    secured = bool(token or player_token)
     allowed = {o.rstrip("/").lower() for o in allow_origins or ()}
-    hits = {}                                   # key -> deque of request times (last minute)
+    if "null" in allowed and not secured:
+        raise ValueError("--allow-origin null lets any website reach this server (a sandboxed frame has origin null): "
+                         "it needs --token (the game's page sends it)")
+    lan = not public and not _loopback(host)
+    if (public or lan) and not secured:
+        raise ValueError("listening on %s reaches beyond this machine: it needs --token (or KINLOOM_SERVER_TOKEN) so "
+                         "only your game can use your key" % host)
+    can = {str(v).strip().lower() for v in player_can} if player_can is not None else {"all"}
+    if "all" in can:
+        can = set(PLAYER_OPT_IN)
+    can.discard("none")
+    unknown = can - set(PLAYER_OPT_IN)
+    if unknown:
+        raise ValueError("player_can: unknown %s (choose from %s, or all)" % (", ".join(sorted(unknown)), ", ".join(PLAYER_OPT_IN)))
+    limiter = _Limiter()
+    speakers = collections.OrderedDict()        # session -> the one speaker a player token speaks as there
+    speakers_lock = threading.Lock()
 
     # Saves handed to a player token are signed: a player token loads only a save this server gave, unchanged (a forged
     # save would set feelings, trust and memories at will). The key: the admin token, else a secret kept in the memory.
+    key_lock = threading.Lock()
+
     def save_key():
         if token:
             return ("kinloom-save:" + token).encode("utf-8")
-        key = brain.memory.get("relay", "save_key")
-        if not isinstance(key, str):
-            key = os.urandom(32).hex()
-            brain.memory.put("relay", "save_key", key)
+        with key_lock:
+            key = brain.memory.get("relay", "save_key")
+            if not isinstance(key, str):
+                key = os.urandom(32).hex()
+                brain.memory.put("relay", "save_key", key)
         return key.encode("utf-8")
 
     def digest(data):
@@ -355,27 +453,59 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             raise ApiError(400, "load: data: not a save this server gave, or changed since (a player token loads only "
                                 "what save() returned)")
         return data
-    hits_lock = threading.Lock()
 
-    def over(key, limit):
-        if not limit:
+    def from_config(name):
+        """True when name is a character of kinloom.json (what the server decides, not the player)."""
+        try:
+            brain._refresh_config()
+            return _clean_name(name) in getattr(brain, "_cfg_chars", {})
+        except Exception:  # a brain without kinloom.json support: nothing to protect
             return False
-        now = time.monotonic()
-        with hits_lock:
-            q = hits.setdefault(key, collections.deque())
-            while q and now - q[0] > 60:
-                q.popleft()
-            if len(q) >= limit:
+
+    def exists(session, name):
+        key = _clean_name(name)
+        with brain._lock:
+            if (session, key) in brain._characters:
                 return True
-            q.append(now)
-            if len(hits) > 100000:                      # forget idle keys rather than grow forever
-                for k in [k for k, v in hits.items() if not v][:50000]:
-                    del hits[k]
-            return False
+        return from_config(key)
+
+    def bound_speaker(session, given):
+        """The speaker a player token speaks as in this session (the first one it named); ApiError for another."""
+        given = str(given).strip()[:64] if given not in (None, "") else ""
+        with speakers_lock:
+            bound = speakers.get(session)
+            if bound is None:
+                bound = given or "player"
+                speakers[session] = bound
+                while len(speakers) > 200000:
+                    speakers.popitem(last=False)
+            else:
+                speakers.move_to_end(session)
+        if given and given != bound and "speakers" not in can:
+            raise ApiError(403, "a player token speaks as one speaker per session (here %r): give each player their own "
+                                "session, or start the server with --player-can speakers" % bound, "speaker_bound")
+        return given or bound
+
+    def talks(verb, body):
+        """The verbs that usually start model work (the talk budget); the rest poll (decide, act, reads)."""
+        if verb in ("chat", "create", "suggest", "converse", "mind", "speak", "listen", "prepare"):
+            return True
+        if verb == "say":
+            return bool(body.get("fresh"))
+        if verb == "character":
+            return bool(body.get("soul") or body.get("events"))
+        if verb == "event":
+            return bool(body.get("by")) and body.get("impact") is None
+        return False
 
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
         server_version = "Kinloom"
+        sys_version = ""
+
+        def setup(self):
+            self.timeout = timeout or None    # a silent client is dropped (streams lift it in _sse_start)
+            BaseHTTPRequestHandler.setup(self)
 
         def log_message(self, format, *args):
             pass
@@ -392,61 +522,93 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
                 self.send_header("Access-Control-Allow-Origin", origin)
                 self.send_header("Vary", "Origin")
 
-        def _send(self, status, payload, ctype="application/json"):
+        def _send(self, status, payload, ctype="application/json", headers=None):
+            if isinstance(payload, dict) and "error" in payload and "code" not in payload:
+                payload = dict(payload, code=CODES.get(status, "error"))
             data = (json.dumps(payload) if ctype == "application/json" else payload).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", ctype + "; charset=utf-8")
             self.send_header("Content-Length", str(len(data)))
             self.send_header("Cache-Control", "no-store")
+            for k, v in (headers or {}).items():
+                self.send_header(k, v)
             self._cors()
             self.end_headers()
             self.wfile.write(data)
 
+        def _ip(self):
+            if trust_proxy:
+                fly = (self.headers.get("Fly-Client-IP") or "").strip()
+                if fly:
+                    return fly
+                hops = [h.strip() for h in (self.headers.get("X-Forwarded-For") or "").split(",") if h.strip()]
+                if hops:
+                    return hops[-1]               # the address the proxy itself saw (earlier ones: the client wrote them)
+            return self.client_address[0]
+
         def _role(self):
             """"admin", "player" or None (not allowed)."""
-            if not token and not player_token:
+            if not secured:
                 return "admin"
             auth = self.headers.get("Authorization", "")
-            given = auth[7:] if auth.startswith("Bearer ") else self.headers.get("X-Kinloom-Token") or \
-                (parse_qs(urlparse(self.path).query).get("token") or [""])[0]
+            given = auth[7:] if auth.startswith("Bearer ") else self.headers.get("X-Kinloom-Token") or ""
             if token and hmac.compare_digest(given.encode("utf-8"), token.encode("utf-8")):
                 return "admin"
             if player_token and hmac.compare_digest(given.encode("utf-8"), player_token.encode("utf-8")):
                 return "player"
             return None
 
-        def _authorized(self):
-            return self._role() is not None
-
         def _guard(self):
-            if not public and not _local_host(self.headers.get("Host")):
+            if not public and not lan and not _local_host(self.headers.get("Host")):
                 self._send(403, {"error": "this local server only answers requests addressed to localhost"})
                 return False
             if not self._origin_ok():
                 origin = self.headers.get("Origin")
                 hint = (" A page opened from a file has origin null: serve your game over http (for example "
-                        "`python -m http.server`), or start `kinloom serve --allow-origin null`.") if origin == "null" else \
+                        "`python -m http.server`), or start `kinloom serve --allow-origin null --token <secret>` and "
+                        "have the page send the token.") if origin == "null" else \
                     " To allow it: `kinloom serve --allow-origin %s`." % origin
                 self._send(403, {"error": "web pages from other sites may not call this local server." + hint})
                 return False
-            if urlparse(self.path).path.startswith("/v1/") and not self._authorized():
+            if urlparse(self.path).path.startswith("/v1/") and self._role() is None:
                 self._send(401, {"error": "this server needs its token (Authorization: Bearer <token>)"})
                 return False
             return True
 
-        def _limited(self, verb, session):
-            """True (and a 429 sent) when a player's model-backed request is over its limits."""
-            if verb not in MODEL_VERBS or self._role() != "player":
+        def _limited(self, verb, body, session):
+            """True (and a 429 sent) when a player's request is over its limits."""
+            if self._role() != "player" or not (rate_per_session or rate_per_ip):
                 return False
-            if over(("s", session), rate_per_session) or over(("ip", self.client_address[0]), rate_per_ip):
-                self._send(429, {"error": "too many requests from this player: answer offline and try again later"})
+            talk = talks(verb, body)
+            factor = 1 if talk else POLL_FACTOR
+            bucket = "talk" if talk else "poll"
+            wait = limiter.hit([(("ip", bucket, self._ip()), rate_per_ip and rate_per_ip * factor),
+                                (("s", bucket, session), rate_per_session and rate_per_session * factor)])
+            if wait:
+                self._send(429, {"error": "too many requests from this player: answer offline and try again in %d s" % wait},
+                           headers={"Retry-After": str(wait)})
                 return True
             return False
+
+        def _player_refusal(self, verb, body):
+            """Why a player token may not do this (None: it may)."""
+            if verb == "inspect":
+                return "the player token cannot read this (use the admin token)"
+            opt = verb if verb in ("feel", "remember", "state", "steer") else None
+            if verb in ("tools", "lore") and ("tools" in body or "lines" in body or "text" in body):
+                opt = verb                        # reading them is fine; setting them is the game's (kinloom.json)
+            if opt and opt not in can:
+                return ("a player token cannot use %s: it sets what the game decides. Put it in kinloom.json on the "
+                        "server, or start the server with --player-can %s" % (verb, opt))
+            if verb == "character" and from_config(body.get("name")):
+                return ("%r is a character of the server's kinloom.json: a player token cannot change it"
+                        % str(body.get("name"))[:48])
+            return None
 
         # ---------- methods ----------
 
         def do_OPTIONS(self):
-            if not self._origin_ok() or (not public and not _local_host(self.headers.get("Host"))):
+            if not self._origin_ok() or (not public and not lan and not _local_host(self.headers.get("Host"))):
                 self._send(403, {"error": "origin not allowed"})
                 return
             self.send_response(204)
@@ -458,16 +620,22 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             self.end_headers()
 
         def do_GET(self):
+            url = urlparse(self.path)
+            if url.path == "/healthz":                  # for hosts' health checks: no token, no data
+                self._send(200, {"ok": True})
+                return
             if not self._guard():
                 return
-            url = urlparse(self.path)
             session = self.headers.get("X-Kinloom-Session") or (parse_qs(url.query).get("session") or ["default"])[0]
             session = session[:64]
-            if self._role() == "player" and url.path in ("/v1/journal", "/v1/stream", "/v1/status", "/v1/inspect"):
+            player = self._role() == "player"
+            if player and url.path in ("/v1/journal", "/v1/stream", "/v1/status", "/v1/inspect"):
                 if url.path == "/v1/status":
                     self._send(200, {"mode": brain.status()["mode"]})
                 else:
                     self._send(403, {"error": "the player token cannot read this (use the admin token)"})
+                return
+            if player and self._limited("soul" if url.path == "/v1/soul" else "read", {}, session):
                 return
             if url.path in ("/", "/index.html"):
                 self._send(200, dashboard_html(), "text/html")
@@ -490,9 +658,16 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
                     self._send(200, {"mind": mind, "report": brain.mind_report(session, name)})
             elif url.path == "/v1/soul":
                 q = parse_qs(url.query)
+                name = (q.get("name") or [""])[0]
                 speaker = (q.get("speaker") or [None])[0]
-                soul = brain.soul(session, (q.get("name") or [""])[0], speaker)
-                self._send(200, public_soul(soul, speaker) if self._role() == "player" else soul)
+                try:
+                    if player:
+                        speaker = self._player_soul(session, name, speaker)
+                    soul = brain.soul(session, name, speaker)
+                except ApiError as e:
+                    self._send(e.status, {"error": str(e), "code": e.code})
+                    return
+                self._send(200, public_soul(soul, speaker) if player else soul)
             elif url.path == "/v1/journal":
                 try:
                     n = int((parse_qs(url.query).get("n") or ["200"])[0])
@@ -507,17 +682,34 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             else:
                 self._send(404, {"error": "not found"})
 
+        def _player_soul(self, session, name, speaker):
+            """The speaker a player's soul request shows (its own), and a 404 for a character that does not exist."""
+            if not name or not exists(session, name):
+                raise ApiError(404, "unknown character %r (declare it first)" % str(name)[:48], "unknown_character")
+            with speakers_lock:
+                bound = speakers.get(session)
+            if "speakers" in can and speaker:
+                return speaker
+            return bound
+
         def _drain(self, length):
             """Reads (and drops) a body we refuse, so the client gets our answer instead of a connection reset."""
             left = min(length, 16 * MAX_BODY)
-            while left > 0:
-                chunk = self.rfile.read(min(65536, left))
-                if not chunk:
-                    break
-                left -= len(chunk)
+            try:
+                while left > 0:
+                    chunk = self.rfile.read(min(65536, left))
+                    if not chunk:
+                        break
+                    left -= len(chunk)
+            except OSError:
+                pass
             self.close_connection = True
 
         def do_POST(self):
+            if self.headers.get("Transfer-Encoding") is not None:
+                self._send(411, {"error": "send the body with a Content-Length (chunked bodies are not read)"})
+                self.close_connection = True
+                return
             try:
                 length = int(self.headers.get("Content-Length") or 0)
             except ValueError:
@@ -542,21 +734,36 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             except (ValueError, UnicodeDecodeError):
                 self._send(400, {"error": "the body must be a JSON object"})
                 return
+            except OSError:                             # the client went silent mid-body
+                self.close_connection = True
+                return
             if not path.startswith("/v1/"):
                 self._send(404, {"error": "unknown path (verbs: %s)" % ", ".join(VERBS)})
                 return
             verb = path[4:]
             session = str(body.get("session") or self.headers.get("X-Kinloom-Session") or "default")[:64]
-            if self._limited(verb, session):
+            player = self._role() == "player"
+            if player:
+                refusal = self._player_refusal(verb, body)
+                if refusal:
+                    self._send(403, {"error": refusal, "code": "player_forbidden"})
+                    return
+            if self._limited(verb, body, session):
                 return
-            if verb == "inspect" and self._role() == "player":
-                self._send(403, {"error": "the player token cannot read this (use the admin token)"})
+            try:
+                if player and verb in SPEAKER_VERBS:
+                    if verb == "soul":
+                        _need(body, "name")
+                        body = dict(body, speaker=self._player_soul(session, body["name"], body.get("speaker")))
+                    else:
+                        body = dict(body, speaker=bound_speaker(session, body.get("speaker")))
+            except ApiError as e:
+                self._send(e.status, {"error": str(e), "code": e.code})
                 return
             if verb == "chat" and body.get("stream"):
                 self._stream_chat(body, session)
                 return
             try:
-                player = self._role() == "player"
                 if verb == "load" and player:
                     body = dict(body, data=verified(body.get("data")))
                 result = handle(brain, verb, body, session)
@@ -566,7 +773,7 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
                     result = {"data": signed(result["data"])}
                 self._send(200, result)
             except ApiError as e:
-                self._send(e.status, {"error": str(e)})
+                self._send(e.status, {"error": str(e), "code": e.code})
             except Exception as e:  # never drop the connection without an answer
                 brain._log("error", "server", "%s failed: %s: %s" % (verb, type(e).__name__, e))
                 self._send(500, {"error": "internal error in %s (see the kinloom serve log)" % verb})
@@ -574,6 +781,7 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
         # ---------- streaming ----------
 
         def _sse_start(self):
+            self.connection.settimeout(None)         # a stream may stay quiet for long
             self.send_response(200)
             self.send_header("Content-Type", "text/event-stream; charset=utf-8")
             self.send_header("Cache-Control", "no-store")
@@ -593,7 +801,7 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
             try:
                 image, facts = _image(body), _facts(body)
             except ApiError as e:
-                self._send(e.status, {"error": str(e)})
+                self._send(e.status, {"error": str(e), "code": e.code})
                 return
             self._sse_start()
             lock = threading.Lock()
@@ -648,5 +856,29 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
     class Server(ThreadingHTTPServer):
         daemon_threads = True
         allow_reuse_address = True
+
+        def __init__(self, *a, **kw):
+            self._slots = threading.BoundedSemaphore(max(1, int(max_connections or MAX_CONNECTIONS)))
+            ThreadingHTTPServer.__init__(self, *a, **kw)
+
+        def process_request(self, request, client_address):
+            if not self._slots.acquire(blocking=False):      # full: a short answer, never a new thread
+                try:
+                    request.sendall(BUSY)
+                except OSError:
+                    pass
+                self.shutdown_request(request)
+                return
+            try:
+                ThreadingHTTPServer.process_request(self, request, client_address)
+            except Exception:
+                self._slots.release()
+                raise
+
+        def process_request_thread(self, request, client_address):
+            try:
+                ThreadingHTTPServer.process_request_thread(self, request, client_address)
+            finally:
+                self._slots.release()
 
     return Server((host, port), Handler)

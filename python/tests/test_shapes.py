@@ -133,6 +133,20 @@ def test_json_is_found_even_with_braces_after_it():
     assert find_json('{bad} then {"ok": true}') == {"ok": True}
 
 
+def test_an_answer_cut_by_the_token_limit_is_never_its_first_inner_object():
+    from kinloom.shapes import CUT, Shape, cut_off, find_json
+    cut = ('{"say": "Building the harbour", "actions": [{"op": "build", "target": "harbour", "parts": ["pier"]}, '
+           '{"op": "build", "target": "light')
+    assert find_json(cut) is None and cut_off(cut)
+    shape = Shape.of({"say": "Done.", "actions": [{"op": "build", "target": "house", "parts": ["wall"]}]})
+    assert shape.parse(cut) == (False, None, CUT)
+    assert cut_off('```json\n[{"a": 1}, {"a": 2')
+    assert cut_off('{"a": "} is no end", "b": [1, 2')
+    # chatter with stray brackets is not JSON that was cut
+    assert find_json('Smile :-[ here {"a": 1}') == {"a": 1}
+    assert not cut_off("plain text") and not cut_off('{"a": 1}') and not cut_off('Sure! {"a": 1} then {:')
+
+
 def test_free_numbers_are_bounded():
     s = Shape.of({"damage": 0.5})
     assert not s.check({"damage": 1e300})[0]

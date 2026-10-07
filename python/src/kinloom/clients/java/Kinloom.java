@@ -56,11 +56,12 @@ public final class Kinloom {
     }
 
     private static final Pattern PLACEHOLDER = Pattern.compile("\\{([A-Za-z_][A-Za-z0-9_]*)\\}");
-    private static final ExecutorService POOL = Executors.newCachedThreadPool(r -> {
-        Thread t = new Thread(r, "kinloom");
-        t.setDaemon(true);
-        return t;
-    });
+    private static final ExecutorService POOL = new java.util.concurrent.ThreadPoolExecutor(0, 128, 60L, java.util.concurrent.TimeUnit.SECONDS,
+        new java.util.concurrent.SynchronousQueue<Runnable>(), r -> {
+            Thread t = new Thread(r, "kinloom");
+            t.setDaemon(true);
+            return t;
+        }, new java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy());
 
     private final String url;
     private final String session;
@@ -68,6 +69,7 @@ public final class Kinloom {
     /** Milliseconds a chat or create may take before the offline answer is used. */
     public int chatTimeoutMs = 12000;
     private final Map<String, Map<String, Object>> chars = new ConcurrentHashMap<>();
+    private final Map<String, java.util.concurrent.Future<?>> declaring = new ConcurrentHashMap<>();   // relay: declarations on their way
     private volatile Map<String, Object> gameTools;                     // the game's tools, sent again after a restart
     private final Map<String, Decision> decisions = new ConcurrentHashMap<>();
     private final Map<String, Pending> actions = new ConcurrentHashMap<>();
@@ -75,6 +77,8 @@ public final class Kinloom {
     private final Random random = new Random();
     private volatile long downUntil = 0;
     private volatile int failures = 0;
+    private volatile long busyUntil = 0;           // the server said 429 (too many requests): offline answers until then
+    private volatile boolean busyTold = false;
     private final Map<String, MindEntry> minds = new ConcurrentHashMap<>();
     private final Map<String, Object[]> units = new ConcurrentHashMap<>();
     private final List<Object> rewards = new ArrayList<>();
@@ -116,6 +120,14 @@ public final class Kinloom {
         final List<Action> ready = new ArrayList<>();
         boolean busy;
         long at = Long.MIN_VALUE;
+    }
+
+    /** Relay: how often decide/act ask the server, in nanoseconds: a quarter of the character's `every` (8 s by default:
+     *  every 2 s; the server refreshes early when the situation changes after every/4), never more than 4 times a second. */
+    private long pollEvery(String name) {
+        Map<String, Object> c = chars.get(name);
+        Double every = c == null ? null : Py.finite(c.get("every"));
+        return (long) (Math.max(0.25, (every != null && every > 0 ? every : 8.0) / 4) * 1e9);
     }
 
     /** Connects to `kinloom serve` on 127.0.0.1:7717 (env KINLOOM_URL / KINLOOM_SERVER_TOKEN override it). */
@@ -193,7 +205,8 @@ public final class Kinloom {
         d.put("name", name);
         d.put("personality", personality);
         chars.put(name, d);
-        fire("character", d);
+        if (brain != null) fire("character", d);
+        else declaring.put(name, POOL.submit(() -> post("character", d, 5000)));
     }
 
     /** A line in character with the real facts filled in. Fast: served from lines prepared in advance. */
@@ -207,11 +220,58 @@ public final class Kinloom {
         Map<String, Object> body = map("name", name, "event", event, "facts", f);
         if (fresh) body.put("fresh", true);
         if (maxChars > 0) body.put("max_chars", (long) maxChars);
+        if (brain == null && !fresh) return sayAhead(name, event, f, body);
         Map<String, Object> r = post("say", body, fresh ? chatTimeoutMs : 2000);
         setSource(name, r);
         if (r == null) return offlineLine(name, event, f);
         redeclare(name, r);
         return str(r.get("text"));
+    }
+
+    /** A relay's line in progress: one request, its answer taken by whoever comes first (the caller, or the cache). */
+    private static final class SayFetch {
+        final CompletableFuture<Map<String, Object>> answer = new CompletableFuture<>();
+        final java.util.concurrent.atomic.AtomicBoolean taken = new java.util.concurrent.atomic.AtomicBoolean();
+    }
+
+    private final Map<String, String[]> saidAhead = new ConcurrentHashMap<>();     // key -> {text, source}: an answer that came late
+    private final Map<String, SayFetch> sayFetching = new ConcurrentHashMap<>();
+    /** Milliseconds say() waits for a relay before answering from your own lines (a local server answers well within it). */
+    public int sayWaitMs = 30;
+
+    /** Relay say() never holds the game thread: a line asked earlier is used at once, else the server gets sayWaitMs, else
+     *  your own lines answer now; a late answer is kept for the next say() of the same line and facts. */
+    private String sayAhead(String name, String event, Map<String, Object> f, Map<String, Object> body) {
+        String key = name + "\u0000" + event + "\u0000" + toJson(f) + "\u0000" + body.get("max_chars");
+        String[] got = saidAhead.remove(key);
+        SayFetch fetch = sayFetching.computeIfAbsent(key, k -> {
+            SayFetch x = new SayFetch();
+            POOL.execute(() -> {
+                Map<String, Object> r = null;
+                try { r = post("say", body, 2000); } catch (RuntimeException ignored) { /* offline */ }
+                sayFetching.remove(k, x);
+                if (r != null) {
+                    redeclare(name, r);
+                    if (x.taken.compareAndSet(false, true) && saidAhead.size() < 256)
+                        saidAhead.put(k, new String[] {str(r.get("text")), r.get("source") instanceof String ? (String) r.get("source") : "model"});
+                }
+                x.answer.complete(r);
+            });
+            return x;
+        });
+        if (got == null) {
+            Map<String, Object> r = null;
+            try { r = fetch.answer.get(Math.max(0, sayWaitMs), java.util.concurrent.TimeUnit.MILLISECONDS); }
+            catch (Exception ignored) { /* not yet: your own line now, the server's next time */ }
+            if (r != null && fetch.taken.compareAndSet(false, true)) got = new String[] {str(r.get("text")), r.get("source") instanceof String ? (String) r.get("source") : "model"};
+            else if (r != null) got = saidAhead.remove(key);
+        }
+        if (got == null) {
+            sources.put(name, "offline");
+            return offlineLine(name, event, f);
+        }
+        sources.put(name, got[1]);
+        return got[0];
     }
 
     /** Where name's last line or reply came from: "model" (written now), "prepared" (written earlier by the model),
@@ -299,7 +359,7 @@ public final class Kinloom {
         boolean due;
         synchronized (d) {
             long now = System.nanoTime();
-            due = !d.busy && (d.at == Long.MIN_VALUE || now - d.at >= 250_000_000L);
+            due = !d.busy && (d.at == Long.MIN_VALUE || now - d.at >= pollEvery(name));
             if (due) {
                 d.busy = true;
                 d.at = now;
@@ -330,7 +390,7 @@ public final class Kinloom {
         boolean due;
         synchronized (d) {
             long now = System.nanoTime();
-            due = !d.busy && (d.at == Long.MIN_VALUE || now - d.at >= 250_000_000L);
+            due = !d.busy && (d.at == Long.MIN_VALUE || now - d.at >= pollEvery(name));
             if (due) {
                 d.busy = true;
                 d.at = now;
@@ -419,7 +479,7 @@ public final class Kinloom {
             ready = new ArrayList<>(p.ready);
             p.ready.clear();
             long now = System.nanoTime();
-            due = !p.busy && (p.at == Long.MIN_VALUE || now - p.at >= 250_000_000L);
+            due = !p.busy && (p.at == Long.MIN_VALUE || now - p.at >= pollEvery(name));
             if (due) {
                 p.busy = true;
                 p.at = now;
@@ -843,10 +903,10 @@ public final class Kinloom {
             Map<String, Object> d = chars.get(name);
             Map<String, Object> tools = gameTools;
             if (d == null) return;
-            POOL.execute(() -> {                         // the server restarted: its tools, then the character
+            declaring.put(name, POOL.submit(() -> {      // the server restarted: its tools, then the character
                 if (tools != null) post("tools", map("tools", tools), 5000);
                 post("character", d, 5000);
-            });
+            }));
         }
     }
 
@@ -861,7 +921,34 @@ public final class Kinloom {
     }
 
     private Map<String, Object> post(String verb, Map<String, Object> body, int timeoutMs) {
+        if (brain == null && !verb.equals("character") && !verb.equals("tools")) ready(body);
         return request("POST", verb, body, timeoutMs);
+    }
+
+    /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
+     *  without their soul and tools. */
+    private void ready(Map<String, Object> body) {
+        long until = System.currentTimeMillis() + 5000;
+        for (String field : new String[] {"name", "a", "b"}) {
+            Object who = body == null ? null : body.get(field);
+            java.util.concurrent.Future<?> f = who instanceof String ? declaring.get(who) : null;
+            if (f == null) continue;
+            try { f.get(Math.max(1, until - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS); }
+            catch (Exception ignored) { /* not declared in time: the call goes on, the server flags it */ }
+        }
+    }
+
+    /** HTTP 429: the server (or a proxy before it) asks for a pause: offline answers for Retry-After seconds (5 when it
+     *  does not say), without counting the server as down; told once. */
+    private void busy(HttpURLConnection c) {
+        double wait = 5;
+        try { String ra = c.getHeaderField("Retry-After"); if (ra != null) wait = Math.max(0, Math.min(300, Double.parseDouble(ra.trim()))); }
+        catch (NumberFormatException ignored) { /* an HTTP date: the default */ }
+        busyUntil = System.currentTimeMillis() + (long) (wait * 1000);
+        if (!busyTold) {
+            busyTold = true;
+            System.err.println("[kinloom] the server answered 429 (too many requests): offline answers for " + Py.g(wait) + " s");
+        }
     }
 
     /** Offline answers for a while: 2 s, then 4, 8, at most 10 while the server is still not there. */
@@ -898,7 +985,9 @@ public final class Kinloom {
             try { return brain.chatStream(session, body, onPiece); }
             catch (KinloomException e) { System.err.println("[kinloom] chat: " + e.getMessage()); return null; }
         }
-        if (System.currentTimeMillis() < downUntil) return null;
+        ready(body);                                  // the character's declaration first, as for every other call
+        long nowMs = System.currentTimeMillis();
+        if (nowMs < downUntil || nowMs < busyUntil) return null;
         HttpURLConnection c = null;
         try {
             c = (HttpURLConnection) new URL(url + "/v1/chat").openConnection();
@@ -911,7 +1000,15 @@ public final class Kinloom {
             if (!token.isEmpty()) c.setRequestProperty("Authorization", "Bearer " + token);
             Map<String, Object> streamed = new LinkedHashMap<>(body);
             streamed.put("stream", true);
+            try {
+                c.connect();
+            } catch (java.net.ConnectException | java.net.SocketTimeoutException e) {
+                down();                                      // not running: answer offline for a while
+                return null;
+            }
+            failures = 0;
             try (OutputStream out = c.getOutputStream()) { out.write(toJson(streamed).getBytes(StandardCharsets.UTF_8)); }
+            if (c.getResponseCode() == 429) { busy(c); return null; }
             if (c.getResponseCode() != 200) return null;
             Map<String, Object> done = null;
             try (java.io.BufferedReader reader = new java.io.BufferedReader(new java.io.InputStreamReader(c.getInputStream(), StandardCharsets.UTF_8))) {
@@ -926,8 +1023,7 @@ public final class Kinloom {
             }
             return done;
         } catch (java.io.IOException e) {
-            down();
-            return null;
+            return null;                                     // slow or cut off: this reply is offline, the server is still there
         } finally {
             if (c != null) c.disconnect();
         }
@@ -936,7 +1032,8 @@ public final class Kinloom {
     @SuppressWarnings("unchecked")
     private Map<String, Object> request(String method, String verb, Map<String, Object> body, int timeoutMs) {
         if (brain != null) return local(method, verb, body);
-        if (System.currentTimeMillis() < downUntil) return null;
+        long nowMs = System.currentTimeMillis();
+        if (nowMs < downUntil || nowMs < busyUntil) return null;
         HttpURLConnection c = null;
         try {
             URL target = new URL(url + "/v1/" + verb);
@@ -965,6 +1062,7 @@ public final class Kinloom {
                 }
             }
             if (method.equals("GET") && c.getResponseCode() == 404) return map("missing", true);
+            if (c.getResponseCode() == 429) { busy(c); return null; }
             if (c.getResponseCode() != 200) return null;
             try (InputStream in = c.getInputStream()) {
                 ByteArrayOutputStream buf = new ByteArrayOutputStream();
@@ -1957,6 +2055,37 @@ public final class Kinloom {
             return Py.squash(CONTROL.matcher(ANSI.matcher(s).replaceAll("")).replaceAll(""));
         }
 
+        static final String CUT = "the answer was cut off before its end: write it shorter and complete";
+
+        /** Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or -1. */
+        static int unclosed(String t) {
+            int n = t.length();
+            for (int i = 0; i < n; i++) {
+                char c = t.charAt(i);
+                if (c != '{' && c != '[') continue;
+                int j = i + 1;
+                while (j < n && " \t\r\n".indexOf(t.charAt(j)) >= 0) j++;
+                if (j >= n || (c == '{' ? "\"}" : "\"{[]-0123456789tfn").indexOf(t.charAt(j)) < 0) continue;
+                int depth = 0, k = i;
+                boolean quoted = false;
+                for (; k < n; k++) {
+                    char ch = t.charAt(k);
+                    if (quoted) { if (ch == '\\') k++; else if (ch == '"') quoted = false; }
+                    else if (ch == '"') quoted = true;
+                    else if (ch == '{' || ch == '[') depth++;
+                    else if ((ch == '}' || ch == ']') && --depth == 0) break;
+                }
+                if (k >= n) return i;
+                i = k;
+            }
+            return -1;
+        }
+
+        /** True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that. */
+        static boolean cutOff(Object text) {
+            return text instanceof String && findJson(text) == null && unclosed(Py.strip((String) text)) >= 0;
+        }
+
         /** The first JSON object or array in a model answer, or null. Never throws. */
         static Object findJson(Object text) {
             if (!(text instanceof String) || Py.strip((String) text).isEmpty()) return null;
@@ -1969,13 +2098,56 @@ public final class Kinloom {
                 if (start >= 0 && end > start) t = Py.strip(t.substring(start + 1, end));
             }
             try { return Py.loads(t); } catch (RuntimeException ignored) { /* chatter around it */ }
+            // never an object nested in JSON that stops before its end (an answer cut by the token limit)
+            int stop = unclosed(t);
             for (char open : new char[] {'{', '['}) {
                 int at = t.indexOf(open), tries = 0;
-                while (at >= 0 && tries < 20) {
-                    try { return Py.decode(t, at)[0]; } catch (RuntimeException e) { at = t.indexOf(open, at + 1); tries++; }
+                while (at >= 0 && (stop < 0 || at < stop) && tries < 20) {
+                    try { return Py.decode(t, at)[0]; } catch (RuntimeException e) {
+                        int end = close(t, at);
+                        if (end > at) {      // it closes but does not parse: a trailing comma? (never its inner object)
+                            try { return Py.loads(noTrailingCommas(t.substring(at, end + 1))); } catch (RuntimeException ignored) { /* not that either */ }
+                        }
+                        at = t.indexOf(open, at + 1); tries++;
+                    }
                 }
             }
             return null;
+        }
+
+        /** Where the bracket opened at `at` closes (brackets in strings skipped), or -1. */
+        static int close(String t, int at) {
+            int depth = 0, n = t.length();
+            boolean quoted = false;
+            for (int k = at; k < n; k++) {
+                char ch = t.charAt(k);
+                if (quoted) { if (ch == '\\') k++; else if (ch == '"') quoted = false; }
+                else if (ch == '"') quoted = true;
+                else if (ch == '{' || ch == '[') depth++;
+                else if ((ch == '}' || ch == ']') && --depth == 0) return k;
+            }
+            return -1;
+        }
+
+        /** The text without commas right before } or ] (outside strings): what models often write. */
+        static String noTrailingCommas(String t) {
+            StringBuilder out = new StringBuilder();
+            int n = t.length();
+            boolean quoted = false;
+            for (int k = 0; k < n; k++) {
+                char ch = t.charAt(k);
+                if (quoted) {
+                    if (ch == '\\' && k + 1 < n) { out.append(ch).append(t.charAt(k + 1)); k++; continue; }
+                    if (ch == '"') quoted = false;
+                } else if (ch == '"') quoted = true;
+                else if (ch == ',') {
+                    int j = k + 1;
+                    while (j < n && " \t\r\n".indexOf(t.charAt(j)) >= 0) j++;
+                    if (j < n && (t.charAt(j) == '}' || t.charAt(j) == ']')) continue;
+                }
+                out.append(ch);
+            }
+            return out.toString();
         }
     }
 
@@ -2137,10 +2309,23 @@ public final class Kinloom {
                 case "object": {
                     Map<String, Object> map = Py.asMap(value);
                     if (map == null) return new Object[] {false, null, path + " must be an object with " + String.join(", ", fields.keySet())};
+                    // keys matched exactly, else in another case (the first such key); none of them: one wrapper is read
+                    Map<String, String> lower = new HashMap<>();
+                    for (String key : map.keySet()) lower.putIfAbsent(key.toLowerCase(Locale.ROOT), key);
+                    Map<String, String> found = new HashMap<>();
+                    for (String name : fields.keySet()) {
+                        String key = map.containsKey(name) ? name : lower.get(name.toLowerCase(Locale.ROOT));
+                        if (key != null) found.put(name, key);
+                    }
+                    if (!fields.isEmpty() && found.isEmpty()) {
+                        Object inner = map.size() == 1 ? map.values().iterator().next() : null;
+                        if (Py.asMap(inner) != null) return check(inner, path);
+                        return new Object[] {false, null, path + " must be an object with " + String.join(", ", fields.keySet())};
+                    }
                     Map<String, Object> out = new LinkedHashMap<>();
                     for (Map.Entry<String, Shape> e : fields.entrySet()) {
-                        if (map.containsKey(e.getKey())) {
-                            Object[] r = e.getValue().check(map.get(e.getKey()), e.getKey());
+                        if (found.containsKey(e.getKey())) {
+                            Object[] r = e.getValue().check(map.get(found.get(e.getKey())), e.getKey());
                             if (!(Boolean) r[0]) return new Object[] {false, null, r[2]};
                             out.put(e.getKey(), r[1]);
                         } else out.put(e.getKey(), e.getValue().defaultValue());
@@ -2155,7 +2340,7 @@ public final class Kinloom {
 
         Object[] parse(String text) {
             Object data = Text.findJson(text);
-            if (data == null) return new Object[] {false, null, "the answer was not JSON"};
+            if (data == null) return new Object[] {false, null, Text.cutOff(text) ? Text.CUT : "the answer was not JSON"};
             return check(data);
         }
 
@@ -3030,7 +3215,10 @@ public final class Kinloom {
             return Py.len(text) <= limit ? text : Py.slice(text, limit) + "...";
         }
 
-        static String clip(Object obj) { return clip(obj, 1500); }
+        /** Characters of facts, situation, context or state the model reads (more is cut, and journaled). */
+        static final int CLIP = 4000;
+
+        static String clip(Object obj) { return clip(obj, CLIP); }
 
         static String feeling(double v) { return v <= -0.6 ? "hates" : v < -0.1 ? "distrusts" : v >= 0.6 ? "trusts deeply" : v > 0.1 ? "likes" : ""; }
 
@@ -3431,17 +3619,38 @@ public final class Kinloom {
         public FileMemoryStore(String path) { this.file = new java.io.File(path).getAbsoluteFile(); }
 
         public String load() {
-            try { return file.exists() ? new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8) : null; }
+            try {
+                if (!file.exists()) return null;
+                String text = new String(java.nio.file.Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
+                return text.startsWith("\uFEFF") ? text.substring(1) : text;
+            }
             catch (java.io.IOException e) { return null; }
         }
 
+        /** A file that cannot be read is kept aside (memory.json.corrupt-<time>) before anything overwrites it: its new name, or null. */
+        String keepAside() {
+            java.io.File aside = new java.io.File(file.getPath() + ".corrupt-" + System.currentTimeMillis() / 1000);
+            try {
+                java.nio.file.Files.move(file.toPath(), aside.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                return aside.getName();
+            } catch (java.io.IOException | RuntimeException e) {
+                return null;
+            }
+        }
+
         public void save(String text) {
+            // a unique name per save (two threads never share it), synced to disk, then moved over the old file: a crash or a
+            // power loss leaves the old file or the new one, never half of one
+            java.io.File tmp = new java.io.File(file.getPath() + "." + Thread.currentThread().getId() + "-" + System.nanoTime() + ".tmp");
             try {
                 if (file.getParentFile() != null) file.getParentFile().mkdirs();
-                java.io.File tmp = new java.io.File(file.getPath() + ".tmp");
-                java.nio.file.Files.write(tmp.toPath(), text.getBytes(StandardCharsets.UTF_8));
+                try (java.io.FileOutputStream out = new java.io.FileOutputStream(tmp)) {
+                    out.write(text.getBytes(StandardCharsets.UTF_8));
+                    out.getFD().sync();
+                }
                 java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING);
             } catch (java.io.IOException e) {
+                if (!tmp.delete()) tmp.deleteOnExit();
                 throw new IllegalStateException(e);
             }
         }
@@ -3463,23 +3672,40 @@ public final class Kinloom {
             this.store = store;
             this.clock = clock;
             if (store == null) return;
-            try {
-                String text = store.load();
-                Map<String, Object> data = text == null ? null : Py.asMap(Py.loads(text));
-                if (data == null) return;
-                Map<String, Object> sessions = Py.asMap(data.get("sessions"));
-                if (sessions != null) for (Map.Entry<String, Object> s : sessions.entrySet()) {
-                    Map<String, Object> scopes = Py.asMap(s.getValue());
-                    if (scopes == null) continue;
-                    for (Map.Entry<String, Object> sc : scopes.entrySet()) {
-                        List<Map<String, Object>> list = new ArrayList<>();
-                        if (sc.getValue() instanceof List) for (Object n : Py.asList(sc.getValue())) if (Py.asMap(n) != null && Py.asMap(n).get("text") instanceof String) list.add(Py.asMap(n));
-                        notes.put(s.getKey() + "\u0000" + sc.getKey(), list);
-                    }
+            // what can be trusted is loaded, entry by entry: one bad note never costs the rest
+            String text;
+            try { text = store.load(); } catch (RuntimeException e) { text = null; problem = "memory unreadable (" + e.getClass().getSimpleName() + ")"; }
+            if (text == null) return;
+            Object parsed;
+            try { parsed = Py.loads(text); } catch (RuntimeException e) { parsed = null; problem = "memory file unreadable (not JSON)"; }
+            Map<String, Object> data = Py.asMap(parsed);
+            if (data == null) {
+                if (problem.isEmpty()) problem = "memory file is not a JSON object";
+                String aside = store instanceof FileMemoryStore ? ((FileMemoryStore) store).keepAside() : null;
+                if (aside != null) problem += "; kept as " + aside;
+                return;
+            }
+            Map<String, Object> sessions = Py.asMap(data.get("sessions"));
+            if (sessions != null) for (Map.Entry<String, Object> s : sessions.entrySet()) {
+                Map<String, Object> scopes = Py.asMap(s.getValue());
+                if (scopes == null) continue;
+                for (Map.Entry<String, Object> sc : scopes.entrySet()) {
+                    List<Map<String, Object>> list = new ArrayList<>();
+                    if (sc.getValue() instanceof List) for (Object n : Py.asList(sc.getValue())) if (goodNote(n)) list.add(Py.asMap(n));
+                    if (!list.isEmpty()) notes.put(s.getKey() + "\u0000" + sc.getKey(), new ArrayList<>(list.subList(Math.max(0, list.size() - 120), list.size())));
                 }
-                Map<String, Object> ex = Py.asMap(data.get("extra"));
-                if (ex != null) for (Map.Entry<String, Object> e : ex.entrySet()) if (Py.asMap(e.getValue()) != null) extra.put(e.getKey(), Py.asMap(e.getValue()));
-            } catch (RuntimeException ignored) { /* a broken memory must not stop the game */ }
+            }
+            Map<String, Object> ex = Py.asMap(data.get("extra"));
+            if (ex != null) for (Map.Entry<String, Object> e : ex.entrySet()) if (Py.asMap(e.getValue()) != null) extra.put(e.getKey(), Py.asMap(e.getValue()));
+        }
+
+        /** What went wrong reading the stored memory, if anything (the brain journals it). */
+        String problem = "";
+
+        /** A note recall() can rank: text, time and importance (a file edited by hand, or a save from elsewhere). */
+        static boolean goodNote(Object n) {
+            Map<String, Object> m = Py.asMap(n);
+            return m != null && m.get("text") instanceof String && Py.finite(m.get("t")) != null && Py.finite(m.get("importance")) != null;
         }
 
         private static java.util.Set<String> words(String text) {
@@ -3576,8 +3802,7 @@ public final class Kinloom {
                 for (Map.Entry<String, Object> e : given.entrySet()) {
                     List<Map<String, Object>> kept = new ArrayList<>();
                     if (e.getValue() instanceof List) for (Object n : Py.asList(e.getValue())) {
-                        Map<String, Object> m = Py.asMap(n);
-                        if (m != null && m.get("text") instanceof String && m.get("t") instanceof Number && m.get("importance") instanceof Number) kept.add(new LinkedHashMap<>(m));
+                        if (goodNote(n)) kept.add(new LinkedHashMap<>(Py.asMap(n)));
                     }
                     if (!kept.isEmpty()) notes.put(session + "\u0000" + e.getKey(), new ArrayList<>(kept.subList(Math.max(0, kept.size() - 120), kept.size())));
                 }
@@ -5132,6 +5357,7 @@ public final class Kinloom {
     }
 
     static final class CharacterDef extends Persona {
+        static final int MAX_WHAT = 500;   // characters of create's `what` (more is cut, and journaled)
         static final int MAX_NAME = 48, MAX_EVENT = 160, MAX_LINE = 140, MAX_REPLY = 400, MAX_TOOLS = 100;
         String group;
         final Map<String, List<String>> lines = new LinkedHashMap<>();
@@ -5336,6 +5562,9 @@ public final class Kinloom {
     }
 
     static final class Brain {
+        private static final int MAX_PER_SESSION = 300;   // one session (one player online) never fills the table for everyone else
+        private static final int MAX_KEYS = 2000;         // entries per cache (decisions, banks, pools, rises): live data in keys stays bounded
+        private final Map<String, Integer> perSession = new HashMap<>();
         private static final int MAX_CHARACTERS = 5000, MAX_WAITING = 50, MAX_SPEAKERS = 500, BANK_SIZE = 8, POOL_SIZE = 5;
         private static final String DEFAULT_LANGUAGE = "English";
         private static final double GAMMA = 0.8, COMPOUND = 0.4, HEARSAY = 0.5, RUMOR_DECAY = 0.8, MIN_RUMOR = 0.1;
@@ -5370,10 +5599,10 @@ public final class Kinloom {
         private final List<String> cfgLore = new ArrayList<>();
         private Map<String, Object[]> cfgTools = new LinkedHashMap<>();
         private final Map<String, Map<String, Object[]>> toolSets = new HashMap<>();
-        private final Map<String, Object[]> banks = new HashMap<>();                     // key -> {templates, unused, recent, filling[], failures[]}
-        private final Map<String, Object[]> decisions = new HashMap<>();                 // key -> {value, at, situation, thinking}
+        private final Map<String, Object[]> banks = new LinkedHashMap<>();                     // key -> {templates, unused, recent, filling[], failures[]}
+        private final Map<String, Object[]> decisions = new LinkedHashMap<>();                 // key -> {value, at, situation, thinking}
         private final Map<String, Object[]> pending = new HashMap<>();                   // key -> {List<Act>, at, thinking}
-        private final Map<String, Object[]> pools = new HashMap<>();                     // key -> {List items, filling, failures}
+        private final Map<String, Object[]> pools = new LinkedHashMap<>();                     // key -> {List items, filling, failures}
         private final Map<String, List<String[]>> history = new HashMap<>();
         private final Map<String, Map<String, Object>> state = new HashMap<>();
         private final Map<String, MindState> minds = new LinkedHashMap<>();
@@ -5389,12 +5618,25 @@ public final class Kinloom {
         private final Map<String, Map<String, Map<String, double[]>>> bonds = new HashMap<>();   // session -> name -> speaker -> {talks, first, last}
         private final Map<String, java.util.ArrayDeque<String>> said = new HashMap<>();
         private int switches, events, spreads;
-        private final Map<String, double[]> rises = new HashMap<>();
+        private final Map<String, double[]> rises = new LinkedHashMap<>();
+
+        /** The oldest entries go once a table passes its cap (insertion order). Called under the lock. */
+        private static void trim(Map<String, ?> table) {
+            java.util.Iterator<String> it = table.keySet().iterator();
+            while (table.size() > MAX_KEYS && it.hasNext()) { it.next(); it.remove(); }
+        }
         private final java.util.Set<String> emptyTold = new java.util.HashSet<>();
         private final java.util.ArrayDeque<Map<String, Object>> journal = new java.util.ArrayDeque<>();
         private final Map<String, Object> stats = new LinkedHashMap<>();
         private int busy;
-        private final ExecutorService bg = Executors.newFixedThreadPool(3, r -> { Thread t = new Thread(r, "kinloom-bg"); t.setDaemon(true); return t; });
+        private final ExecutorService bg = backgroundPool();   // shut down by close(); idle threads end after 30 s (a brain never closed frees them)
+
+        private static ExecutorService backgroundPool() {
+            java.util.concurrent.ThreadPoolExecutor pool = new java.util.concurrent.ThreadPoolExecutor(3, 3, 30L, java.util.concurrent.TimeUnit.SECONDS,
+                new java.util.concurrent.LinkedBlockingQueue<Runnable>(), r -> { Thread t = new Thread(r, "kinloom-bg"); t.setDaemon(true); return t; });
+            pool.allowCoreThreadTimeOut(true);
+            return pool;
+        }
         private final Map<String, byte[]> voiceCache = new LinkedHashMap<>();
         private boolean closed;
         private final Random random = new Random();
@@ -5408,7 +5650,9 @@ public final class Kinloom {
             cfg.put("calls_per_minute", 30L);
             if (o.configPath != null) {
                 try {
-                    Map<String, Object> file = Py.asMap(Py.loads(new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(o.configPath)), StandardCharsets.UTF_8)));
+                    String text = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(o.configPath)), StandardCharsets.UTF_8);
+                    if (text.startsWith("\uFEFF")) text = text.substring(1);      // saved with a BOM (Windows editors, PowerShell 5.1)
+                    Map<String, Object> file = Py.asMap(Py.loads(text));
                     if (file != null) cfg.putAll(file);
                 } catch (java.io.IOException | RuntimeException ignored) { /* a broken file: the defaults */ }
             }
@@ -5428,12 +5672,20 @@ public final class Kinloom {
             language = o.language != null ? o.language : cfg.get("language") instanceof String ? (String) cfg.get("language") : DEFAULT_LANGUAGE;
             voiceLanguage = o.language != null ? o.language : (cfg.get("language") instanceof String && !DEFAULT_LANGUAGE.equals(cfg.get("language")) ? (String) cfg.get("language") : null);
             limit = Math.max(1, o.callsPerMinute != null ? o.callsPerMinute : (int) Py.d(cfg.get("calls_per_minute")));
-            prices = o.prices != null ? o.prices : Py.asMap(cfg.get("prices"));
+            Object pr = o.prices != null ? o.prices : cfg.get("prices");
+            if (pr != null && !pricesOk(pr)) {
+                if (o.prices != null) throw new IllegalArgumentException("prices: {\"input\": $/M tokens, \"output\": ..., \"cached_input\": ...} as numbers, got " + Py.pyRepr(o.prices));
+                log("refused", "kinloom", "kinloom.json: prices must be {\"input\": n, \"output\": n, \"cached_input\": n} in dollars per million tokens, got "
+                    + Py.pyRepr(pr) + " (no cost is counted)", null);
+                pr = null;
+            }
+            prices = Py.asMap(pr);
             List<String> words = new ArrayList<>();
             if (cfg.get("banned_words") instanceof List) for (Object w : Py.asList(cfg.get("banned_words"))) if (w instanceof String && !Py.strip((String) w).isEmpty()) words.add(Pattern.quote(Py.strip((String) w)));
             banned = words.isEmpty() ? null : Pattern.compile("(?<![" + Souls.W + "])(" + String.join("|", words) + ")(?![" + Souls.W + "])", Pattern.CASE_INSENSITIVE | Pattern.UNICODE_CASE);
             filter = o.contentFilter;
             memory = new Memory(o.memoryStore != null ? o.memoryStore : o.memoryPath != null ? new FileMemoryStore(o.memoryPath) : null, () -> wall.getAsDouble());
+            if (!memory.problem.isEmpty()) log("error", "kinloom", memory.problem, null);
             callTimeout = o.callTimeout;
             maxCostPerHour = Py.finite(cfg.get("max_cost_per_hour"));
             maxCostPerDay = Py.finite(cfg.get("max_cost_per_day"));
@@ -5459,6 +5711,18 @@ public final class Kinloom {
             ModelProvider p = provider;
             OpenAICompatible warmable = p instanceof OpenAICompatible ? (OpenAICompatible) p : p instanceof FallbackModel && ((FallbackModel) p).current instanceof OpenAICompatible ? (OpenAICompatible) ((FallbackModel) p).current : null;
             if (warmable != null) POOL.execute(() -> { try { warmable.warm(); } catch (RuntimeException ignored) { } });
+        }
+
+        /** Prices in dollars per million tokens: input, output and cached_input numbers from 0 (other keys, like "source", allowed). */
+        static boolean pricesOk(Object value) {
+            Map<String, Object> m = Py.asMap(value);
+            if (m == null) return false;
+            for (String key : new String[] {"input", "output", "cached_input"}) {
+                if (!m.containsKey(key)) continue;
+                Double v = m.get(key) instanceof Boolean ? null : Py.finite(m.get(key));
+                if (v == null || v < 0) return false;
+            }
+            return true;
         }
 
         static ModelProvider providerOf(String url, String key, String model, String kind) {
@@ -5502,10 +5766,30 @@ public final class Kinloom {
                 CharacterDef c = characters.get(k(session, n));
                 if (c == null) {
                     c = new CharacterDef(n, null);
-                    if (characters.size() < MAX_CHARACTERS) characters.put(k(session, n), c);
+                    store(session, c);
                 }
                 return c;
             }
+        }
+
+        /** Keeps a character (under the lock). A full table first lets go of the oldest one the game never declared (made on
+         *  the fly from a name); a session past its share keeps nothing more. False: not stored (a throwaway). */
+        private boolean store(String session, CharacterDef c) {
+            String key = k(session, c.name);
+            if (characters.containsKey(key)) { characters.put(key, c); return true; }
+            if (perSession.getOrDefault(session, 0) >= MAX_PER_SESSION) return false;
+            if (characters.size() >= MAX_CHARACTERS) {
+                String old = null;
+                for (String x : characters.keySet()) if (!declared.contains(x)) { old = x; break; }
+                if (old == null) return false;
+                characters.remove(old);
+                String oldSession = old.split("\u0000", 2)[0];
+                int left = perSession.getOrDefault(oldSession, 1) - 1;
+                if (left <= 0) perSession.remove(oldSession); else perSession.put(oldSession, left);
+            }
+            characters.put(key, c);
+            perSession.merge(session, 1, Integer::sum);
+            return true;
         }
 
         void log(String kind, String name, String text, Map<String, Object> detail) {
@@ -5555,13 +5839,34 @@ public final class Kinloom {
             double lim = timeout != null ? timeout : callTimeout;
             CompleteOptions o = new CompleteOptions();
             o.json = json; o.maxTokens = maxTokens; o.timeout = lim; o.onText = onText; o.images = images != null && !images.isEmpty() ? images : null;
-            java.util.concurrent.Future<ModelReply> f = POOL.submit(() -> safeComplete(p, system, user, o));
+            // 0: running, 1: answered in time, 2: given up on (an answer after that still books its tokens: they were billed)
+            java.util.concurrent.atomic.AtomicInteger fate = new java.util.concurrent.atomic.AtomicInteger();
+            java.util.concurrent.Future<ModelReply> f = POOL.submit(() -> {
+                ModelReply x = safeComplete(p, system, user, o);
+                if (!fate.compareAndSet(0, 1)) late(x);
+                return x;
+            });
             ModelReply r;
             try { r = f.get((long) ((lim + 0.25) * 1000), java.util.concurrent.TimeUnit.MILLISECONDS); }
-            catch (java.util.concurrent.TimeoutException e) { r = ModelReply.fail("timed out after " + Py.fixed(lim, 1) + " s"); }
+            catch (java.util.concurrent.TimeoutException e) {
+                r = ModelReply.fail("timed out after " + Py.fixed(lim, 1) + " s");
+                if (!fate.compareAndSet(0, 2)) {       // it answered just now
+                    try { r = f.get(); } catch (InterruptedException | java.util.concurrent.ExecutionException e2) { r = ModelReply.fail("interrupted"); }
+                }
+            }
             catch (InterruptedException | java.util.concurrent.ExecutionException e) { r = ModelReply.fail("interrupted"); }
             account(kind, name, r);
             return r;
+        }
+
+        /** A call given up on that answered later: its tokens were billed all the same, so they count (and the caps). */
+        private void late(ModelReply r) {
+            synchronized (lock) {
+                stats.put("input_tokens", (Long) stats.get("input_tokens") + r.input);
+                stats.put("cached_tokens", (Long) stats.get("cached_tokens") + r.cached);
+                stats.put("output_tokens", (Long) stats.get("output_tokens") + r.output);
+                spent.add(new double[] {Http.now(), price(r)});
+            }
         }
 
         private static ModelReply safeComplete(ModelProvider p, String system, String user, CompleteOptions o) {
@@ -5733,11 +6038,10 @@ public final class Kinloom {
             CharacterDef c = new CharacterDef(name, spec);
             String key = k(session, c.name);
             synchronized (lock) {
-                if (!characters.containsKey(key) && characters.size() >= MAX_CHARACTERS) {
-                    log("refused", c.name, "too many characters (" + MAX_CHARACTERS + "): not stored", null);
+                if (!store(session, c)) {
+                    log("refused", c.name, "too many characters (" + MAX_CHARACTERS + " in all, " + MAX_PER_SESSION + " per session): not stored", null);
                     return c;
                 }
-                characters.put(key, c);
                 declared.add(key);
                 if (!fromConfig) gameDeclared.add(key);
             }
@@ -5939,7 +6243,11 @@ public final class Kinloom {
                         for (Map.Entry<String, Object> b : row.entrySet()) {
                             Map<String, Object> v = Py.asMap(b.getValue());
                             if (v == null || Py.finite(v.get("last")) == null) continue;
-                            r.put(b.getKey(), new double[] {v.get("talks") instanceof Number ? Py.d(v.get("talks")) : 1, Py.finite(v.get("first")) != null ? Py.d(v.get("first")) : 0, Py.d(v.get("last"))});
+                            // each value checked: a hand-edited file or a loaded save never breaks chat() later
+                            Double talks = Py.finite(v.get("talks")), first = Py.finite(v.get("first"));
+                            double last = Py.d(v.get("last"));
+                            double t = talks == null || talks == 0 ? 1 : talks;
+                            r.put(b.getKey(), new double[] {Math.max(1, (long) Math.min(1e9, t)), first == null || first == 0 ? last : first, last});
                         }
                         table.put(a.getKey(), r);
                     }
@@ -5978,6 +6286,7 @@ public final class Kinloom {
                         if (now - r[2] > Souls.NEW_TALK) { start = now; gained = 0.0; }
                         change = Math.max(0.0, Math.min(change, c.warmUp - gained));
                         rises.put(rkey, new double[] {start, gained + change, now});
+                        trim(rises);
                     }
                     if (change < feel) log("refused", c.name, "feel: " + speaker + " already won " + Py.fixed(c.warmUp, 1, "+") + " this conversation", null);
                 }
@@ -6079,6 +6388,7 @@ public final class Kinloom {
         Said say(String session, Object name, Object e, Object facts0, boolean fresh, Object maxChars) {
             CharacterDef c = character(session, name);
             Map<String, Object> facts = mapping(facts0, "facts");
+            clipNote(c.name, "facts", facts, Prompts.CLIP, false);
             String ev = CharacterDef.eventKey(e);
             Integer limit = boxLimit(maxChars) != null ? boxLimit(maxChars) : c.maxChars;
             Said out = new Said();
@@ -6089,8 +6399,9 @@ public final class Kinloom {
                     false, true, 120, null, null, null);
                 if (r.ok) {
                     Object t = Text.findJson(r.text);
-                    Object line = Py.asMap(t) != null ? Py.asMap(t).get("line") : r.text;
-                    Object[] v = validLine(Py.str(line), new java.util.HashSet<>(facts.keySet()), c);
+                    // only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+                    Object line = Py.asMap(t) != null ? Py.asMap(t).get("line") : t != null ? null : r.text;
+                    Object[] v = line instanceof String ? validLine((String) line, new java.util.HashSet<>(facts.keySet()), c) : new Object[] {false, null};
                     if ((Boolean) v[0]) {
                         String spoken = Souls.fitChars(Lines.fill((String) v[1], facts), limit);
                         log("say", c.name, spoken, map("event", ev, "source", "fresh"));
@@ -6106,6 +6417,7 @@ public final class Kinloom {
             boolean low;
             synchronized (lock) {
                 Object[] bank = banks.computeIfAbsent(key, x -> newBank());
+                trim(banks);
                 List<String> templates = (List<String>) bank[0], unused = (List<String>) bank[1], recent = (List<String>) bank[2];
                 List<String> usable = new ArrayList<>(), known = new ArrayList<>();
                 for (String t : unused) if (names.containsAll(Lines.placeholders(t))) usable.add(t);
@@ -6216,6 +6528,7 @@ public final class Kinloom {
             Object[] bank;
             synchronized (lock) {
                 bank = banks.computeIfAbsent(key, x -> newBank());
+                trim(banks);
                 if (((boolean[]) bank[3])[0] || ((int[]) bank[4])[0] >= 3) return;
                 ((boolean[]) bank[3])[0] = true;
             }
@@ -6263,6 +6576,7 @@ public final class Kinloom {
             Shape shape = Shape.of(asObject ? choices : map("choice", choices));
             String key = k(session, c.name, shape.signature());
             Map<String, Object> situation = Py.asMap(situation0) != null ? Py.asMap(situation0) : map("situation", situation0);
+            clipNote(c.name, "situation", situation, Prompts.CLIP, false);
             double ev = every == null ? c.every : Math.max(0.2, CharacterDef.argNum(every, "every"));
             double now = clock.getAsDouble();
             Object[] d;
@@ -6270,6 +6584,7 @@ public final class Kinloom {
             Object value;
             synchronized (lock) {
                 d = decisions.computeIfAbsent(key, x -> new Object[] {shape.defaultValue(), null, null, false});
+                trim(decisions);
                 Double at = (Double) d[1];
                 due = !(Boolean) d[3] && (at == null || now - at >= ev || (now - at >= ev / 4 && changed((Map<String, Object>) d[2], situation)));
                 if (due) { d[3] = true; d[2] = new LinkedHashMap<>(situation); }
@@ -6306,6 +6621,7 @@ public final class Kinloom {
             if ((Boolean) p[0] && !allowed(p[1])) { log("refused", name, kind + ": blocked by the content filter", null); return null; }
             if ((Boolean) p[0]) return p[1];
             log("repair", name, kind + ": " + p[2], null);
+            if (Text.CUT.equals(p[2])) maxTokens = Math.min(4000, maxTokens * 2);   // stopped by the token limit: room to finish
             r = call(kind, name, system, user + Prompts.repair((String) p[2]), true, foreground, maxTokens, null, timeout, images);
             if (!r.ok) return null;
             p = shape.parse(r.text);
@@ -6388,6 +6704,7 @@ public final class Kinloom {
             if (c.tools.isEmpty()) return new ArrayList<>();
             String key = k(session, c.name);
             Map<String, Object> situation = Py.asMap(situation0) != null ? Py.asMap(situation0) : situation0 != null ? map("situation", situation0) : new LinkedHashMap<>();
+            clipNote(c.name, "situation", situation, Prompts.CLIP, false);
             double now = clock.getAsDouble();
             Object[] entry;
             List<Object[]> ready = new ArrayList<>();
@@ -6749,7 +7066,10 @@ public final class Kinloom {
         Object create(String session, Object what0, Object example, Object context, Object count, boolean instant, Double timeout, Object image) {
             if (Py.truthy(count) && example instanceof List && Py.asList(example).size() == 1) example = Py.asList(example).get(0);
             Shape shape = Shape.of(example);
-            String what = Py.slice(Text.clean(Py.str(what0)), 200);
+            String what = Text.clean(Py.str(what0));
+            clipNote(Py.slice(what, CharacterDef.MAX_WHAT), "what", what, CharacterDef.MAX_WHAT, true);
+            clipNote(Py.slice(what, CharacterDef.MAX_WHAT), "context", context, Prompts.CLIP, false);
+            what = Py.slice(what, CharacterDef.MAX_WHAT);
             List<Picture> pics = image != null ? pictures(what, image) : new ArrayList<>();
             if (instant) {
                 if (!pics.isEmpty()) log("refused", what, "image: not used with instant=True (those items are made ahead)", null);
@@ -6764,7 +7084,7 @@ public final class Kinloom {
             if (provider == null) return shape.defaultValue();
             String system = Prompts.createSystem(what, shape, written());
             String user = context(session, null, what, true) + Prompts.contextBlock(context) + Prompts.pictureBlock(pics.size(), null);
-            Object value = structured("create", what, system, user, shape, true, 800, timeout, pics);
+            Object value = structured("create", what, system, user, shape, true, 1500, timeout, pics);
             if (value == null) { count("offline_answers"); return shape.defaultValue(); }
             log("create", what, Py.slice(Py.dumps(value), 300), null);
             return value;
@@ -6796,6 +7116,7 @@ public final class Kinloom {
             boolean has = false, low;
             synchronized (lock) {
                 pool = pools.computeIfAbsent(key, x -> new Object[] {new ArrayList<Object>(), false, 0});
+                trim(pools);
                 List<Object> items = (List<Object>) pool[0];
                 if (!items.isEmpty()) { item = items.remove(0); has = true; }
                 low = items.size() < 2 && !(Boolean) pool[1] && (Integer) pool[2] < 3 && provider != null;
@@ -6820,11 +7141,13 @@ public final class Kinloom {
         @SuppressWarnings("unchecked")
         Said chat(String session, Object name, Object message0, Object facts0, Object speaker0, java.util.function.Consumer<String> stream, Double timeout, Object maxChars, Object image) {
             CharacterDef c = character(session, name);
+            long began = System.nanoTime();
             List<Picture> pics = image != null ? pictures(c.name, image) : new ArrayList<>();
             Integer limit = boxLimit(maxChars) != null ? boxLimit(maxChars) : c.maxChars;
             String message = Py.slice(Text.clean(message0 == null ? "" : message0), 1000);
             String speaker = nameOf(speaker0) != null ? nameOf(speaker0) : "player";
             Map<String, Object> facts = mapping(facts0, "facts");
+            clipNote(c.name, "facts", facts, Prompts.CLIP, false);
             String hkey = k(session, c.name, speaker);
             double now = wall.getAsDouble();
             Map<String, Map<String, double[]>> table = bondTable(session);
@@ -6899,7 +7222,9 @@ public final class Kinloom {
                             synchronized (showLock) {
                                 String shown = cut.feed(echo.feed(unstage.feed(guard.feed(splitter.feed(piece)))));
                                 if (!shown.isEmpty() && !shut[0]) {
-                                    if (!hidden.isEmpty() && Souls.leaks(shownSoFar + shown, hidden, pub, 0.5, message) != null) { shut[0] = true; return; }
+                                    // nothing reaches the player before the checks the final reply gets: secrets, content filter
+                                    if (!hidden.isEmpty() && Souls.leaks(shownSoFar + shown, hidden, pub, 0.5, message) != null
+                                            || !allowed(shownSoFar + shown)) { shut[0] = true; return; }
                                     shownSoFar.append(shown);
                                     streamed[0] = true;
                                     stream.accept(shown);
@@ -6912,7 +7237,8 @@ public final class Kinloom {
                         synchronized (showLock) {
                             String tail = cut.feed(echo.feed(unstage.feed(guard.feed((String) splitter.finish()[2]) + guard.finish()) + unstage.finish()) + echo.finish());
                             tail += cut.finish();
-                            if (!hidden.isEmpty() && Souls.leaks(shownSoFar + tail, hidden, pub, 0.5, message) != null) tail = "";
+                            if (!hidden.isEmpty() && Souls.leaks(shownSoFar + tail, hidden, pub, 0.5, message) != null
+                                    || !tail.isEmpty() && !allowed(shownSoFar + tail)) tail = "";
                             if (!tail.isEmpty() && r.ok && !r.cut && !shut[0]) { streamed[0] = true; stream.accept(tail); }
                         }
                     }
@@ -6979,7 +7305,9 @@ public final class Kinloom {
             List<Act> decided = new ArrayList<>();
             if (reply != null && stored) {
                 if (!c.tools.isEmpty() && source.equals("model") && ((List<Object>) Souls.innerOfReply(innerData).get("do")).isEmpty()) {
-                    List<Object> found = deeds(c, speaker, message, reply);
+                    // what the reply agreed to, within what is left of the reply's time (a player is waiting)
+                    double left = (timeout != null ? timeout : replyDeadline()) - (System.nanoTime() - began) / 1e9;
+                    List<Object> found = deeds(c, speaker, message, reply, Math.max(1.5, left));
                     if (!found.isEmpty()) { innerData = new LinkedHashMap<>(innerData == null ? new LinkedHashMap<>() : innerData); innerData.put("do", found); }
                 }
                 decided = inner(session, c, speaker, innerData);
@@ -7033,12 +7361,15 @@ public final class Kinloom {
             return out;
         }
 
-        private List<Object> deeds(CharacterDef c, String speaker, String message, String reply) {
+        /** budget: seconds for everything here (the asking again included). */
+        private List<Object> deeds(CharacterDef c, String speaker, String message, String reply, double budget) {
             String system = Prompts.deedsSystem(c), user = Prompts.deedsUser(c.name, speaker, message, reply);
-            ModelReply r = call("deeds", c.name, system, user, true, true, 150, null, Math.min(callTimeout, 5.0), null);
-            if (!r.ok) {        // a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+            long start = System.nanoTime();
+            ModelReply r = call("deeds", c.name, system, user, true, true, 150, null, Math.min(callTimeout, Math.min(5.0, budget)), null);
+            double left = budget - (System.nanoTime() - start) / 1e9;
+            if (!r.ok && left >= 1.0) {   // a slow or failed call: what was agreed must not be lost, ask once more if time is left
                 log("repair", c.name, "deeds: " + (r.error == null || r.error.isEmpty() ? "failed" : r.error) + "; asked again", null);
-                r = call("deeds", c.name, system, user, true, true, 150, null, Math.min(callTimeout, 5.0), null);
+                r = call("deeds", c.name, system, user, true, true, 150, null, Math.min(callTimeout, Math.min(5.0, left)), null);
             }
             Map<String, Object> data = r.ok ? Py.asMap(Text.findJson(r.text)) : null;
             List<Object> out = new ArrayList<>();
@@ -7209,6 +7540,7 @@ public final class Kinloom {
         List<String> suggest(String session, Object name, Object examples, Object speaker0, Object facts0) {
             CharacterDef c = character(session, name);
             Map<String, Object> facts = mapping(facts0, "facts");
+            clipNote(c.name, "facts", facts, Prompts.CLIP, false);
             if (examples instanceof String || !(examples instanceof List))
                 throw new IllegalArgumentException("examples: a list of short replies the player could say, like [\"Ask about her past\", \"Leave\"]");
             List<String> given = new ArrayList<>();
@@ -7556,7 +7888,22 @@ public final class Kinloom {
 
         void remember(String session, Object name, Object note, double importance) { memory.add(session, Py.str(name), Py.str(note), importance, null); }
 
-        void setState(String session, Object st) { Map<String, Object> s = mapping(st, "state"); synchronized (lock) { state.put(session, s); } }
+        void setState(String session, Object st) {
+            Map<String, Object> s = mapping(st, "state");
+            clipNote("state", "state", s, Prompts.CLIP, false);
+            synchronized (lock) { state.put(session, s); }
+        }
+
+        private final java.util.Set<String> clips = new java.util.HashSet<>();   // name + label already journaled as too long
+
+        /** Journals, once per name and label, that the model reads only the start of something too long. */
+        private void clipNote(String name, String label, Object value, int limit, boolean text) {
+            if (!Py.truthy(value)) return;
+            int size = text ? Py.len(Py.str(value)) : Py.len(Py.dumps(value, false, false));
+            if (size <= limit) return;
+            synchronized (lock) { if (!clips.add(name + "\0" + label)) return; }
+            log("clipped", name, label + ": " + size + " characters, the model reads the first " + limit, null);
+        }
 
         List<CharacterDef> characterList(String session) {
             List<CharacterDef> out = new ArrayList<>();
@@ -7855,6 +8202,10 @@ public final class Kinloom {
                 }
                 case "shape_error": try { Shape.of(a.get(0)); return null; } catch (IllegalArgumentException e) { return e.getMessage(); }
                 case "find_json": return Text.findJson(a.get(0));
+                case "parse": {
+                    Object[] p = Shape.of(a.get(0)).parse((String) a.get(1));
+                    return map("ok", p[0], "value", p[1], "error", p[2]);
+                }
                 case "clean_text": return Text.clean(a.get(0));
                 case "fill": return Lines.fill((String) a.get(0), Py.asMap(a.get(1)));
                 case "event_key": return CharacterDef.eventKey(a.get(0));

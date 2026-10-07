@@ -15,6 +15,28 @@
  },
  "openapi": "3.1.0",
  "paths": {
+  "/healthz": {
+   "get": {
+    "operationId": "get_healthz",
+    "parameters": [
+     {
+      "description": "one per player, match or save (default \"default\"); also \"session\" in the body",
+      "in": "header",
+      "name": "X-Kinloom-Session",
+      "required": false,
+      "schema": {
+       "type": "string"
+      }
+     }
+    ],
+    "responses": {
+     "200": {
+      "description": "JSON (text/event-stream for /v1/stream)"
+     }
+    },
+    "summary": "For a host's health checks: {ok: true}, no token, no data."
+   }
+  },
   "/v1/act": {
    "post": {
     "operationId": "act",
@@ -85,13 +107,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Tool calls the character chose (handed out once)."
@@ -248,13 +273,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Declare a character (characters in kinloom.json need no call)."
@@ -364,13 +392,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A reply in character (stream: true answers with server-sent events {piece} then {done, ...})."
@@ -449,13 +480,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A short exchange between two characters, remembered by both ([] offline)."
@@ -524,13 +558,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Content shaped like the example (the example is the offline answer)."
@@ -601,13 +638,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "An instant decision shaped like the choices, refreshed in the background."
@@ -696,13 +736,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Something happened; witnesses remember it."
@@ -772,13 +815,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Every action's score for one moment."
@@ -843,13 +889,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Move a's opinion of b."
@@ -916,13 +965,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A snapshot for a debug overlay: characters, minds, calls (admin token)."
@@ -1017,13 +1069,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Whether a character knows about a tagged event."
@@ -1084,13 +1139,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "What was said in a recording (base64; 12 MB)."
@@ -1148,13 +1206,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Puts back what save gave (this session's state is replaced; 12 MB)."
@@ -1228,13 +1289,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "World facts every character takes as true ({} reads them)."
@@ -1316,13 +1380,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Two characters share what they know."
@@ -1436,13 +1503,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "What a thinks of b (-1..1)."
@@ -1500,13 +1570,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Everything a thinks of others."
@@ -1567,13 +1640,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "For a loading screen: waits until what Kinloom writes ahead is ready."
@@ -1638,13 +1714,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A memory for one character."
@@ -1708,13 +1787,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A mind and how it is doing."
@@ -1776,13 +1858,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A group's average opinion of target."
@@ -1867,13 +1952,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "How well units' last choices went (minds learn)."
@@ -1925,13 +2013,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Everything Kinloom knows about this session, as one text for the game's save slot."
@@ -2008,13 +2099,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "An instant line for an event, the facts filled in."
@@ -2122,13 +2216,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A line said aloud (WAV, base64); audio \"\" when no voice can speak."
@@ -2203,13 +2300,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Rounds of talk in a group."
@@ -2267,13 +2367,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "A live snapshot every call can see."
@@ -2357,13 +2460,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "What the game decides happens in the character's next reply (the model words it; a secret may come out); \"\" takes it back."
@@ -2459,13 +2565,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "What the player could say now: one reply per example, in its order (the examples are the offline answer)."
@@ -2535,13 +2644,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "Run a mind on one moment."
@@ -2599,13 +2711,16 @@
       "description": "the answer"
      },
      "400": {
-      "description": "a missing or wrong field: {error}"
+      "description": "a missing or wrong field: {error, code}"
      },
      "401": {
       "description": "this server needs its token"
      },
+     "403": {
+      "description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"
+     },
      "429": {
-      "description": "a player over its limits: answer offline"
+      "description": "a player over its limits: answer offline; Retry-After says when to ask again"
      }
     },
     "summary": "The game's tools, declared once; characters use them by name ({} reads the names)."

@@ -99,7 +99,17 @@ Each SDK runs in one of three modes, with the same calls:
 | offline | never | no network, tests, or a game that only uses your own lines |
 
 Every SDK is checked against the Python reference: the same scenario gives the same transcript, the requests sent to
-the model match word for word, and 450 shared test vectors give the same results.
+the model match word for word, and the shared test vectors (`python/conformance/vectors.json`) give the same results.
+
+What each platform needs:
+
+- **Browsers** (JavaScript, Godot web exports, Unity WebGL): only HTTP(S) to a relay, or to a model with the player's
+  own key. Unity WebGL has no `HttpClient`: pass `KinloomOptions { Http = ... }` (a `UnityWebRequest` wrapper).
+- **LÖVE 11** has no HTTPS: hosted models and an HTTPS relay need LuaSec or LÖVE 12; a plain-HTTP relay works.
+  Other Lua engines pass their own `transport` (Defold's `http.request`, for example).
+- **Rust and C++** reach HTTPS through WinHTTP on Windows and the `curl` command elsewhere. Consoles and mobile have
+  neither: give native mode your own transport, or use a relay reached by your engine's HTTP.
+- **Consoles** in general: no SDK here has been run on one; plan for your platform's own HTTP layer.
 
 ## Quick start
 
@@ -110,11 +120,14 @@ kinloom init        # detects the engine, copies its client, writes your coding 
 ```
 
 `pipx install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"` works the same way. With plain `pip`,
-if `kinloom` is not found afterwards (its folder is not on your PATH), run `python -m kinloom init` instead.
+if `kinloom` is not found afterwards (its folder is not on your PATH), run `python -m kinloom init` instead. Installing
+from git needs read access to the repository (it works for everyone once the repository is public).
 
-**No Python?** Each [release](https://github.com/KorroAi/kinloom/releases) has one zip per engine: the Unity package,
-the Godot addon, and the single file for JavaScript/TypeScript, C#, C++, Rust, Java and Lua. Drop it into your project
-and call it; everything works offline, and a key or a relay brings the model.
+**No Python?** The clients are single files in [`python/src/kinloom/clients`](python/src/kinloom/clients): copy the one
+for your engine (the Godot addon folder, `Kinloom.cs` and `Unity/` for Unity, or the one file for JavaScript/TypeScript,
+C++, Rust, Java or Lua) into your project and call it; everything works offline, and a key or a relay brings the model.
+Release zips (one per engine) are built by `python/release.py` and attached to a GitHub release when a `v*` tag is
+pushed (`.github/workflows/release.yml`); none has been published yet.
 
 Then ask your coding agent, or type `/kinloom <what you want>` in Claude Code, Cursor or Gemini CLI:
 *"the weather follows how I play"*, *"generate each new level"*, *"a blacksmith I can talk to, who gives items to
@@ -129,7 +142,7 @@ kinloom run -- godot --path .                            # runs the game, then s
 `kinloom add` writes the character into `kinloom.json` (no declaration code; edits apply while the game runs). The
 clients also live in [`python/src/kinloom/clients`](python/src/kinloom/clients).
 
-Not on PyPI, npm, NuGet, crates.io or LuaRocks yet: install from this repository or a release.
+Not on PyPI, npm, NuGet, crates.io or LuaRocks yet: install from this repository.
 
 ## Any model
 
@@ -145,6 +158,13 @@ everything players do not wait for: `models: {"background": "..."}`. Details: [M
 ## Shipping to players
 
 - `kinloom deploy` prepares a relay server with player tokens, rate limits and spending caps.
+- One session per player: the relay keeps memory per session. Give each player's id (`session`), or let the clients
+  pick one: with a relay token and no session, the browser client, the Godot addon and Unity's `KinloomDialogue` keep
+  one id per install. Through a relay, every client asks `decide` and `act` far less often than once a frame (a
+  quarter of the character's `every`) and waits out a rate limit (HTTP 429) instead of retrying.
+- A server reachable from other machines always needs a token. A single-player game is the authority of its own
+  session (it may set state, memories, feelings); a shared world run by your own game server keeps those for itself
+  with `--player-can none`.
 - `kinloom bundle` builds Kinloom as a program that needs no Python, shipped next to your game.
 - `kinloom ship` checks a build before release: no key inside the game, how players reach a model, offline answers,
   caps, content rating. It drafts `kinloom-ai-disclosure.md` for the store page.
@@ -173,9 +193,10 @@ Real runs, with their method, cost and misses, are in [`proof/`](proof):
 Not measured yet: whether players find these characters more human than a plain prompt (the blind test in
 `proof/souls/blind.html` has not been judged), and how much time a coding agent saves overall.
 
-Tests: 582 Python tests (3.9 and 3.12 on Windows, 3.14 on Linux), the conformance scenario in every client against a
-real server, and every SDK's own brain against a fake model; CI runs them on Linux, macOS and Windows. Tests never
-call a real model.
+Tests: the Python suite (run on 3.9 and 3.12 on Windows, 3.14 on Linux), the conformance scenario in every client
+against a real server, every SDK's own brain against a fake model, and every language's calls from `calls.md` compiled
+against its SDK (`python/conformance/calls.py`). CI is configured (`.github/workflows/ci.yml`) to run them on Linux,
+macOS and Windows; it has not run yet, as the repository has not been pushed with it. Tests never call a real model.
 
 ## Documentation
 

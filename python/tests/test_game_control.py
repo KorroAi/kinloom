@@ -212,7 +212,7 @@ def test_steer_and_trust_settings_over_http():
 def test_steer_and_trust_settings_through_an_online_server():
     from test_remote import online
     p = model(chat="Fine. It was his car.")
-    brain, srv, url = online(p)
+    brain, srv, url = online(p, player_can=["steer"])     # steer sets what the game decides: opted in
     try:
         kl = Kinloom(url=url, token="play-123", session="player-1")
         kl.character("RUTH", "a night cleaner", warmth=0.45, secret_trust=0.6, warm_up=0.3)

@@ -183,10 +183,26 @@ class Shape:
 			"object":
 				if not (value is Dictionary):
 					return [false, null, path + " must be an object with " + ", ".join(fields.keys())]
+				# a key matched exactly, else case-insensitively (the first key of the answer with that lowercase)
+				var lower := {}
+				for key in value:
+					var low := str(key).to_lower()
+					if not lower.has(low):
+						lower[low] = key
+				var found := {}
+				var none := true
+				for k in fields:
+					found[k] = k if value.has(k) else lower.get(str(k).to_lower())
+					if found[k] != null:
+						none = false
+				if not fields.is_empty() and none:
+					if value.size() == 1 and value.values()[0] is Dictionary:
+						return check(value.values()[0], path)   # {"item": {...}}: the answer wrapped once
+					return [false, null, path + " must be an object with " + ", ".join(fields.keys())]
 				var out := {}
 				for k in fields:
-					if value.has(k):
-						var r: Array = fields[k].check(value[k], k)
+					if found[k] != null:
+						var r: Array = fields[k].check(value[found[k]], k)
 						if not r[0]:
 							return r
 						out[k] = r[1]
@@ -199,7 +215,7 @@ class Shape:
 	func parse(answer: String) -> Array:
 		var data = Py.find_json(answer)
 		if data == null:
-			return [false, null, "the answer was not JSON"]
+			return [false, null, Py.CUT if Py.cut_off(answer) else "the answer was not JSON"]
 		return check(data, "value")
 
 	func describe(indent := "") -> String:

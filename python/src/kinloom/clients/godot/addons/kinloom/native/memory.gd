@@ -26,6 +26,14 @@ class Memory:
 				out[w] = true
 		return out
 
+	## What went wrong reading the file, if anything (the brain journals it).
+	var problem := ""
+
+	## A note recall() can rank: text, time and importance (a file edited by hand or a save from elsewhere).
+	static func good_note(n) -> bool:
+		return n is Dictionary and typeof(n.get("text")) == TYPE_STRING and Py.finite(n.get("t")) != null \
+			and Py.finite(n.get("importance")) != null
+
 	func _init(path_ := "", clock_: Callable = Callable()) -> void:
 		path = path_
 		clock = clock_ if clock_.is_valid() else func() -> float: return Time.get_unix_time_from_system()
@@ -33,10 +41,16 @@ class Memory:
 			return
 		var f := FileAccess.open(path, FileAccess.READ)
 		if f == null:
+			problem = "memory file unreadable (" + error_string(FileAccess.get_open_error()) + ")"
 			return
-		var r := Py.loads(f.get_as_text())
+		var r := Py.loads(f.get_as_text().trim_prefix(String.chr(0xFEFF)))
 		f.close()
 		if not r[0] or not (r[1] is Dictionary):
+			# kept aside before anything overwrites it: memory.json.corrupt-<time>
+			problem = "memory file unreadable (JSONDecodeError)" if not r[0] else "memory file is not a JSON object"
+			var aside := path + ".corrupt-" + str(int(Time.get_unix_time_from_system()))
+			if DirAccess.rename_absolute(path, aside) == OK:
+				problem += "; kept as " + aside.get_file()
 			return
 		var data: Dictionary = r[1]
 		if data.get("sessions") is Dictionary:
@@ -48,9 +62,10 @@ class Memory:
 					var kept := []
 					if scopes[scope] is Array:
 						for n in scopes[scope]:
-							if n is Dictionary and typeof(n.get("text")) == TYPE_STRING:
+							if good_note(n):
 								kept.append(n)
-					_list(session, scope).append_array(kept)
+					if not kept.is_empty():
+						_list(str(session), str(scope)).append_array(kept.slice(maxi(0, kept.size() - MAX_NOTES)))
 		if data.get("extra") is Dictionary:
 			for k in data["extra"]:
 				if data["extra"][k] is Dictionary:
@@ -138,8 +153,7 @@ class Memory:
 			var kept := []
 			if given[scope] is Array:
 				for n in given[scope]:
-					if n is Dictionary and typeof(n.get("text")) == TYPE_STRING and typeof(n.get("t")) in [TYPE_INT, TYPE_FLOAT] \
-							and typeof(n.get("importance")) in [TYPE_INT, TYPE_FLOAT]:
+					if good_note(n):
 						kept.append(n.duplicate(true))
 			if not kept.is_empty():
 				_list(session, str(scope)).append_array(kept.slice(maxi(0, kept.size() - MAX_NOTES)))
@@ -208,11 +222,14 @@ class Memory:
 		var folder := path.get_base_dir()
 		if folder != "" and not DirAccess.dir_exists_absolute(folder):
 			DirAccess.make_dir_recursive_absolute(folder)
-		var f := FileAccess.open(path + ".tmp", FileAccess.WRITE)
+		# a unique name: two saves never share it; the rename leaves the old file or the new one, never half of one
+		var tmp := path + "." + str(OS.get_process_id()) + "-" + str(randi()) + ".tmp"
+		var f := FileAccess.open(tmp, FileAccess.WRITE)
 		if f == null:
 			dirty = true
 			return
 		f.store_string(text)
 		f.close()
-		if DirAccess.rename_absolute(path + ".tmp", path) != OK:
+		if DirAccess.rename_absolute(tmp, path) != OK:
+			DirAccess.remove_absolute(tmp)
 			dirty = true

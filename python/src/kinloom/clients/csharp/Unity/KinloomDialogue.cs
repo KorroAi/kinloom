@@ -10,6 +10,8 @@
 //
 // The client: set KinloomDialogue.Client once from code (native mode with your options, or a relay with a token);
 // else every box uses a relay at Relay Url (`kinloom serve`, local by default). Never put a model key in a scene.
+// With a Relay Token (a shipped game), each install gets its own session id (kept in PlayerPrefs, "kinloom-session"),
+// so players never share one memory on the server. Kinloom's warnings go to the Unity console.
 using System;
 using System.Collections.Generic;
 using System.Text;
@@ -88,7 +90,24 @@ namespace Kinloom
         private string _gesture = "";
         private bool _declared;
 
-        private KinloomClient Kl => Client ??= new KinloomClient(relayUrl, "default", relayToken);
+        private KinloomClient Kl => Client ??= new KinloomClient(relayUrl, SessionFor(relayToken), relayToken);
+
+        /// <summary>A shipped game (a relay token): one session per install, kept in PlayerPrefs. Local play: "default".</summary>
+        public static string SessionFor(string token)
+        {
+            if (string.IsNullOrEmpty(token)) return "default";
+            var id = PlayerPrefs.GetString("kinloom-session", "");
+            if (id.Length == 0)
+            {
+                id = "player-" + Guid.NewGuid().ToString("N");
+                PlayerPrefs.SetString("kinloom-session", id);
+                PlayerPrefs.Save();
+            }
+            return id;
+        }
+
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.SubsystemRegistration)]
+        private static void RouteWarnings() => KinloomClient.Warn = text => Debug.LogWarning(text);
 
         private void Start()
         {

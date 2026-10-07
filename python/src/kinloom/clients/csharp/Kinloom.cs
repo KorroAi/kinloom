@@ -53,6 +53,7 @@ namespace Kinloom
         private static readonly Regex Placeholder = new Regex("\\{([A-Za-z_][A-Za-z0-9_]*)\\}");
         private readonly object _gate = new object();
         private readonly Dictionary<string, Dictionary<string, object>> _chars = new Dictionary<string, Dictionary<string, object>>();
+        private readonly Dictionary<string, Task> _declaring = new Dictionary<string, Task>();   // relay: declarations on their way, by name
         private readonly Dictionary<string, Decision> _decisions = new Dictionary<string, Decision>();
         private readonly Dictionary<string, Pending> _actions = new Dictionary<string, Pending>();
         private readonly Dictionary<string, string> _sources = new Dictionary<string, string>();
@@ -68,6 +69,13 @@ namespace Kinloom
         private DateTime _rewardAt = DateTime.MinValue;
         private readonly SemaphoreSlim _flushing = new SemaphoreSlim(1, 1); // one flush at a time
         private Dictionary<string, object>? _tools;                        // the game's tools, sent again after a restart
+        private readonly Dictionary<string, DateTime> _limitedUntil = new Dictionary<string, DateTime>();   // verb -> after its HTTP 429
+        private readonly HashSet<string> _warned = new HashSet<string>();  // relay problems already told once
+        private IKinloomHttp? _relayHttp;                                  // KinloomOptions.Http: the relay's POSTs go through it too
+
+        /// <summary>Where Kinloom's warnings go (Console.Error by default). Unity: KinloomDialogue routes them to
+        /// Debug.LogWarning; set your own (a game console, a log file).</summary>
+        public static Action<string> Warn = text => Console.Error.WriteLine(text);
 
         private sealed class MindEntry
         {
@@ -102,7 +110,7 @@ namespace Kinloom
         /// <summary>Native when a model option (Provider, Providers, Model, Script, ProviderAuto) or Offline is set; else a relay at Url.</summary>
         public KinloomClient(KinloomOptions options) : this(options.Url, options.Session, options.Token)
         {
-            if (options.Http != null) global::Kinloom.Http.Transport = options.Http;
+            if (options.Http != null) { global::Kinloom.Http.Transport = options.Http; _relayHttp = options.Http; }
             if (options.Native) _brain = new Brain(options);
         }
 
@@ -140,7 +148,8 @@ namespace Kinloom
             d["name"] = name;
             d["personality"] = personality;
             lock (_gate) _chars[name] = d;
-            Fire("character", d);
+            if (_brain != null) Fire("character", d);
+            else Declare(name, Post("character", d, TimeSpan.FromSeconds(5)));
         }
 
         /// <summary>A line in character with the real facts filled in (instant when prepared lines exist). fresh: a line the
@@ -181,7 +190,10 @@ namespace Kinloom
         {
             var body = new Dictionary<string, object> { ["name"] = name, ["message"] = message, ["facts"] = facts ?? new Dictionary<string, object>(), ["speaker"] = speaker, ["do"] = true };
             if (image != null && image.Length > 0) body["image"] = Convert.ToBase64String(image);
-            var r = onPiece != null ? await Stream(body, onPiece).ConfigureAwait(false) : await Post("chat", body, ChatTimeout);
+            // pieces arrive on the thread that called Chat (Unity: the main thread), in order, before Chat returns there
+            var ctx = SynchronizationContext.Current;
+            Action<string>? piece = onPiece == null ? null : ctx == null ? onPiece : (s => ctx.Post(_ => onPiece(s), null));
+            var r = piece != null ? await Stream(body, piece).ConfigureAwait(false) : await Post("chat", body, ChatTimeout);
             SetSource(name, r);
             if (r == null)
             {
@@ -204,33 +216,47 @@ namespace Kinloom
             {
                 try
                 {
-                    var done = await _brain.ChatStream(Session, body, onPiece).ConfigureAwait(false);
-                    return done.ToDictionary(p => p.Key, p => p.Value!);
+                    var said = await _brain.ChatStream(Session, (Dictionary<string, object>)Json.Plain(body)!, onPiece).ConfigureAwait(false);
+                    return said.ToDictionary(p => p.Key, p => p.Value!);
                 }
-                catch (KinloomException e) { Console.Error.WriteLine("[kinloom] chat: " + e.Message); return null; }
+                catch (KinloomException e) { Warn("[kinloom] chat: " + e.Message); return null; }
             }
-            lock (_gate) if (DateTime.UtcNow < _downUntil) return null;
+            await Ready(body).ConfigureAwait(false);
+            lock (_gate) if (DateTime.UtcNow < _downUntil || Limited("chat")) return null;
             if (!await Reachable(Url).ConfigureAwait(false)) { Down(); return null; }
-            using var cts = new CancellationTokenSource(ChatTimeout);
+            using var cts = new CancellationTokenSource(ChatTimeout);   // the whole reply, the stream included
+            var streamed = new Dictionary<string, object>(body) { ["stream"] = true };
+            Dictionary<string, object>? done = null;
+            void Line(string line)
+            {
+                if (!line.StartsWith("data: ") || !(Json.Read(line.Substring(6)) is Dictionary<string, object> ev)) return;
+                if (ev.TryGetValue("piece", out var p) && p is string piece) onPiece(piece);
+                if (ev.TryGetValue("done", out var d) && d is true) done = ev;
+            }
             try
             {
+                if (_relayHttp != null)
+                {
+                    var (status, _) = await _relayHttp.Post(Url + "/v1/chat", RelayHeaders(), Encoding.UTF8.GetBytes(Json.Write(streamed)), "application/json",
+                        Line, cts.Token).ConfigureAwait(false);
+                    if (status != 200) { Refused("chat", status, null); return null; }
+                    return done;
+                }
                 using var req = new HttpRequestMessage(HttpMethod.Post, Url + "/v1/chat");
-                var streamed = new Dictionary<string, object>(body) { ["stream"] = true };
                 req.Content = new StringContent(Json.Write(streamed), Encoding.UTF8, "application/json");
                 req.Headers.Add("X-Kinloom-Session", Session);
                 if (!string.IsNullOrEmpty(Token)) req.Headers.TryAddWithoutValidation("Authorization", "Bearer " + Token);
                 using var res = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cts.Token).ConfigureAwait(false);
-                if (!res.IsSuccessStatusCode) return null;
+                if (!res.IsSuccessStatusCode) { Refused("chat", (int)res.StatusCode, res); return null; }
+                using var stop = cts.Token.Register(() => res.Dispose());   // a reply that stalls ends at ChatTimeout
                 using var stream = await res.Content.ReadAsStreamAsync().ConfigureAwait(false);
                 using var reader = new System.IO.StreamReader(stream, Encoding.UTF8);
-                Dictionary<string, object>? done = null;
                 while (await reader.ReadLineAsync().ConfigureAwait(false) is string line)
                 {
-                    if (!line.StartsWith("data: ") || !(Json.Read(line.Substring(6)) is Dictionary<string, object> ev)) continue;
-                    if (ev.TryGetValue("piece", out var p) && p is string piece) onPiece(piece);
-                    if (ev.TryGetValue("done", out var d) && d is true) done = ev;
+                    Line(line);
+                    if (cts.IsCancellationRequested) return null;
                 }
-                return done;
+                return cts.IsCancellationRequested ? null : done;
             }
             catch (Exception) { return null; }
         }
@@ -257,7 +283,7 @@ namespace Kinloom
             lock (_gate)
             {
                 if (!_decisions.TryGetValue(key, out d!)) _decisions[key] = d = new Decision { Value = (Dictionary<string, object>)DefaultOf(choices) };
-                refresh = !d.Busy && (DateTime.UtcNow - d.At).TotalMilliseconds >= 250;
+                refresh = !d.Busy && (DateTime.UtcNow - d.At).TotalMilliseconds >= PollMs(name);
                 if (refresh) { d.Busy = true; d.At = DateTime.UtcNow; }
             }
             if (refresh)
@@ -288,7 +314,7 @@ namespace Kinloom
             lock (_gate)
             {
                 if (!_decisions.TryGetValue(key, out d!)) _decisions[key] = d = new Decision { Value = new Dictionary<string, object> { ["choice"] = DefaultOf(options) } };
-                refresh = !d.Busy && (DateTime.UtcNow - d.At).TotalMilliseconds >= 250;
+                refresh = !d.Busy && (DateTime.UtcNow - d.At).TotalMilliseconds >= PollMs(name);
                 if (refresh) { d.Busy = true; d.At = DateTime.UtcNow; }
             }
             if (refresh)
@@ -370,7 +396,7 @@ namespace Kinloom
                 p = PendingOf(name);
                 ready = p.Ready;
                 p.Ready = new List<KinloomAction>();
-                refresh = !p.Busy && (DateTime.UtcNow - p.At).TotalMilliseconds >= 250;
+                refresh = !p.Busy && (DateTime.UtcNow - p.At).TotalMilliseconds >= PollMs(name);
                 if (refresh) { p.Busy = true; p.At = DateTime.UtcNow; }
             }
             if (refresh)
@@ -738,9 +764,9 @@ namespace Kinloom
                 Dictionary<string, object>? def, tools;
                 lock (_gate) { _chars.TryGetValue(name, out def); tools = _tools; }
                 if (def == null) return;
-                if (tools == null) { Fire("character", def); return; }
-                _ = Post("tools", new Dictionary<string, object> { ["tools"] = tools }, TimeSpan.FromSeconds(5))   // restarted:
-                    .ContinueWith(_ => Fire("character", def), TaskScheduler.Default);                             // tools first
+                if (tools == null) { Declare(name, Post("character", def, TimeSpan.FromSeconds(5))); return; }
+                Declare(name, Post("tools", new Dictionary<string, object> { ["tools"] = tools }, TimeSpan.FromSeconds(5))   // restarted:
+                    .ContinueWith(_ => Post("character", def, TimeSpan.FromSeconds(5)), TaskScheduler.Default).Unwrap());    // tools first
             }
         }
 
@@ -748,8 +774,64 @@ namespace Kinloom
 
         private void Fire(string verb, Dictionary<string, object> body) => _ = Post(verb, body, TimeSpan.FromSeconds(5));
 
-        private Task<Dictionary<string, object>?> Post(string verb, Dictionary<string, object> body, TimeSpan timeout) =>
-            Send(HttpMethod.Post, verb, body, timeout);
+        private async Task<Dictionary<string, object>?> Post(string verb, Dictionary<string, object> body, TimeSpan timeout)
+        {
+            if (_brain == null && verb != "character" && verb != "tools") await Ready(body).ConfigureAwait(false);
+            return await Send(HttpMethod.Post, verb, body, timeout).ConfigureAwait(false);
+        }
+
+        private void Declare(string name, Task sent) { lock (_gate) _declaring[name] = sent; }
+
+        /// <summary>How often Decide/Act ask (under _gate): at once in native mode (the brain keeps its own pace); through a
+        /// relay, a quarter of the character's `every` (8 s by default: every 2 s), never more than 4 times a second.</summary>
+        private double PollMs(string name)
+        {
+            if (_brain != null) return 250;
+            double every = _chars.TryGetValue(name, out var c) && c.TryGetValue("every", out var e) && !(e is bool) && Py.Finite(e) is double v && v > 0 ? v : 8.0;
+            return Math.Max(250, every * 1000 / 4);
+        }
+
+        /// <summary>True while the relay's rate limit (HTTP 429) keeps this verb offline (under _gate).</summary>
+        private bool Limited(string verb) => _limitedUntil.TryGetValue(verb, out var until) && DateTime.UtcNow < until;
+
+        /// <summary>A relay that said no: told once per verb and status; HTTP 429 (this player is over the relay's rate
+        /// limit) keeps that verb offline for Retry-After seconds (5 by default), without taking the server for gone.</summary>
+        private void Refused(string verb, int status, HttpResponseMessage? res)
+        {
+            bool tell;
+            lock (_gate)
+            {
+                if (status == 429)
+                {
+                    double wait = 5;
+                    var ra = res?.Headers.RetryAfter;
+                    if (ra?.Delta is TimeSpan delta && delta.TotalSeconds > 0) wait = Math.Min(300, delta.TotalSeconds);
+                    else if (ra?.Date is DateTimeOffset at && at > DateTimeOffset.UtcNow) wait = Math.Min(300, (at - DateTimeOffset.UtcNow).TotalSeconds);
+                    _limitedUntil[verb] = DateTime.UtcNow.AddSeconds(wait);
+                }
+                tell = _warned.Add(verb + " " + status);
+            }
+            if (tell) Warn("[kinloom] " + verb + ": HTTP " + status + (status == 429 ? " (the relay's rate limit for this player: answered offline for a while)" : ""));
+        }
+
+        private Dictionary<string, string> RelayHeaders()
+        {
+            var h = new Dictionary<string, string> { ["X-Kinloom-Session"] = Session };
+            if (!string.IsNullOrEmpty(Token)) h["Authorization"] = "Bearer " + Token;
+            return h;
+        }
+
+        /// <summary>Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never
+        /// answers it without their soul and tools.</summary>
+        private async Task Ready(Dictionary<string, object> body)
+        {
+            var waits = new List<Task>();
+            lock (_gate)
+                foreach (var field in new[] { "name", "a", "b" })
+                    if (body.TryGetValue(field, out var v) && v is string who && _declaring.TryGetValue(who, out var t) && !t.IsCompleted) waits.Add(t);
+            if (waits.Count == 0) return;
+            await Task.WhenAny(Task.WhenAll(waits), Task.Delay(5000)).ConfigureAwait(false);
+        }
 
         /// <summary>Offline answers for a while: 2 s, then 4, 8, at most 10 while the server is still not there.</summary>
         private void Down()
@@ -766,6 +848,10 @@ namespace Kinloom
         private async Task<bool> Reachable(string url)
         {
             lock (_gate) if (DateTime.UtcNow < _upUntil && _upUrl == url) return true;
+#if UNITY_WEBGL && !UNITY_EDITOR
+            return true;   // no sockets in a browser: the request itself tells
+#else
+            if (_relayHttp != null) return true;   // the game's own HTTP (a platform without sockets): the request tells
             Uri uri;
             try { uri = new Uri(url); } catch (UriFormatException) { return false; }
             string host = uri.Host == "localhost" ? "127.0.0.1" : uri.Host.Trim('[', ']');
@@ -783,12 +869,14 @@ namespace Kinloom
                 return tcp.Connected;
             }
             catch (Exception) { return false; }
+#endif
         }
 
         private async Task<Dictionary<string, object>?> Send(HttpMethod method, string verb, Dictionary<string, object>? body, TimeSpan timeout, bool missingOk = false)
         {
             if (_brain != null) return await Local(method, verb, body).ConfigureAwait(false);
-            lock (_gate) if (DateTime.UtcNow < _downUntil) return null;
+            string plain = verb.Split('?')[0];
+            lock (_gate) if (DateTime.UtcNow < _downUntil || Limited(plain)) return null;
             string target = Url;
             if (!await Reachable(target).ConfigureAwait(false))
             {
@@ -798,6 +886,14 @@ namespace Kinloom
             using var cts = new CancellationTokenSource(timeout);
             try
             {
+                if (_relayHttp != null && method == HttpMethod.Post)
+                {
+                    var (status, bytes) = await _relayHttp.Post(target + "/v1/" + verb, RelayHeaders(), Encoding.UTF8.GetBytes(Json.Write(body)), "application/json",
+                        null, cts.Token).ConfigureAwait(false);
+                    lock (_gate) { _failures = 0; _upUrl = target; _upUntil = DateTime.UtcNow.AddSeconds(5); }
+                    if (status != 200) { Refused(plain, status, null); return null; }
+                    return Json.Read(Encoding.UTF8.GetString(bytes)) as Dictionary<string, object>;
+                }
                 using var req = new HttpRequestMessage(method, target + "/v1/" + verb);
                 if (body != null) req.Content = new StringContent(Json.Write(body), Encoding.UTF8, "application/json");
                 req.Headers.Add("X-Kinloom-Session", Session);
@@ -805,7 +901,7 @@ namespace Kinloom
                 using var res = await Http.SendAsync(req, cts.Token).ConfigureAwait(false);
                 lock (_gate) { _failures = 0; _upUrl = target; _upUntil = DateTime.UtcNow.AddSeconds(5); }
                 if (missingOk && (int)res.StatusCode == 404) return new Dictionary<string, object> { ["missing"] = true };
-                if (!res.IsSuccessStatusCode) return null;
+                if (!res.IsSuccessStatusCode) { Refused(plain, (int)res.StatusCode, res); return null; }
                 return Json.Read(await res.Content.ReadAsStringAsync().ConfigureAwait(false)) as Dictionary<string, object>;
             }
             catch (OperationCanceledException) { return null; }
@@ -820,7 +916,7 @@ namespace Kinloom
         private async Task<Dictionary<string, object>?> Local(HttpMethod method, string verb, Dictionary<string, object>? body)
         {
             string v = verb;
-            var b = body ?? new Dictionary<string, object>();
+            var b = body != null ? (Dictionary<string, object>)Json.Plain(body)! : new Dictionary<string, object>();
             if (method == HttpMethod.Get)
             {
                 var parts = verb.Split(new[] { '?' }, 2);
@@ -840,7 +936,7 @@ namespace Kinloom
             }
             catch (KinloomException e)
             {
-                Console.Error.WriteLine("[kinloom] " + verb + ": " + e.Message);
+                Warn("[kinloom] " + verb + ": " + e.Message);
                 return null;
             }
         }
@@ -1121,8 +1217,14 @@ namespace Kinloom
                 case null: sb.Append("null"); break;
                 case string s: WriteString(sb, s); break;
                 case bool b: sb.Append(b ? "true" : "false"); break;
-                case int or long or short or byte: sb.Append(Convert.ToString(v, CultureInfo.InvariantCulture)); break;
-                case float or double or decimal:
+                case int or long or short or byte or sbyte or uint or ushort or ulong: sb.Append(Convert.ToString(v, CultureInfo.InvariantCulture)); break;
+                case float fl:
+                {
+                    double d = FloatValue(fl);
+                    sb.Append(double.IsNaN(d) || double.IsInfinity(d) ? "null" : d.ToString("R", CultureInfo.InvariantCulture));
+                    break;
+                }
+                case double or decimal:
                 {
                     double d = Convert.ToDouble(v, CultureInfo.InvariantCulture);
                     sb.Append(double.IsNaN(d) || double.IsInfinity(d) ? "null" : d.ToString("R", CultureInfo.InvariantCulture));
@@ -1137,6 +1239,21 @@ namespace Kinloom
                         if (!first) sb.Append(',');
                         first = false;
                         WriteString(sb, p.Key);
+                        sb.Append(':');
+                        WriteTo(sb, p.Value);
+                    }
+                    sb.Append('}');
+                    break;
+                }
+                case IDictionary anyMap:            // Dictionary<string, string>, <string, int>...: an object too
+                {
+                    sb.Append('{');
+                    bool first = true;
+                    foreach (DictionaryEntry p in anyMap)
+                    {
+                        if (!first) sb.Append(',');
+                        first = false;
+                        WriteString(sb, Convert.ToString(p.Key, CultureInfo.InvariantCulture) ?? "");
                         sb.Append(':');
                         WriteTo(sb, p.Value);
                     }
@@ -1179,6 +1296,44 @@ namespace Kinloom
                 }
             }
             sb.Append('"');
+        }
+
+        /// <summary>A float as people wrote it (0.1f is 0.1, not 0.10000000149011612).</summary>
+        internal static double FloatValue(float f) =>
+            float.IsNaN(f) || float.IsInfinity(f) ? f : double.Parse(f.ToString("R", CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+
+        /// <summary>A game's value as JSON would carry it: any dictionary becomes Dictionary&lt;string, object&gt;, any list
+        /// or array List&lt;object&gt;, floats doubles. Functions and other objects stay as they are (tools may be functions).</summary>
+        public static object? Plain(object? v, int depth = 0)
+        {
+            if (depth > 64) return v;
+            switch (v)
+            {
+                case null: return null;
+                case string _: return v;
+                case float fl: return FloatValue(fl);
+                case byte[] _: return v;
+                case Delegate _: return v;
+                case IDictionary<string, object> map:
+                {
+                    var out1 = new Dictionary<string, object>();
+                    foreach (var p in map) out1[p.Key] = Plain(p.Value, depth + 1)!;
+                    return out1;
+                }
+                case IDictionary anyMap:
+                {
+                    var out2 = new Dictionary<string, object>();
+                    foreach (DictionaryEntry p in anyMap) out2[Convert.ToString(p.Key, CultureInfo.InvariantCulture) ?? ""] = Plain(p.Value, depth + 1)!;
+                    return out2;
+                }
+                case IEnumerable list:
+                {
+                    var out3 = new List<object>();
+                    foreach (var item in list) out3.Add(Plain(item, depth + 1)!);
+                    return out3;
+                }
+                default: return v;
+            }
         }
 
         public static object? Read(string json)
@@ -1767,6 +1922,38 @@ namespace Kinloom
         /// <summary>One tidy line: control characters (terminal escapes, NUL...) removed, whitespace collapsed.</summary>
         public static string Clean(object? text) => Py.Squash(Control.Replace(Ansi.Replace(text is string s ? s : Py.Str(text), ""), ""));
 
+        public const string Cut = "the answer was cut off before its end: write it shorter and complete";
+
+        /// <summary>Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or -1.</summary>
+        private static int Unclosed(string t)
+        {
+            int n = t.Length;
+            for (int i = 0; i < n; i++)
+            {
+                char c = t[i];
+                if (c != '{' && c != '[') continue;
+                int j = i + 1;
+                while (j < n && " \t\r\n".IndexOf(t[j]) >= 0) j++;
+                if (j >= n || (c == '{' ? "\"}" : "\"{[]-0123456789tfn").IndexOf(t[j]) < 0) continue;
+                int depth = 0, k = i;
+                bool quoted = false;
+                for (; k < n; k++)
+                {
+                    char ch = t[k];
+                    if (quoted) { if (ch == '\\') k++; else if (ch == '"') quoted = false; }
+                    else if (ch == '"') quoted = true;
+                    else if (ch == '{' || ch == '[') depth++;
+                    else if ((ch == '}' || ch == ']') && --depth == 0) break;
+                }
+                if (k >= n) return i;
+                i = k;
+            }
+            return -1;
+        }
+
+        /// <summary>True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that.</summary>
+        public static bool CutOff(object? text) => text is string s && FindJson(s) == null && Unclosed(Py.Strip(s)) >= 0;
+
         /// <summary>The first JSON object or array in a model answer, or null. Never throws.</summary>
         public static object? FindJson(object? text, int limit = 100000)
         {
@@ -1781,16 +1968,71 @@ namespace Kinloom
                 if (start >= 0 && end > start) t = Py.Strip(t.Substring(start + 1, end - start - 1));
             }
             try { return Py.Loads(t); } catch (Exception) { }
+            // never an object nested in JSON that stops before its end (an answer cut by the token limit)
+            int stop = Unclosed(t);
             foreach (char open in new[] { '{', '[' })
             {
                 int at = t.IndexOf(open), tries = 0;
-                while (at >= 0 && tries < 20)
+                while (at >= 0 && (stop < 0 || at < stop) && tries < 20)
                 {
                     try { return Py.Decode(t, at, out _); }
-                    catch (Exception) { at = t.IndexOf(open, at + 1); tries++; }
+                    catch (Exception) { }
+                    int end = CloseAt(t, at);
+                    if (end > at)            // it closes but does not parse: a trailing comma? (never its inner object)
+                    {
+                        try { return Py.Loads(NoTrailingCommas(t.Substring(at, end - at + 1))); } catch (Exception) { }
+                    }
+                    at = t.IndexOf(open, at + 1);
+                    tries++;
                 }
             }
             return null;
+        }
+
+        /// <summary>Where the bracket opened at `at` closes (brackets in strings skipped), or -1.</summary>
+        private static int CloseAt(string t, int at)
+        {
+            int depth = 0;
+            bool quoted = false;
+            for (int k = at; k < t.Length; k++)
+            {
+                char ch = t[k];
+                if (quoted)
+                {
+                    if (ch == '\\') k++;
+                    else if (ch == '"') quoted = false;
+                }
+                else if (ch == '"') quoted = true;
+                else if (ch == '{' || ch == '[') depth++;
+                else if ((ch == '}' || ch == ']') && --depth == 0) return k;
+            }
+            return -1;
+        }
+
+        /// <summary>The text without commas right before } or ] (outside strings): what models often write.</summary>
+        private static string NoTrailingCommas(string t)
+        {
+            var sb = new StringBuilder();
+            bool quoted = false;
+            int n = t.Length;
+            for (int k = 0; k < n; k++)
+            {
+                char ch = t[k];
+                if (quoted)
+                {
+                    if (ch == '\\' && k + 1 < n) { sb.Append(ch).Append(t[k + 1]); k++; continue; }
+                    if (ch == '"') quoted = false;
+                }
+                else if (ch == '"') quoted = true;
+                else if (ch == ',')
+                {
+                    int j = k + 1;
+                    while (j < n && " \t\r\n".IndexOf(t[j]) >= 0) j++;
+                    if (j < n && (t[j] == '}' || t[j] == ']')) continue;
+                }
+                sb.Append(ch);
+            }
+            return sb.ToString();
         }
     }
 
@@ -1952,10 +2194,21 @@ namespace Kinloom
                 case "object":
                 {
                     if (!(value is IDictionary<string, object> map)) return (false, null, path + " must be an object with " + string.Join(", ", Fields.Keys));
+                    // a key matched exactly, else case-insensitively (the first key of the answer with that lowercase)
+                    var lower = new Dictionary<string, string>();
+                    foreach (var key in map.Keys) if (!lower.ContainsKey(key.ToLowerInvariant())) lower[key.ToLowerInvariant()] = key;
+                    var found = new Dictionary<string, string?>();
+                    foreach (var name in Fields.Keys)
+                        found[name] = map.ContainsKey(name) ? name : lower.TryGetValue(name.ToLowerInvariant(), out var k2) ? k2 : null;
+                    if (Fields.Count > 0 && found.Values.All(x => x == null))
+                    {
+                        if (map.Count == 1 && map.Values.First() is IDictionary<string, object> inner) return Check(inner, path);   // {"item": {...}}: wrapped once
+                        return (false, null, path + " must be an object with " + string.Join(", ", Fields.Keys));
+                    }
                     var output = new Dictionary<string, object?>();
                     foreach (var p in Fields)
                     {
-                        if (map.TryGetValue(p.Key, out var given))
+                        if (found[p.Key] is string fk && map.TryGetValue(fk, out var given))
                         {
                             var (ok, v, err) = p.Value.Check(given, p.Key);
                             if (!ok) return (false, null, err);
@@ -1972,7 +2225,7 @@ namespace Kinloom
         public (bool ok, object? value, string? error) Parse(string text)
         {
             var data = Text.FindJson(text);
-            if (data == null) return (false, null, "the answer was not JSON");
+            if (data == null) return (false, null, Text.CutOff(text) ? Text.Cut : "the answer was not JSON");
             return Check(data);
         }
 
@@ -2871,7 +3124,10 @@ namespace Kinloom
             return string.Join("\n", lines);
         }
 
-        public static string Clip(object? obj, int limit = 1500)
+        /// <summary>Characters of facts, situation, context or state the model reads (more is cut, and journaled).</summary>
+        public const int ClipLimit = 4000;
+
+        public static string Clip(object? obj, int limit = ClipLimit)
         {
             var text = Py.Dumps(obj, false);
             return Py.Len(text) <= limit ? text : Py.Slice(text, 0, limit) + "...";
@@ -3251,8 +3507,14 @@ namespace Kinloom
         void Save(string text);
     }
 
+    /// <summary>A store that can move an unreadable copy out of the way (memory.json.corrupt-&lt;time&gt;); says where.</summary>
+    public interface IMemoryAside
+    {
+        string? Aside();
+    }
+
     /// <summary>A memory file (desktop, mobile: Application.persistentDataPath + "/kinloom.json" in Unity).</summary>
-    public sealed class FileMemoryStore : IMemoryStore
+    public sealed class FileMemoryStore : IMemoryStore, IMemoryAside
     {
         private readonly string _path;
         public FileMemoryStore(string path) { _path = System.IO.Path.GetFullPath(path); }
@@ -3261,9 +3523,27 @@ namespace Kinloom
         {
             var dir = System.IO.Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(dir)) System.IO.Directory.CreateDirectory(dir);
-            System.IO.File.WriteAllText(_path + ".tmp", text, new UTF8Encoding(false));
-            if (System.IO.File.Exists(_path)) System.IO.File.Delete(_path);
-            System.IO.File.Move(_path + ".tmp", _path);
+            // a unique name: two saves never share it; the old file or the new one stays, never half of one
+            var tmp = _path + "." + System.Diagnostics.Process.GetCurrentProcess().Id + "-" + Guid.NewGuid().ToString("N").Substring(0, 8) + ".tmp";
+            try
+            {
+                System.IO.File.WriteAllText(tmp, text, new UTF8Encoding(false));
+                if (!System.IO.File.Exists(_path)) System.IO.File.Move(tmp, _path);
+                else
+                {
+                    try { System.IO.File.Replace(tmp, _path, null); }
+                    catch (PlatformNotSupportedException) { System.IO.File.Delete(_path); System.IO.File.Move(tmp, _path); }
+                }
+            }
+            finally { if (System.IO.File.Exists(tmp)) System.IO.File.Delete(tmp); }
+        }
+
+        public string? Aside()
+        {
+            if (!System.IO.File.Exists(_path)) return null;
+            var aside = _path + ".corrupt-" + DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+            System.IO.File.Move(_path, aside);
+            return System.IO.Path.GetFileName(aside);
         }
     }
 
@@ -3282,25 +3562,52 @@ namespace Kinloom
         private bool _dirty;
         private Timer? _timer;
 
+        /// <summary>What went wrong reading the stored memory, if anything (the brain journals it).</summary>
+        public string Problem = "";
+
         public Memory(IMemoryStore? store, Func<double> clock)
         {
             _store = store;
             _clock = clock;
-            if (store == null) return;
+            if (store != null) Read(store);
+        }
+
+        /// <summary>A note recall() can rank: text, time and importance (a file edited by hand or a save from elsewhere).</summary>
+        internal static bool GoodNote(object? n) =>
+            n is Dictionary<string, object> d && d.TryGetValue("text", out var t) && t is string &&
+            d.TryGetValue("t", out var tt) && !(tt is bool) && Py.Finite(tt) != null &&
+            d.TryGetValue("importance", out var im) && !(im is bool) && Py.Finite(im) != null;
+
+        /// <summary>Loads what can be trusted, entry by entry: one bad note never costs the rest. A store that cannot be
+        /// read at all is kept aside (memory.json.corrupt-&lt;time&gt; for a file) before anything overwrites it.</summary>
+        private void Read(IMemoryStore store)
+        {
+            object? data = null;
             try
             {
                 var text = store.Load();
-                if (text == null || !(Py.Loads(text) is Dictionary<string, object> data)) return;
-                if (data.TryGetValue("sessions", out var ss) && ss is Dictionary<string, object> sessions)
-                    foreach (var s in sessions)
-                        if (s.Value is Dictionary<string, object> scopes)
-                            foreach (var sc in scopes)
-                                if (sc.Value is List<object> notes)
-                                    _notes[s.Key + "\u0000" + sc.Key] = notes.OfType<Dictionary<string, object>>().Where(n => n.TryGetValue("text", out var t) && t is string).ToList();
-                if (data.TryGetValue("extra", out var ex) && ex is Dictionary<string, object> extra)
-                    foreach (var p in extra) if (p.Value is Dictionary<string, object> section) _extra[p.Key] = section;
+                if (text == null) return;
+                if (text.Length > 0 && text[0] == '\uFEFF') text = text.Substring(1);
+                data = Py.Loads(text);
             }
-            catch (Exception) { /* a broken memory must not stop the game; it is replaced on the next save */ }
+            catch (Exception e) { Problem = "memory file unreadable (" + e.GetType().Name + ")"; }
+            if (!(data is Dictionary<string, object> d))
+            {
+                if (Problem.Length == 0) Problem = "memory file is not a JSON object";
+                try { if (store is IMemoryAside a && a.Aside() is string where) Problem += "; kept as " + where; }
+                catch (Exception) { /* it stays where it is */ }
+                return;
+            }
+            if (d.TryGetValue("sessions", out var ss) && ss is Dictionary<string, object> sessions)
+                foreach (var s in sessions)
+                    if (s.Value is Dictionary<string, object> scopes)
+                        foreach (var sc in scopes)
+                        {
+                            var kept = (sc.Value as List<object> ?? new List<object>()).Where(GoodNote).Cast<Dictionary<string, object>>().ToList();
+                            if (kept.Count > 0) _notes[s.Key + "\u0000" + sc.Key] = kept.Skip(Math.Max(0, kept.Count - MaxNotes)).ToList();
+                        }
+            if (d.TryGetValue("extra", out var ex) && ex is Dictionary<string, object> extra)
+                foreach (var p in extra) if (p.Value is Dictionary<string, object> section) _extra[p.Key] = section;
         }
 
         private static HashSet<string> Words(string text) =>
@@ -3392,9 +3699,7 @@ namespace Kinloom
                 foreach (var key in _notes.Keys.Where(k => k.Substring(0, k.IndexOf('\u0000')) == session).ToList()) _notes.Remove(key);
                 foreach (var p in notes)
                 {
-                    var kept = (p.Value as IList ?? new List<object>()).OfType<Dictionary<string, object>>()
-                        .Where(n => n.TryGetValue("text", out var t) && t is string && n.TryGetValue("t", out var tt) && Py.IsNumber(tt) &&
-                                    n.TryGetValue("importance", out var im) && Py.IsNumber(im))
+                    var kept = (p.Value as IList ?? new List<object>()).Cast<object?>().Where(GoodNote).Cast<Dictionary<string, object>>()
                         .Select(n => new Dictionary<string, object>(n)).ToList();
                     if (kept.Count > 0) _notes[session + "\u0000" + p.Key] = kept.Skip(Math.Max(0, kept.Count - MaxNotes)).ToList();
                 }
@@ -4215,6 +4520,7 @@ namespace Kinloom
                 var bytes = await res.Content.ReadAsByteArrayAsync().ConfigureAwait(false);
                 return (status, bytes);
             }
+            using var stop = cancel.Register(() => res.Dispose());   // a stream that stalls ends at the deadline
             using var stream = await res.Content.ReadAsStreamAsync().ConfigureAwait(false);
             using var reader = new System.IO.StreamReader(stream, Encoding.UTF8);
             long total = 0;
@@ -4846,6 +5152,7 @@ namespace Kinloom
 
     internal sealed class Character : IPersona
     {
+        public const int MaxWhat = 500;   // characters of create's `what` (more is cut, and journaled)
         public const int MaxName = 48, MaxEvent = 160, MaxLine = 140, MaxReply = 400, MaxTools = 100;
         public string Name { get; set; }
         public string Personality { get; set; }
@@ -5071,6 +5378,11 @@ namespace Kinloom
         private readonly List<(double t, double dollars)> _spent = new List<(double, double)>();
         private readonly List<double> _calls = new List<double>();
         private readonly Dictionary<string, Character> _characters = new Dictionary<string, Character>();
+        private readonly List<string> _characterOrder = new List<string>();          // keys of _characters, oldest first
+        private readonly Dictionary<string, int> _perSession = new Dictionary<string, int>();
+        private const int MaxPerSession = 300;     // one session (one player online) never fills the table for everyone else
+        private const int MaxKeys = 2000;          // entries per cache (decisions, banks, pools...): live data in keys stays bounded
+        private readonly Dictionary<object, Queue<string>> _orders = new Dictionary<object, Queue<string>>();
         private readonly HashSet<string> _declared = new HashSet<string>(), _gameDeclared = new HashSet<string>();
         private readonly Dictionary<string, string> _cfgDeclared = new Dictionary<string, string>();
         private readonly Dictionary<string, (Dictionary<string, object> spec, string json)> _cfgChars = new Dictionary<string, (Dictionary<string, object>, string)>();
@@ -5099,6 +5411,7 @@ namespace Kinloom
         private sealed class BondInfo { public long Talks; public double First, Last; }
         private readonly Dictionary<string, Dictionary<string, Dictionary<string, BondInfo>>> _bonds = new Dictionary<string, Dictionary<string, Dictionary<string, BondInfo>>>();
         private readonly Dictionary<string, List<string>> _said = new Dictionary<string, List<string>>();
+        private readonly HashSet<string> _clips = new HashSet<string>();   // name + label already journaled as too long
         private int _switches;
         private readonly Dictionary<string, (double start, double gained, double last)> _rises = new Dictionary<string, (double, double, double)>();
         private int _events, _spreads;
@@ -5136,12 +5449,22 @@ namespace Kinloom
             Language = o.Language ?? (cfg["language"] as string) ?? DefaultLanguage;
             _voiceLanguage = o.Language ?? (cfg["language"] as string != DefaultLanguage ? cfg["language"] as string : null);
             Limit = Math.Max(1, o.CallsPerMinute ?? (int)Py.D(cfg["calls_per_minute"]));
-            _prices = o.Prices ?? cfg.GetValueOrDefault("prices") as Dictionary<string, object>;
+            object? prices = (object?)o.Prices ?? cfg.GetValueOrDefault("prices");
+            _prices = prices as Dictionary<string, object>;
+            if (prices != null && !(_prices != null && _prices.All(p => !(p.Key == "input" || p.Key == "output" || p.Key == "cached_input") ||
+                                                                         (!(p.Value is bool) && Py.Finite(p.Value) is double pv && pv >= 0))))
+            {
+                if (o.Prices != null) throw new ArgumentException("prices: {\"input\": $/M tokens, \"output\": ..., \"cached_input\": ...} as numbers, got " + Py.PyRepr(o.Prices));
+                Log("refused", "kinloom", "kinloom.json: prices must be {\"input\": n, \"output\": n, \"cached_input\": n} in dollars per million tokens, got " +
+                    Py.PyRepr(prices) + " (no cost is counted)");
+                _prices = null;
+            }
             var words = (cfg.GetValueOrDefault("banned_words") as List<object> ?? new List<object>()).OfType<string>().Where(w => Py.Strip(w).Length > 0).ToList();
             _banned = words.Count > 0 ? new Regex("(?<![" + Souls.W + "])(" + string.Join("|", words.Select(w => Regex.Escape(Py.Strip(w)))) + ")(?![" + Souls.W + "])",
                 RegexOptions.CultureInvariant | RegexOptions.IgnoreCase) : null;
             _filter = o.ContentFilter;
             Memory = new Memory(o.MemoryStore ?? (o.MemoryPath != null ? new FileMemoryStore(o.MemoryPath) : null), () => Wall());
+            if (Memory.Problem.Length > 0) Log("error", "kinloom", Memory.Problem);
             CallTimeout = o.CallTimeout ?? 12.0;
             _maxCostPerHour = Py.Finite(cfg.GetValueOrDefault("max_cost_per_hour"));
             _maxCostPerDay = Py.Finite(cfg.GetValueOrDefault("max_cost_per_day"));
@@ -5203,10 +5526,46 @@ namespace Kinloom
                 if (!_characters.TryGetValue(K(session, n), out var c))
                 {
                     c = new Character(n);
-                    if (_characters.Count < MaxCharacters) _characters[K(session, n)] = c;
+                    Store(session, c);
                 }
                 return c;
             }
+        }
+
+        /// <summary>Keeps a character (under the lock). A full table first lets go of the oldest one the game never
+        /// declared (made on the fly from a name); a session past its share keeps nothing more. False: a throwaway.</summary>
+        private bool Store(string session, Character c)
+        {
+            var key = K(session, c.Name);
+            if (_characters.ContainsKey(key)) { _characters[key] = c; return true; }
+            if (_perSession.TryGetValue(session, out var mine) && mine >= MaxPerSession) return false;
+            if (_characters.Count >= MaxCharacters)
+            {
+                int at = _characterOrder.FindIndex(k => !_declared.Contains(k));
+                if (at < 0) return false;
+                var old = _characterOrder[at];
+                _characterOrder.RemoveAt(at);
+                _characters.Remove(old);
+                var s = old.Substring(0, old.IndexOf('\u0000'));
+                if (--_perSession[s] <= 0) _perSession.Remove(s);
+            }
+            _characters[key] = c;
+            _characterOrder.Add(key);
+            _perSession[session] = (_perSession.TryGetValue(session, out var n) ? n : 0) + 1;
+            return true;
+        }
+
+        /// <summary>A key added to a cache: the oldest entries go once it passes MaxKeys (under the lock).</summary>
+        private void Added<V>(Dictionary<string, V> table, string key)
+        {
+            if (!_orders.TryGetValue(table, out var q)) _orders[table] = q = new Queue<string>();
+            q.Enqueue(key);
+            while (table.Count > MaxKeys && q.Count > 0)
+            {
+                var old = q.Dequeue();
+                if (old != key) table.Remove(old);
+            }
+            if (q.Count > 2 * MaxKeys + 16) _orders[table] = new Queue<string>(q.Where(table.ContainsKey).Distinct());
         }
 
         public void Log(string kind, string name, string text, Dictionary<string, object?>? detail = null)
@@ -5258,9 +5617,22 @@ namespace Kinloom
             var work = SafeComplete(provider, system, user, new CompleteOptions { Json = json, MaxTokens = maxTokens, Timeout = limit, OnText = onText,
                 Images = images != null && images.Count > 0 ? images : null });
             var done = await Task.WhenAny(work, Task.Delay(TimeSpan.FromSeconds(limit + 0.25))).ConfigureAwait(false);
+            if (done != work) _ = work.ContinueWith(t => { if (t.Status == TaskStatus.RanToCompletion) Late(t.Result); }, TaskScheduler.Default);
             var r = done == work ? await work.ConfigureAwait(false) : ModelReply.Fail("timed out after " + Py.Fixed(limit, 1) + " s");
             Account(kind, name, r);
             return r;
+        }
+
+        /// <summary>A call given up on that answered later: its tokens were billed all the same, so they count (and the caps).</summary>
+        private void Late(ModelReply r)
+        {
+            lock (_lock)
+            {
+                _stats["input_tokens"] = (long)_stats["input_tokens"] + r.Input;
+                _stats["cached_tokens"] = (long)_stats["cached_tokens"] + r.Cached;
+                _stats["output_tokens"] = (long)_stats["output_tokens"] + r.Output;
+                _spent.Add((Http.Now, Price(r)));
+            }
         }
 
         /// <summary>The model of a task: conversations and what players wait for use "chat", the rest "background".</summary>
@@ -5492,12 +5864,11 @@ namespace Kinloom
             var key = K(session, c.Name);
             lock (_lock)
             {
-                if (!_characters.ContainsKey(key) && _characters.Count >= MaxCharacters)
+                if (!Store(session, c))
                 {
-                    Log("refused", c.Name, "too many characters (" + MaxCharacters + "): not stored");
+                    Log("refused", c.Name, "too many characters (" + MaxCharacters + " in all, " + MaxPerSession + " per session): not stored");
                     return c;
                 }
-                _characters[key] = c;
                 _declared.Add(key);
                 if (!fromConfig) _gameDeclared.Add(key);
             }
@@ -5717,7 +6088,12 @@ namespace Kinloom
                             if (a.Value is Dictionary<string, object> row)
                                 table[a.Key] = row.Where(b => b.Value is Dictionary<string, object> v && Py.Finite(v.GetValueOrDefault("last")) != null)
                                     .ToDictionary(b => b.Key, b => { var v = (Dictionary<string, object>)b.Value;
-                                        return new BondInfo { Talks = v.TryGetValue("talks", out var t) && Py.IsNumber(t) ? (long)Py.D(t) : 1, First = Py.Finite(v.GetValueOrDefault("first")) ?? 0, Last = Py.D(v["last"]) }; });
+                                        // Each value checked: a hand-edited file or a loaded save never breaks chat() later
+                                        double last = Py.Finite(v.GetValueOrDefault("last"))!.Value;
+                                        var talks = v.GetValueOrDefault("talks") is bool ? null : Py.Finite(v.GetValueOrDefault("talks"));
+                                        var first = v.GetValueOrDefault("first") is bool ? null : Py.Finite(v.GetValueOrDefault("first"));
+                                        return new BondInfo { Talks = Math.Max(1L, (long)Math.Truncate(Math.Min(1e9, talks is double tv && tv != 0 ? tv : 1))),
+                                                              First = first is double fv && fv != 0 ? fv : last, Last = last }; });
                     _bonds[session] = table;
                 }
                 return table;
@@ -5745,7 +6121,9 @@ namespace Kinloom
                         var (start, gained, last) = _rises.TryGetValue(rkey, out var r) ? r : (now, 0.0, -1e18);
                         if (now - last > Souls.NewTalk) { start = now; gained = 0.0; }
                         change = Math.Max(0.0, Math.Min(change, c.WarmUp - gained));
+                        bool newRise = !_rises.ContainsKey(rkey);
                         _rises[rkey] = (start, gained + change, now);
+                        if (newRise) Added(_rises, rkey);
                     }
                     if (change < i.Feel.Value) Log("refused", c.Name, "feel: " + speaker + " already won " + Py.Fixed(c.WarmUp, 1, "+") + " this conversation");
                 }
@@ -5845,6 +6223,7 @@ namespace Kinloom
         {
             var c = Char(session, name);
             var facts = Mapping(facts0, "facts");
+            ClipNote(c.Name, "facts", facts);
             var ev = Kinloom.Character.EventKey(e);
             int? limit = BoxLimit(maxChars) ?? c.MaxChars;
             List<string> Fitting(List<string> templates) => limit.HasValue ? templates.Where(t => Py.Len(Lines.Fill(t, facts)) <= limit.Value).ToList() : templates;
@@ -5855,8 +6234,9 @@ namespace Kinloom
                 if (r.Ok)
                 {
                     var t = Text.FindJson(r.Text);
-                    var line = t is Dictionary<string, object> td ? td.GetValueOrDefault("line") : r.Text;
-                    var (ok, template) = ValidLine(Py.Str(line), new HashSet<string>(facts.Keys), c);
+                    // Only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+                    var line = t is Dictionary<string, object> td ? td.GetValueOrDefault("line") : t != null ? null : r.Text;
+                    var (ok, template) = line is string ls ? ValidLine(ls, new HashSet<string>(facts.Keys), c) : (false, null);
                     if (ok)
                     {
                         var said = Souls.FitChars(Lines.Fill(template!, facts), limit);
@@ -5871,7 +6251,7 @@ namespace Kinloom
             bool low;
             lock (_lock)
             {
-                if (!_banks.TryGetValue(key, out var bank)) _banks[key] = bank = new Bank();
+                if (!_banks.TryGetValue(key, out var bank)) { _banks[key] = bank = new Bank(); Added(_banks, key); }
                 var usable = bank.Unused.Where(t => Lines.Placeholders(t).All(names.Contains)).ToList();
                 var known = bank.Templates.Where(t => Lines.Placeholders(t).All(names.Contains)).ToList();
                 var freshOnes = Fitting(usable);
@@ -5981,7 +6361,7 @@ namespace Kinloom
             Bank bank;
             lock (_lock)
             {
-                if (!_banks.TryGetValue(key, out bank!)) _banks[key] = bank = new Bank();
+                if (!_banks.TryGetValue(key, out bank!)) { _banks[key] = bank = new Bank(); Added(_banks, key); }
                 if (bank.Filling || bank.Failures >= 3) return;
                 bank.Filling = true;
             }
@@ -6032,6 +6412,7 @@ namespace Kinloom
             var shape = Shape.Of(asObject ? choices : new Dictionary<string, object> { ["choice"] = choices! });
             var key = K(session, c.Name, shape.Signature());
             var situation = situation0 as Dictionary<string, object> ?? new Dictionary<string, object> { ["situation"] = situation0! };
+            ClipNote(c.Name, "situation", situation);
             double ev = every == null ? c.Every : Math.Max(0.2, Kinloom.Character.ArgNum(every, "every"));
             double now = Clock();
             DecisionState d;
@@ -6039,7 +6420,7 @@ namespace Kinloom
             object? value;
             lock (_lock)
             {
-                if (!_decisions.TryGetValue(key, out d!)) _decisions[key] = d = new DecisionState { Value = shape.Default() };
+                if (!_decisions.TryGetValue(key, out d!)) { _decisions[key] = d = new DecisionState { Value = shape.Default() }; Added(_decisions, key); }
                 due = !d.Thinking && (d.At == null || now - d.At.Value >= ev || (now - d.At.Value >= ev / 4 && Changed(d.Situation, situation)));
                 if (due) { d.Thinking = true; d.Situation = new Dictionary<string, object>(situation); }
                 value = d.Value;
@@ -6079,6 +6460,7 @@ namespace Kinloom
             if (ok && !Allowed(value)) { Log("refused", name, kind + ": blocked by the content filter"); return null; }
             if (ok) return value;
             Log("repair", name, kind + ": " + error);
+            if (error == Text.Cut) maxTokens = Math.Min(4000, maxTokens * 2);   // stopped by the token limit: room to finish
             r = await Call(kind, name, system, user + Prompts.Repair(error!), true, foreground, maxTokens, null, timeout, images).ConfigureAwait(false);
             if (!r.Ok) return null;
             (ok, value, error) = shape.Parse(r.Text);
@@ -6165,6 +6547,7 @@ namespace Kinloom
             if (c.Tools.Count == 0) return new List<(string, Dictionary<string, object>)>();
             var key = K(session, c.Name);
             var situation = situation0 as Dictionary<string, object> ?? (situation0 != null ? new Dictionary<string, object> { ["situation"] = situation0 } : new Dictionary<string, object>());
+            ClipNote(c.Name, "situation", situation);
             double now = Clock();
             PendingActs entry;
             List<(string, Dictionary<string, object>)> ready;
@@ -6527,7 +6910,10 @@ namespace Kinloom
         {
             if (Kinloom.Character.Truthy(count) && example is IList one && one.Count == 1) example = one[0];
             var shape = Shape.Of(example);
-            var what = Py.Slice(Text.Clean(Py.Str(what0)), 0, 200);
+            var what = Text.Clean(Py.Str(what0));
+            ClipNote(Py.Slice(what, 0, Kinloom.Character.MaxWhat), "what", what, Kinloom.Character.MaxWhat, true);
+            ClipNote(Py.Slice(what, 0, Kinloom.Character.MaxWhat), "context", context);
+            what = Py.Slice(what, 0, Kinloom.Character.MaxWhat);
             var pictures = image != null ? Pictures(what, image) : new List<ModelPicture>();
             if (instant)
             {
@@ -6543,7 +6929,7 @@ namespace Kinloom
             if (Provider == null) return shape.Default();
             var system = Prompts.CreateSystem(what, shape, Written());
             var user = Context(session, null, what) + Prompts.ContextBlock(context) + Prompts.PictureBlock(pictures.Count);
-            var value = await Structured("create", what, system, user, shape, true, 800, timeout, pictures).ConfigureAwait(false);
+            var value = await Structured("create", what, system, user, shape, true, 1500, timeout, pictures).ConfigureAwait(false);
             if (value == null) { Count("offline_answers"); return shape.Default(); }
             Log("create", what, Py.Slice(Py.Dumps(value), 0, 300));
             return value;
@@ -6578,7 +6964,7 @@ namespace Kinloom
             bool has = false, low;
             lock (_lock)
             {
-                if (!_pools.TryGetValue(key, out pool!)) _pools[key] = pool = new Pool();
+                if (!_pools.TryGetValue(key, out pool!)) { _pools[key] = pool = new Pool(); Added(_pools, key); }
                 if (pool.Items.Count > 0) { item = pool.Items[0]; pool.Items.RemoveAt(0); has = true; }
                 low = pool.Items.Count < 2 && !pool.Filling && pool.Failures < 3 && Provider != null;
                 if (low) pool.Filling = true;
@@ -6604,11 +6990,13 @@ namespace Kinloom
                                      double? timeout = null, object? maxChars = null, object? image = null)
         {
             var c = Char(session, name);
+            double began = Http.Now;
             var pictures = image != null ? Pictures(c.Name, image) : new List<ModelPicture>();
             int? limit = BoxLimit(maxChars) ?? c.MaxChars;
             var message = Py.Slice(Text.Clean(message0 ?? ""), 0, 1000);
             var speaker = NameOf(speaker0) ?? "player";
             var facts = Mapping(facts0, "facts");
+            ClipNote(c.Name, "facts", facts);
             var hkey = K(session, c.Name, speaker);
             double now = Wall();
             var table = BondTable(session);
@@ -6689,7 +7077,12 @@ namespace Kinloom
                                 var shown = cut.Feed(echo.Feed(unstage.Feed(guard.Feed(splitter.Feed(piece)))));
                                 if (shown.Length > 0 && !shut)
                                 {
-                                    if (hidden.Count > 0 && Souls.Leaks(shownSoFar + shown, hidden, pub, 0.5, message) != null) { shut = true; return; }
+                                    // Nothing reaches the player before the checks the final reply gets: secrets, content filter
+                                    if (hidden.Count > 0 && Souls.Leaks(shownSoFar + shown, hidden, pub, 0.5, message) != null || !Allowed(shownSoFar + shown))
+                                    {
+                                        shut = true;
+                                        return;
+                                    }
                                     shownSoFar.Append(shown);
                                     streamed = true;
                                     stream(shown);
@@ -6704,7 +7097,7 @@ namespace Kinloom
                         {
                             var tail = cut.Feed(echo.Feed(unstage.Feed(guard.Feed(splitter.Finish().tail) + guard.Finish()) + unstage.Finish()) + echo.Finish());
                             tail += cut.Finish();
-                            if (hidden.Count > 0 && Souls.Leaks(shownSoFar + tail, hidden, pub, 0.5, message) != null) tail = "";
+                            if (hidden.Count > 0 && Souls.Leaks(shownSoFar + tail, hidden, pub, 0.5, message) != null || tail.Length > 0 && !Allowed(shownSoFar + tail)) tail = "";
                             if (tail.Length > 0 && r.Ok && !r.Cut && !shut) { streamed = true; stream(tail); }
                         }
                     }
@@ -6773,7 +7166,9 @@ namespace Kinloom
             {
                 if (c.Tools.Count > 0 && source == "model" && Souls.InnerOfReply(inner).Do.Count == 0)
                 {
-                    var found = await Deeds(c, speaker, message, reply).ConfigureAwait(false);
+                    // what the reply agreed to, within what is left of the reply's time (a player is waiting)
+                    double left = (timeout ?? ReplyDeadline()) - (Http.Now - began);
+                    var found = await Deeds(c, speaker, message, reply, Math.Max(1.5, left)).ConfigureAwait(false);
                     if (found.Count > 0) inner = new Dictionary<string, object>(inner ?? new Dictionary<string, object>()) { ["do"] = found };
                 }
                 decided = Inner(session, c, speaker, inner);
@@ -6829,15 +7224,18 @@ namespace Kinloom
             return new Said { Text = reply, Source = source, Actions = decided };
         }
 
-        private async Task<List<object>> Deeds(Character c, string speaker, string message, string reply)
+        /// <summary>budget: seconds for everything here (the asking again included).</summary>
+        private async Task<List<object>> Deeds(Character c, string speaker, string message, string reply, double budget = 10.0)
         {
             var system = Prompts.DeedsSystem(c);
             var user = Prompts.DeedsUser(c.Name, speaker, message, reply);
-            var r = await Call("deeds", c.Name, system, user, true, true, 150, null, Math.Min(CallTimeout, 5.0)).ConfigureAwait(false);
-            if (!r.Ok)          // a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+            double start = Http.Now;
+            var r = await Call("deeds", c.Name, system, user, true, true, 150, null, Math.Min(Math.Min(CallTimeout, 5.0), budget)).ConfigureAwait(false);
+            double left = budget - (Http.Now - start);
+            if (!r.Ok && left >= 1.0)   // a slow or failed call: what was agreed must not be lost, ask once more if time is left
             {
                 Log("repair", c.Name, "deeds: " + (string.IsNullOrEmpty(r.Error) ? "failed" : r.Error) + "; asked again");
-                r = await Call("deeds", c.Name, system, user, true, true, 150, null, Math.Min(CallTimeout, 5.0)).ConfigureAwait(false);
+                r = await Call("deeds", c.Name, system, user, true, true, 150, null, Math.Min(Math.Min(CallTimeout, 5.0), left)).ConfigureAwait(false);
             }
             var data = r.Ok ? Text.FindJson(r.Text) as Dictionary<string, object> : null;
             return data != null && data.GetValueOrDefault("do") is List<object> found ? found.Where(x => x is Dictionary<string, object>).Take(3).ToList() : new List<object>();
@@ -6958,6 +7356,7 @@ namespace Kinloom
         {
             var c = Char(session, name);
             var facts = Mapping(facts0, "facts");
+            ClipNote(c.Name, "facts", facts);
             if (examples is string || !(examples is IList list))
                 throw new ArgumentException("examples: a list of short replies the player could say, like [\"Ask about her past\", \"Leave\"]");
             var given = list.Cast<object?>().Take(MaxSuggestions).Where(x => x != null && Text.Clean(Py.Str(x)).Length > 0)
@@ -7295,7 +7694,22 @@ namespace Kinloom
 
         public void Remember(string session, object? name, object? note, double importance = 0.6) => Memory.Add(session, Py.Str(name), Py.Str(note), importance);
 
-        public void SetState(string session, object? state) { var s = Mapping(state, "state"); lock (_lock) _state[session] = s; }
+        public void SetState(string session, object? state)
+        {
+            var s = Mapping(state, "state");
+            ClipNote("state", "state", s);
+            lock (_lock) _state[session] = s;
+        }
+
+        /// <summary>Journals, once per name and label, that the model reads only the start of something too long.</summary>
+        private void ClipNote(string name, string label, object? value, int limit = Prompts.ClipLimit, bool text = false)
+        {
+            if (!Kinloom.Character.Truthy(value)) return;
+            int size = text ? Py.Len(Py.Str(value)) : Py.Len(Py.Dumps(value, false));
+            if (size <= limit) return;
+            lock (_lock) if (!_clips.Add(name + "\0" + label)) return;
+            Log("clipped", name, label + ": " + size + " characters, the model reads the first " + limit);
+        }
 
         public List<Character> CharacterList(string session)
         {
@@ -7632,6 +8046,11 @@ namespace Kinloom
                 }
                 case "shape_error": try { Shape.Of(a[0]); return null; } catch (ArgumentException e) { return e.Message; }
                 case "find_json": return Text.FindJson(a[0]);
+                case "parse":
+                {
+                    var (ok, value, error) = Shape.Of(a[0]).Parse((string)a[1]);
+                    return new Dictionary<string, object?> { ["ok"] = ok, ["value"] = value, ["error"] = error };
+                }
                 case "clean_text": return Text.Clean(a[0]);
                 case "fill": return Lines.Fill((string)a[0], (IDictionary<string, object>)a[1]);
                 case "event_key": return Character.EventKey(a[0]);

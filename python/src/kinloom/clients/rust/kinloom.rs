@@ -515,10 +515,47 @@ struct Decision {
     at: Option<Instant>,
 }
 
+#[derive(Default)]
 struct Pending {
     ready: Vec<Action>,
     busy: bool,
     at: Option<Instant>,
+}
+
+/// Relay: a say() request in progress; its answer is taken once (by the caller, or kept for the next say()).
+#[derive(Default)]
+struct SayFetch {
+    answer: Mutex<Option<Option<Json>>>,
+    ready: Condvar,
+    taken: std::sync::atomic::AtomicBool,
+}
+
+/// Relay: how often decide/act ask the server: a quarter of the character's `every` (8 s by default: every 2 s; the server
+/// refreshes early when the situation changes after every/4), never more than 4 times a second.
+fn poll_every(st: &State, name: &str) -> Duration {
+    let every = st.chars.get(name).and_then(|c| py::finite(c.get("every"))).filter(|e| *e > 0.0).unwrap_or(8.0);
+    Duration::from_secs_f64((every / 4.0).max(0.25))
+}
+
+/// host, port and path prefix of a relay URL ("http://host:port/prefix"; IPv6 in brackets).
+fn authority(url: &str) -> (String, u16, String) {
+    let default = if url.starts_with("https://") { 443 } else { 80 };
+    let rest = url.trim_start_matches("https://").trim_start_matches("http://");
+    let (auth, path) = match rest.find('/') {
+        Some(i) => (&rest[..i], rest[i..].trim_end_matches('/')),
+        None => (rest, ""),
+    };
+    let (host, port) = match auth.strip_prefix('[').and_then(|a| a.find(']')) {
+        Some(end) => {
+            let tail = &auth[end + 2..];
+            (auth[..end + 2].to_string(), if tail.is_empty() { default } else { tail.trim_start_matches(':').parse().unwrap_or(7717) })
+        }
+        None => match auth.rsplit_once(':') {
+            Some((h, p)) => (h.to_string(), p.parse().unwrap_or(7717)),
+            None => (auth.to_string(), default),
+        },
+    };
+    (host, port, path.to_string())
 }
 
 struct MindEntry {
@@ -528,8 +565,11 @@ struct MindEntry {
     checked: Instant,
 }
 
+type Declared = Arc<(Mutex<bool>, Condvar)>;
+
 struct State {
     chars: HashMap<String, Json>,
+    declaring: HashMap<String, Declared>, // relay: declarations on their way, by name
     decisions: HashMap<String, Decision>,
     actions: HashMap<String, Pending>,
     sources: HashMap<String, String>,
@@ -541,6 +581,10 @@ struct State {
     reward_at: Option<Instant>,
     tools: Option<Json>, // the game's tools, sent again after a restart
     failures: u32,       // connections refused in a row (the offline time grows: 2, 4, 8, 10 s)
+    busy_until: Option<Instant>, // the server answered 429: offline answers until then (it is not down)
+    busy_told: bool,
+    said_ahead: HashMap<String, (String, String)>, // say(): answers that came late, kept for the next say() (text, source)
+    say_fetching: HashMap<String, Arc<SayFetch>>,
 }
 
 /// One flush at a time: flush() returns once everything reported so far is sent.
@@ -551,6 +595,7 @@ struct Inner {
     brain: Option<Arc<Brain>>, // the native SDK (None: a relay)
     host: String,
     port: u16,
+    prefix: String,            // a path before /v1/ ("http://host:port/kinloom")
     session: String,
     token: String,
     chat_timeout: Duration,
@@ -579,11 +624,7 @@ impl Kinloom {
     /// url: where `kinloom serve` runs (http, or https through the platform); session: one per player or match; token: for
     /// `serve --token`.
     pub fn with(url: &str, session: &str, token: &str) -> Kinloom {
-        let rest = url.trim_start_matches("https://").trim_start_matches("http://").trim_end_matches('/');
-        let (host, port) = match rest.rsplit_once(':') {
-            Some((h, p)) => (h.to_string(), p.parse().unwrap_or(7717)),
-            None => (rest.to_string(), if url.starts_with("https://") { 443 } else { 80 }),
-        };
+        let (host, port, prefix) = authority(url);
         let seed = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(7) | 1;
         Kinloom {
             inner: Arc::new(Inner {
@@ -591,11 +632,13 @@ impl Kinloom {
                 brain: None,
                 host,
                 port,
+                prefix,
                 session: session.to_string(),
                 token: token.to_string(),
                 chat_timeout: Duration::from_secs(12),
                 state: Mutex::new(State {
                     chars: HashMap::new(),
+                    declaring: HashMap::new(),
                     decisions: HashMap::new(),
                     actions: HashMap::new(),
                     sources: HashMap::new(),
@@ -607,6 +650,10 @@ impl Kinloom {
                     reward_at: None,
                     tools: None,
                     failures: 0,
+                    busy_until: None,
+                    busy_told: false,
+                    said_ahead: HashMap::new(),
+                    say_fetching: HashMap::new(),
                 }),
             }),
         }
@@ -626,8 +673,12 @@ impl Kinloom {
         d.insert("name".into(), name.into());
         d.insert("personality".into(), personality.into());
         let d = Json::Obj(d);
-        self.inner.state.lock().unwrap().chars.insert(name.to_string(), d.clone());
-        self.fire("character", d);
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).chars.insert(name.to_string(), d.clone());
+        if self.inner.brain.is_some() {
+            self.fire("character", d);
+        } else {
+            self.declare(name, d, None);
+        }
     }
 
     /// A line in character with the real facts filled in. Fast: served from lines prepared in advance.
@@ -638,7 +689,7 @@ impl Kinloom {
     /// Where name's last line or reply came from: "model" (written now), "prepared" (written earlier by the model),
     /// "offline" (your own lines and replies), or "" before the first one.
     pub fn source(&self, name: &str) -> String {
-        self.inner.state.lock().unwrap().sources.get(name).cloned().unwrap_or_default()
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).sources.get(name).cloned().unwrap_or_default()
     }
 
     fn set_source(&self, name: &str, r: Option<&Json>) {
@@ -649,7 +700,7 @@ impl Kinloom {
                 s => s.to_string(),
             },
         };
-        self.inner.state.lock().unwrap().sources.insert(name.to_string(), src);
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).sources.insert(name.to_string(), src);
     }
 
     /// A conversation reply grounded in the facts and the character's memory (~1 s: prefer `chat_async` in a game loop).
@@ -671,7 +722,7 @@ impl Kinloom {
 
     /// The offline chat reply: the one given, or one of several.
     fn offline_reply(&self, name: &str) -> String {
-        let mut st = self.inner.state.lock().unwrap();
+        let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         let offline = st.chars.get(name).map(|c| c.get("offline").clone()).unwrap_or(Json::Null);
         match offline {
             Json::Arr(many) if !many.is_empty() => {
@@ -702,9 +753,10 @@ impl Kinloom {
         let due;
         let value;
         {
-            let mut st = self.inner.state.lock().unwrap();
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let every = poll_every(&st, name);
             let d = st.decisions.entry(key.clone()).or_insert_with(|| Decision { value: default_of(&choices), busy: false, at: None });
-            due = !d.busy && d.at.map_or(true, |t| t.elapsed() >= Duration::from_millis(250));
+            due = !d.busy && d.at.map_or(true, |t| t.elapsed() >= every);
             if due {
                 d.busy = true;
                 d.at = Some(Instant::now());
@@ -719,7 +771,7 @@ impl Kinloom {
                 if let Some(r) = &r {
                     me.redeclare(&name, r);
                 }
-                let mut st = me.inner.state.lock().unwrap();
+                let mut st = me.inner.state.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(d) = st.decisions.get_mut(&key) {
                     if let Some(v) = r.as_ref().map(|r| r.get("decision")).filter(|v| !v.is_null()) {
                         d.value = v.clone();
@@ -795,10 +847,11 @@ impl Kinloom {
         let due;
         let ready;
         {
-            let mut st = self.inner.state.lock().unwrap();
-            let p = st.actions.entry(name.to_string()).or_insert_with(|| Pending { ready: Vec::new(), busy: false, at: None });
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let every = poll_every(&st, name);
+            let p = st.actions.entry(name.to_string()).or_default();
             ready = std::mem::take(&mut p.ready);
-            due = !p.busy && p.at.map_or(true, |t| t.elapsed() >= Duration::from_millis(250));
+            due = !p.busy && p.at.map_or(true, |t| t.elapsed() >= every);
             if due {
                 p.busy = true;
                 p.at = Some(Instant::now());
@@ -808,7 +861,7 @@ impl Kinloom {
             let (me, name) = (self.clone(), name.to_string());
             thread::spawn(move || {
                 let r = me.post("act", &obj! { "name" => name.as_str(), "situation" => situation, "think" => think }, Duration::from_secs(2));
-                let mut st = me.inner.state.lock().unwrap();
+                let mut st = me.inner.state.lock().unwrap_or_else(|e| e.into_inner());
                 if let Some(p) = st.actions.get_mut(&name) {
                     for a in r.as_ref().map(|r| r.get("actions").as_array().to_vec()).unwrap_or_default() {
                         p.ready.push(Action { tool: a.get("tool").as_str().to_string(), args: a.get("args").clone() });
@@ -869,7 +922,7 @@ impl Kinloom {
     /// What the game can do, declared once: `obj! { "open_door" => obj! { "door" => "north" } }`. Characters use them by
     /// name (options "tools": `["open_door"]`, or "all"); `act` returns the calls. Returns the names.
     pub fn tools(&self, tools: Json) -> Vec<String> {
-        self.inner.state.lock().unwrap().tools = Some(tools.clone());
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).tools = Some(tools.clone());
         let body = obj! { "tools" => &tools };
         match self.post("tools", &body, Duration::from_secs(5)) {
             Some(r) if !r.get("tools").as_array().is_empty() => r.get("tools").as_array().iter().map(|x| x.as_str().to_string()).collect(),
@@ -955,7 +1008,7 @@ impl Kinloom {
         let decl = obj! { "name" => name, "personality" => personality, "senses" => senses, "actions" => actions, "rules" => rules,
                           "variants" => variants, "learn" => learn };
         let compiled = compile_offline(&decl);
-        self.inner.state.lock().unwrap().minds.insert(
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).minds.insert(
             name.to_string(),
             MindEntry { decl: decl.clone(), compiled, units: HashMap::new(), checked: Instant::now() },
         );
@@ -966,7 +1019,7 @@ impl Kinloom {
     pub fn think(&self, name: &str, senses: &Json, who: &str) -> Thought {
         let (thought, refresh, flush);
         {
-            let mut guard = self.inner.state.lock().unwrap();
+            let mut guard = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             let st = &mut *guard;
             let m = match st.minds.get_mut(name) {
                 Some(m) => m,
@@ -1008,7 +1061,7 @@ impl Kinloom {
         }
         let flush;
         {
-            let mut st = self.inner.state.lock().unwrap();
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             let u = match st.units.get(who) {
                 Some(u) => u.clone(),
                 None => return false,
@@ -1033,7 +1086,7 @@ impl Kinloom {
     pub fn flush(&self) {
         let _one = FLUSHING.lock().unwrap_or_else(|e| e.into_inner());
         let batch = {
-            let mut st = self.inner.state.lock().unwrap();
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             st.reward_at = Some(Instant::now());
             if st.rewards.is_empty() {
                 return;
@@ -1043,7 +1096,7 @@ impl Kinloom {
         if let Some(r) = self.post("reward", &obj! { "rewards" => Json::Arr(batch) }, Duration::from_secs(5)) {
             if let Json::Obj(v) = r.get("versions") {
                 for (name, version) in v {
-                    let stale = self.inner.state.lock().unwrap().minds.get(name).map_or(false, |m| m.compiled.version != version.as_i64());
+                    let stale = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).minds.get(name).map_or(false, |m| m.compiled.version != version.as_i64());
                     if stale {
                         self.refresh_mind(name);
                     }
@@ -1067,7 +1120,7 @@ impl Kinloom {
         let job = move || {
             if let Some(r) = me.post("mind", &decl, Duration::from_secs(5)) {
                 if let Some(c) = from_server(r.get("mind")) {
-                    if let Some(m) = me.inner.state.lock().unwrap().minds.get_mut(&name) {
+                    if let Some(m) = me.inner.state.lock().unwrap_or_else(|e| e.into_inner()).minds.get_mut(&name) {
                         m.compiled = c;
                     }
                 }
@@ -1088,11 +1141,11 @@ impl Kinloom {
                 None => return,
             };
             if let Some(c) = from_server(r.get("mind")) {
-                if let Some(m) = me.inner.state.lock().unwrap().minds.get_mut(&name) {
+                if let Some(m) = me.inner.state.lock().unwrap_or_else(|e| e.into_inner()).minds.get_mut(&name) {
                     m.compiled = c;
                 }
             } else if r.get("missing").as_bool() {
-                let decl = me.inner.state.lock().unwrap().minds.get(&name).map(|m| m.decl.clone());
+                let decl = me.inner.state.lock().unwrap_or_else(|e| e.into_inner()).minds.get(&name).map(|m| m.decl.clone());
                 if let Some(d) = decl {
                     me.declare_mind(name, d);
                 }
@@ -1148,7 +1201,7 @@ impl Kinloom {
     // ---------------- offline and plumbing ----------------
 
     fn offline_line(&self, name: &str, event: &str, facts: &Json) -> String {
-        let mut st = self.inner.state.lock().unwrap();
+        let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         let lines = st.chars.get(name).map(|c| c.get("lines").clone()).unwrap_or(Json::Null);
         let options = match &lines {
             Json::Arr(a) => a.clone(),
@@ -1182,18 +1235,11 @@ impl Kinloom {
     fn redeclare(&self, name: &str, r: &Json) {
         if r.get("declared") == &Json::Bool(false) {
             let (def, tools) = {
-                let st = self.inner.state.lock().unwrap();
+                let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
                 (st.chars.get(name).cloned(), st.tools.clone())
             };
             if let Some(d) = def {
-                let me = self.clone();
-                thread::spawn(move || {
-                    // the server restarted: its tools, then the character
-                    if let Some(t) = tools {
-                        me.post("tools", &obj! { "tools" => t }, Duration::from_secs(5));
-                    }
-                    me.post("character", &d, Duration::from_secs(5));
-                });
+                self.declare(name, d, Some(tools)); // the server restarted: its tools, then the character
             }
         }
     }
@@ -1209,13 +1255,55 @@ impl Kinloom {
         });
     }
 
+    /// Relay: sends a character's declaration (after the game's tools when asked) on its own thread; calls naming it
+    /// wait for it (ready), so the server never answers them without the character's soul and tools.
+    fn declare(&self, name: &str, d: Json, tools: Option<Option<Json>>) {
+        let sent: Declared = Arc::new((Mutex::new(false), Condvar::new()));
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).declaring.insert(name.to_string(), sent.clone());
+        let me = self.clone();
+        thread::spawn(move || {
+            if let Some(Some(t)) = tools {
+                me.post("tools", &obj! { "tools" => t }, Duration::from_secs(5));
+            }
+            me.post("character", &d, Duration::from_secs(5));
+            *sent.0.lock().unwrap_or_else(|e| e.into_inner()) = true;
+            sent.1.notify_all();
+        });
+    }
+
+    /// Waits (5 s at most) for the declarations of the characters a call names.
+    fn ready(&self, body: &Json) {
+        let waits: Vec<Declared> = {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            ["name", "a", "b"].iter().filter_map(|f| match body.get(f) {
+                Json::Str(who) => st.declaring.get(who).cloned(),
+                _ => None,
+            }).collect()
+        };
+        let until = Instant::now() + Duration::from_secs(5);
+        for w in waits {
+            let mut done = w.0.lock().unwrap_or_else(|e| e.into_inner());
+            while !*done {
+                let left = until.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                done = w.1.wait_timeout(done, left).unwrap_or_else(|e| e.into_inner()).0;
+            }
+        }
+    }
+
     fn post(&self, verb: &str, body: &Json, timeout: Duration) -> Option<Json> {
         if let Some(b) = &self.inner.brain {
             return self.local(b, "POST", verb, Some(body));
         }
+        if verb != "character" && verb != "tools" {
+            self.ready(body);
+        }
         {
-            let st = self.inner.state.lock().unwrap();
-            if st.down_until.map_or(false, |t| Instant::now() < t) {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            if st.down_until.map_or(false, |t| now < t) || st.busy_until.map_or(false, |t| now < t) {
                 return None;
             }
         }
@@ -1228,9 +1316,23 @@ impl Kinloom {
         }
     }
 
+    /// HTTP 429: the server (or a proxy before it) asks for a pause: offline answers for Retry-After seconds (5 when it does
+    /// not say), without counting the server as down; told once.
+    fn busy(&self, retry_after: &str) {
+        let wait = retry_after.trim().parse::<f64>().ok().filter(|w| w.is_finite()).unwrap_or(5.0).clamp(0.0, 300.0);
+        let tell = {
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            st.busy_until = Some(Instant::now() + Duration::from_secs_f64(wait));
+            !std::mem::replace(&mut st.busy_told, true)
+        };
+        if tell {
+            eprintln!("[kinloom] the server answered 429 (too many requests): offline answers for {} s", py::g(wait));
+        }
+    }
+
     /// Offline answers for a while: 2 s, then 4, 8, at most 10 while the server is still not there.
     fn down(&self) {
-        let mut st = self.inner.state.lock().unwrap();
+        let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         st.failures = st.failures.saturating_add(1);
         let wait = (2u64 << (st.failures - 1).min(4)).min(10);
         st.down_until = Some(Instant::now() + Duration::from_secs(wait));
@@ -1241,8 +1343,9 @@ impl Kinloom {
             return self.local(b, "GET", path, None);
         }
         {
-            let st = self.inner.state.lock().unwrap();
-            if st.down_until.map_or(false, |t| Instant::now() < t) {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            if st.down_until.map_or(false, |t| now < t) || st.busy_until.map_or(false, |t| now < t) {
                 return None;
             }
         }
@@ -1268,11 +1371,11 @@ impl Kinloom {
         // A refused connection takes 2-4 s to be seen on Windows: a short connect sees a server that is not there.
         let connect = if addr.ip().is_loopback() { Duration::from_millis(300) } else { Duration::from_secs(1) };
         let mut stream = TcpStream::connect_timeout(&addr, timeout.min(connect)).map_err(|_| ())?;
-        self.inner.state.lock().unwrap().failures = 0;
+        self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).failures = 0;
         let data = body.map(|b| b.to_json()).unwrap_or_default();
         let mut head = format!(
-            "{} /v1/{} HTTP/1.1\r\nHost: {}:{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nX-Kinloom-Session: {}\r\n",
-            method, verb, self.inner.host, self.inner.port, data.len(), self.inner.session
+            "{} {}/v1/{} HTTP/1.1\r\nHost: {}:{}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\nX-Kinloom-Session: {}\r\n",
+            method, self.inner.prefix, verb, self.inner.host, self.inner.port, data.len(), self.inner.session
         );
         if !self.inner.token.is_empty() {
             head.push_str(&format!("Authorization: Bearer {}\r\n", self.inner.token));
@@ -1307,6 +1410,11 @@ impl Kinloom {
         let status = head.split(' ').nth(1);
         if method == "GET" && status == Some("404") {
             return Ok(Some(obj! { "missing" => true }));
+        }
+        if status == Some("429") {
+            let ra = head.lines().find_map(|l| l.split_once(':').filter(|(k, _)| k.trim().eq_ignore_ascii_case("retry-after")).map(|(_, v)| v.trim().to_string()));
+            self.busy(&ra.unwrap_or_default());
+            return Ok(None);
         }
         if status != Some("200") {
             return Ok(None);
@@ -3430,6 +3538,120 @@ pub(crate) mod text {
         clean(&py::text(v))
     }
 
+    pub const CUT: &str = "the answer was cut off before its end: write it shorter and complete";
+
+    /// Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or None.
+    fn unclosed(t: &str) -> Option<usize> {
+        let b = t.as_bytes();
+        let n = b.len();
+        let mut i = 0;
+        while i < n {
+            let c = b[i];
+            if c == b'{' || c == b'[' {
+                let mut j = i + 1;
+                while j < n && b" \t\r\n".contains(&b[j]) {
+                    j += 1;
+                }
+                let looks = j < n && if c == b'{' { b"\"}".contains(&b[j]) } else { b"\"{[]-0123456789tfn".contains(&b[j]) };
+                if looks {
+                    let (mut depth, mut quoted, mut k) = (0i64, false, i);
+                    while k < n {
+                        let ch = b[k];
+                        if quoted {
+                            if ch == b'\\' {
+                                k += 1;
+                            } else if ch == b'"' {
+                                quoted = false;
+                            }
+                        } else if ch == b'"' {
+                            quoted = true;
+                        } else if ch == b'{' || ch == b'[' {
+                            depth += 1;
+                        } else if ch == b'}' || ch == b']' {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        k += 1;
+                    }
+                    if k >= n {
+                        return Some(i);
+                    }
+                    i = k;
+                }
+            }
+            i += 1;
+        }
+        None
+    }
+
+    /// Where the bracket opened at `at` closes (brackets in strings skipped), or None.
+    fn close(t: &str, at: usize) -> Option<usize> {
+        let b = t.as_bytes();
+        let (mut depth, mut quoted, mut k) = (0i64, false, at);
+        while k < b.len() {
+            let ch = b[k];
+            if quoted {
+                if ch == b'\\' {
+                    k += 1;
+                } else if ch == b'"' {
+                    quoted = false;
+                }
+            } else if ch == b'"' {
+                quoted = true;
+            } else if ch == b'{' || ch == b'[' {
+                depth += 1;
+            } else if ch == b'}' || ch == b']' {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(k);
+                }
+            }
+            k += 1;
+        }
+        None
+    }
+
+    /// The text without commas right before } or ] (outside strings): what models often write.
+    fn no_trailing_commas(t: &str) -> String {
+        let c: Vec<char> = t.chars().collect();
+        let (mut out, mut quoted, mut k) = (String::with_capacity(t.len()), false, 0);
+        while k < c.len() {
+            let ch = c[k];
+            if quoted {
+                if ch == '\\' && k + 1 < c.len() {
+                    out.push(ch);
+                    out.push(c[k + 1]);
+                    k += 2;
+                    continue;
+                }
+                if ch == '"' {
+                    quoted = false;
+                }
+            } else if ch == '"' {
+                quoted = true;
+            } else if ch == ',' {
+                let mut j = k + 1;
+                while j < c.len() && " \t\r\n".contains(c[j]) {
+                    j += 1;
+                }
+                if j < c.len() && (c[j] == '}' || c[j] == ']') {
+                    k += 1;
+                    continue;
+                }
+            }
+            out.push(ch);
+            k += 1;
+        }
+        out
+    }
+
+    /// True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that.
+    pub fn cut_off(text: &str) -> bool {
+        find_json(text).is_null() && unclosed(py::strip(text)).is_some()
+    }
+
     /// The first JSON object or array in a model answer, or Null. Never panics.
     pub fn find_json(text: &str) -> Json {
         let mut t = py::strip(text);
@@ -3446,15 +3668,23 @@ pub(crate) mod text {
         if let Ok(v) = py::loads(t) {
             return v;
         }
+        // never an object nested in JSON that stops before its end (an answer cut by the token limit)
+        let stop = unclosed(t);
         for open in ['{', '['] {
             let mut at = t.find(open);
             let mut tries = 0;
             while let Some(a) = at {
-                if tries >= 20 {
+                if tries >= 20 || stop.map_or(false, |s| a >= s) {
                     break;
                 }
                 if let Ok((v, _)) = py::decode(t, a) {
                     return v;
+                }
+                // it closes but does not parse: a trailing comma? (never its inner object)
+                if let Some(end) = close(t, a) {
+                    if let Ok(v) = py::loads(&no_trailing_commas(&t[a..=end])) {
+                        return v;
+                    }
                 }
                 at = t[a + 1..].find(open).map(|i| a + 1 + i);
                 tries += 1;
@@ -3670,9 +3900,29 @@ impl Shape {
                         return Err(format!("{} must be an object with {}", path, names.join(", ")));
                     }
                 };
+                // keys matched exactly, else in another case (the first such key); none of them: one wrapper is read
+                let mut lower: HashMap<String, &String> = HashMap::new();
+                for k in map.keys() {
+                    lower.entry(k.to_lowercase()).or_insert(k);
+                }
+                let found: Vec<Option<&Json>> = self
+                    .fields
+                    .keys()
+                    .map(|k| map.get(k).or_else(|| lower.get(&k.to_lowercase()).and_then(|real| map.get(real))))
+                    .collect();
+                if !self.fields.is_empty() && found.iter().all(|f| f.is_none()) {
+                    if map.len() == 1 {
+                        if let Some(inner @ Json::Obj(_)) = map.values().next() {
+                            return self.check(inner, path); // {"item": {...}}: the answer wrapped once
+                        }
+                    }
+                    // none of the fields: not an answer (the example would come back silently as the model's)
+                    let names: Vec<&str> = self.fields.keys().map(|k| k.as_str()).collect();
+                    return Err(format!("{} must be an object with {}", path, names.join(", ")));
+                }
                 let mut out = Map::new();
-                for (k, s) in &self.fields {
-                    match map.get(k) {
+                for ((k, s), f) in self.fields.iter().zip(found) {
+                    match f {
                         Some(v) => {
                             out.insert(k.clone(), s.check(v, k)?);
                         }
@@ -3691,7 +3941,7 @@ impl Shape {
     pub fn parse(&self, text: &str) -> Result<Json, String> {
         let data = text::find_json(text);
         if data.is_null() {
-            return Err("the answer was not JSON".into());
+            return Err(if text::cut_off(text) { text::CUT.into() } else { "the answer was not JSON".into() });
         }
         self.check(&data, "value")
     }
@@ -4900,6 +5150,9 @@ pub(crate) mod prompts {
         lines.join("\n")
     }
 
+    /// Characters of facts, situation, context or state the model reads (more is cut, and journaled).
+    pub const CLIP: usize = 4000;
+
     pub fn clip(obj: &Json, limit: usize) -> String {
         let text = py::dumps_text(obj);
         if py::len(&text) <= limit {
@@ -4936,7 +5189,7 @@ pub(crate) mod prompts {
             parts.push(format!("Feelings: {}", l.join("; ")));
         }
         if py::truthy(state) {
-            parts.push(format!("Game state: {}", clip(state, 1500)));
+            parts.push(format!("Game state: {}", clip(state, CLIP)));
         }
         if parts.is_empty() {
             String::new()
@@ -4947,18 +5200,18 @@ pub(crate) mod prompts {
 
     pub fn facts_block(facts: &Json) -> String {
         if py::truthy(facts) {
-            format!("Facts: {}\n\n", clip(facts, 1500))
+            format!("Facts: {}\n\n", clip(facts, CLIP))
         } else {
             String::new()
         }
     }
     pub fn situation_block(situation: &Json) -> String {
         let s = if situation.is_null() { Json::Obj(Map::new()) } else { situation.clone() };
-        format!("Situation: {}\n", clip(&s, 1500))
+        format!("Situation: {}\n", clip(&s, CLIP))
     }
     pub fn context_block(context: &Json) -> String {
         if py::truthy(context) {
-            format!("Context: {}\n", clip(context, 1500))
+            format!("Context: {}\n", clip(context, CLIP))
         } else {
             "Make it fresh and different from the example.\n".to_string()
         }
@@ -5395,6 +5648,10 @@ pub(crate) mod prompts {
 pub trait MemoryStore: Send + Sync {
     fn load(&self) -> Option<String>;
     fn save(&self, text: &str) -> bool;
+    /// What cannot be read is kept aside before anything overwrites it: its new name (None: nothing done).
+    fn keep_aside(&self) -> Option<String> {
+        None
+    }
 }
 
 /// A memory file (written whole, through a temporary file).
@@ -5410,7 +5667,8 @@ impl FileMemoryStore {
 
 impl MemoryStore for FileMemoryStore {
     fn load(&self) -> Option<String> {
-        std::fs::read_to_string(&self.path).ok()
+        // a file saved with a BOM (Windows editors) reads the same
+        std::fs::read_to_string(&self.path).ok().map(|t| t.strip_prefix('\u{feff}').map(str::to_string).unwrap_or(t))
     }
     fn save(&self, text: &str) -> bool {
         if let Some(dir) = self.path.parent() {
@@ -5418,9 +5676,35 @@ impl MemoryStore for FileMemoryStore {
                 let _ = std::fs::create_dir_all(dir);
             }
         }
-        let tmp = self.path.with_extension("tmp");
-        std::fs::write(&tmp, text).is_ok() && std::fs::rename(&tmp, &self.path).is_ok()
+        // a unique name per save (two threads never share it), synced to disk, then moved over the old file: a crash or a power
+        // loss leaves the old file or the new one, never half of one
+        static SAVES: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        let n = SAVES.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut tmp = self.path.clone().into_os_string();
+        tmp.push(format!(".{}-{}.tmp", std::process::id(), n));
+        let tmp = std::path::PathBuf::from(tmp);
+        let written = std::fs::File::create(&tmp).and_then(|mut f| {
+            f.write_all(text.as_bytes())?;
+            f.sync_all()
+        });
+        if written.is_ok() && std::fs::rename(&tmp, &self.path).is_ok() {
+            return true;
+        }
+        let _ = std::fs::remove_file(&tmp);
+        false
     }
+    fn keep_aside(&self) -> Option<String> {
+        let mut aside = self.path.clone().into_os_string();
+        aside.push(format!(".corrupt-{}", wall() as u64));
+        let aside = std::path::PathBuf::from(aside);
+        std::fs::rename(&self.path, &aside).ok()?;
+        aside.file_name().map(|n| n.to_string_lossy().into_owned())
+    }
+}
+
+/// A note recall() can rank: text, time and importance (a file edited by hand, or a save from elsewhere).
+fn good_note(n: &Map) -> bool {
+    matches!(n.get("text"), Some(Json::Str(_))) && n.get("t").and_then(py::finite).is_some() && n.get("importance").and_then(py::finite).is_some()
 }
 
 #[derive(Default)]
@@ -5436,6 +5720,8 @@ pub(crate) struct Memory {
     state: Mutex<MemoryState>,
     store: Option<Arc<dyn MemoryStore>>,
     clock: Box<dyn Fn() -> f64 + Send + Sync>,
+    /// What went wrong reading the stored memory, if anything (the brain journals it).
+    pub problem: String,
 }
 
 lazy_re!(MEMORY_WORD = "[a-zA-Z0-9\\u00C0-\\u024F]{3,}");
@@ -5446,28 +5732,43 @@ impl Memory {
 
     pub fn new(store: Option<Arc<dyn MemoryStore>>, clock: Box<dyn Fn() -> f64 + Send + Sync>) -> Memory {
         let mut st = MemoryState::default();
+        let mut problem = String::new();
+        // what can be trusted is loaded, entry by entry: one bad note never costs the rest
         if let Some(s) = &store {
-            if let Some(Json::Obj(data)) = s.load().and_then(|t| py::loads(&t).ok()) {
-                if let Some(Json::Obj(sessions)) = data.get("sessions") {
-                    for (session, scopes) in sessions {
-                        if let Json::Obj(scopes) = scopes {
-                            for (scope, list) in scopes {
-                                let notes: Vec<Map> = list.as_array().iter().filter_map(|n| n.as_obj()).filter(|n| matches!(n.get("text"), Some(Json::Str(_)))).cloned().collect();
-                                st.notes.insert(format!("{}\u{0}{}", session, scope), notes);
+            if let Some(text) = s.load() {
+                match py::loads(&text) {
+                    Ok(Json::Obj(data)) => {
+                        if let Some(Json::Obj(sessions)) = data.get("sessions") {
+                            for (session, scopes) in sessions {
+                                if let Json::Obj(scopes) = scopes {
+                                    for (scope, list) in scopes {
+                                        let notes: Vec<Map> = list.as_array().iter().filter_map(|n| n.as_obj()).filter(|n| good_note(n)).cloned().collect();
+                                        if !notes.is_empty() {
+                                            let from = notes.len().saturating_sub(120);
+                                            st.notes.insert(format!("{}\u{0}{}", session, scope), notes[from..].to_vec());
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if let Some(Json::Obj(extra)) = data.get("extra") {
+                            for (k, v) in extra {
+                                if let Json::Obj(m) = v {
+                                    st.extra.insert(k.clone(), m.clone());
+                                }
                             }
                         }
                     }
-                }
-                if let Some(Json::Obj(extra)) = data.get("extra") {
-                    for (k, v) in extra {
-                        if let Json::Obj(m) = v {
-                            st.extra.insert(k.clone(), m.clone());
+                    other => {
+                        problem = if other.is_ok() { "memory file is not a JSON object".to_string() } else { "memory file unreadable (not JSON)".to_string() };
+                        if let Some(aside) = s.keep_aside() {
+                            problem.push_str(&format!("; kept as {}", aside));
                         }
                     }
                 }
             }
         }
-        Memory { state: Mutex::new(st), store, clock }
+        Memory { state: Mutex::new(st), store, clock, problem }
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, MemoryState> {
@@ -5587,9 +5888,7 @@ impl Memory {
                 st.notes.remove(&k);
             }
             for (scope, items) in given.iter() {
-                let kept: Vec<Map> = items.as_array().iter().filter_map(|n| n.as_obj()).filter(|n| {
-                    matches!(n.get("text"), Some(Json::Str(_))) && n.get("t").map_or(false, py::is_number) && n.get("importance").map_or(false, py::is_number)
-                }).cloned().collect();
+                let kept: Vec<Map> = items.as_array().iter().filter_map(|n| n.as_obj()).filter(|n| good_note(n)).cloned().collect();
                 if !kept.is_empty() {
                     let from = kept.len().saturating_sub(120);
                     st.notes.insert(format!("{}{}", prefix, scope), kept[from..].to_vec());
@@ -8478,6 +8777,7 @@ pub(crate) struct CharacterDef {
 }
 
 const MAX_NAME: usize = 48;
+const MAX_WHAT: usize = 500; // characters of create's `what` (more is cut, and journaled)
 const MAX_EVENT: usize = 160;
 const MAX_LINE: usize = 140;
 const MAX_REPLY: usize = 400;
@@ -8951,10 +9251,16 @@ struct BrainState {
     greeting_busy: HashSet<String>,
     bonds: HashMap<String, Map<Map<[f64; 3]>>>,
     said: HashMap<String, VecDeque<String>>,
+    clips: HashSet<String>, // name + label already journaled as too long
     switches: usize,
     events: u64,
     spreads: u64,
     rises: HashMap<String, [f64; 3]>,
+    bank_order: VecDeque<String>, // the caches' keys, oldest first (make_room keeps each one bounded)
+    decision_order: VecDeque<String>,
+    pool_order: VecDeque<String>,
+    rise_order: VecDeque<String>,
+    per_session: HashMap<String, usize>, // characters kept per session
     steers: HashMap<String, String>,
     empty_told: HashSet<String>,
     journal: VecDeque<Json>,
@@ -8972,6 +9278,27 @@ struct BrainState {
 type Job = Box<dyn FnOnce() + Send>;
 
 const MAX_CHARACTERS: usize = 5000;
+const MAX_PER_SESSION: usize = 300; // one session (one player online) never fills the table for everyone else
+const MAX_KEYS: usize = 2000; // entries per cache (decisions, banks, pools, rises): live data in keys stays bounded
+
+/// Makes room for a new key in a bounded cache: past MAX_KEYS the oldest keys go (oldest inserted first, as Python's dicts).
+fn make_room<V>(table: &mut HashMap<String, V>, order: &mut VecDeque<String>, key: &str) {
+    if table.contains_key(key) {
+        return;
+    }
+    while table.len() >= MAX_KEYS {
+        match order.pop_front() {
+            Some(old) => {
+                table.remove(&old);
+            }
+            None => break,
+        }
+    }
+    if order.len() >= 4 * MAX_KEYS {
+        order.retain(|k| table.contains_key(k));
+    }
+    order.push_back(key.to_string());
+}
 const MAX_WAITING: usize = 50;
 const MAX_SPEAKERS: usize = 500;
 const BANK_SIZE: usize = 8;
@@ -9042,7 +9369,8 @@ impl Brain {
         cfg.insert("language".into(), Json::Str("English".into()));
         cfg.insert("calls_per_minute".into(), Json::Int(30));
         if let Some(path) = &o.config_path {
-            if let Some(Json::Obj(file)) = std::fs::read_to_string(path).ok().and_then(|t| py::loads(&t).ok()) {
+            // a file saved with a BOM (Windows editors, PowerShell 5.1) reads the same
+            if let Some(Json::Obj(file)) = std::fs::read_to_string(path).ok().and_then(|t| py::loads(t.strip_prefix('\u{feff}').unwrap_or(&t)).ok()) {
                 for (k, v) in file {
                     cfg.insert(k, v);
                 }
@@ -9085,10 +9413,23 @@ impl Brain {
         let language = o.language.clone().or_else(|| cfg_language.clone()).unwrap_or_else(|| DEFAULT_LANGUAGE.to_string());
         let voice_language = o.language.clone().or_else(|| cfg_language.filter(|l| l != DEFAULT_LANGUAGE));
         let limit = o.calls_per_minute.unwrap_or_else(|| py::num(cfg.get("calls_per_minute")) as usize).max(1);
-        let prices = o.prices.clone().or_else(|| match cfg.get("prices") {
-            Json::Obj(_) => Some(cfg.get("prices").clone()),
-            _ => None,
-        });
+        let mut later: Vec<(String, String, String)> = Vec::new(); // journal entries written once the brain exists
+        // prices: input, output and cached_input numbers from 0 (dollars per million tokens; other keys, like "source", allowed)
+        let given_prices = o.prices.clone().unwrap_or_else(|| cfg.get("prices").clone());
+        let prices_ok = match &given_prices {
+            Json::Obj(m) => ["input", "output", "cached_input"].iter().all(|k| m.get(k).map_or(true, |v| py::finite(v).map_or(false, |x| x >= 0.0))),
+            _ => false,
+        };
+        let prices = if given_prices.is_null() {
+            None
+        } else if prices_ok {
+            Some(given_prices)
+        } else {
+            later.push(("refused".into(), "kinloom".into(),
+                        format!("{}prices must be {{\"input\": n, \"output\": n, \"cached_input\": n}} in dollars per million tokens, got {} (no cost is counted)",
+                                if o.prices.is_some() { "" } else { "kinloom.json: " }, py::py_repr(&given_prices))));
+            None
+        };
         let words: Vec<String> = cfg.get("banned_words").as_array().iter().filter_map(|w| match w {
             Json::Str(s) if !py::strip(s).is_empty() => Some(rx::Re::escape(py::strip(s))),
             _ => None,
@@ -9104,7 +9445,9 @@ impl Brain {
             _ => None,
         };
         let memory = Arc::new(Memory::new(store, Box::new(wall)));
-        let mut later: Vec<(String, String, String)> = Vec::new(); // journal entries written once the brain exists
+        if !memory.problem.is_empty() {
+            later.push(("error".into(), "kinloom".into(), memory.problem.clone()));
+        }
         let mut cfg_chars: Map<(Json, String)> = Map::new();
         if let Json::Obj(chars) = cfg.get("characters") {
             for (name, spec) in chars {
@@ -9298,10 +9641,38 @@ impl Brain {
             return c.clone();
         }
         let c = Arc::new(CharacterDef::new(&Json::Str(n), &Json::Obj(Map::new())).unwrap_or_else(|_| unreachable!("an empty spec is valid")));
-        if st.characters.len() < MAX_CHARACTERS {
-            st.characters.insert(key, c.clone());
-        }
+        Brain::store(&mut st, session, &c);
         c
+    }
+
+    /// Keeps a character (under the lock). A full table first lets go of the oldest one the game never declared (made on the
+    /// fly from a name); a session past its share keeps nothing more. False: not stored (a throwaway).
+    fn store(st: &mut BrainState, session: &str, c: &Arc<CharacterDef>) -> bool {
+        let key = k2(session, &c.name);
+        if st.characters.contains_key(&key) {
+            st.characters.insert(key, c.clone());
+            return true;
+        }
+        if st.per_session.get(session).copied().unwrap_or(0) >= MAX_PER_SESSION {
+            return false;
+        }
+        if st.characters.len() >= MAX_CHARACTERS {
+            let old = match st.characters.keys().find(|k| !st.declared.contains(*k)) {
+                Some(k) => k.clone(),
+                None => return false,
+            };
+            st.characters.remove(&old);
+            let old_session = old.split('\u{0}').next().unwrap_or("").to_string();
+            let left = st.per_session.get(&old_session).copied().unwrap_or(1).saturating_sub(1);
+            if left == 0 {
+                st.per_session.remove(&old_session);
+            } else {
+                st.per_session.insert(old_session, left);
+            }
+        }
+        st.characters.insert(key, c.clone());
+        *st.per_session.entry(session.to_string()).or_insert(0) += 1;
+        true
     }
 
     pub fn log(&self, kind: &str, name: &str, text: &str, detail: Option<Map>) {
@@ -9404,12 +9775,54 @@ impl Brain {
         let o = CompleteOptions { json, max_tokens, temperature: 0.8, timeout: lim, on_text, images: images.to_vec() };
         let (tx, rx_reply) = mpsc::channel();
         let (system, user) = (system.to_string(), user.to_string());
+        // 0: running, 1: answered in time, 2: given up on (an answer after that still books its tokens: they were billed)
+        let fate = Arc::new(Mutex::new(0u8));
+        let (fate2, me) = (fate.clone(), self.clone());
         thread::spawn(move || {
-            let _ = tx.send(Brain::safe_complete(&p, &system, &user, &o));
+            let r = Brain::safe_complete(&p, &system, &user, &o);
+            let late = {
+                let mut f = fate2.lock().unwrap_or_else(|e| e.into_inner());
+                if *f == 0 {
+                    *f = 1;
+                    false
+                } else {
+                    true
+                }
+            };
+            if late {
+                me.late(&r);
+            } else {
+                let _ = tx.send(r);
+            }
         });
-        let r = rx_reply.recv_timeout(Duration::from_secs_f64(lim + 0.25)).unwrap_or_else(|_| ModelReply::fail(&format!("timed out after {} s", py::fixed(lim, 1)), "", 0.0));
+        let r = match rx_reply.recv_timeout(Duration::from_secs_f64(lim + 0.25)) {
+            Ok(r) => r,
+            Err(_) => {
+                let answered = {
+                    let mut f = fate.lock().unwrap_or_else(|e| e.into_inner());
+                    if *f == 0 {
+                        *f = 2;
+                        false
+                    } else {
+                        true
+                    }
+                };
+                let failed = || ModelReply::fail(&format!("timed out after {} s", py::fixed(lim, 1)), "", 0.0);
+                if answered { rx_reply.recv().unwrap_or_else(|_| failed()) } else { failed() }
+            }
+        };
         self.account(kind, name, &r);
         r
+    }
+
+    /// A call given up on that answered later: its tokens were billed all the same, so they count (and the caps).
+    fn late(&self, r: &ModelReply) {
+        let price = self.price(r);
+        let mut st = self.lock();
+        *st.counts.entry_or("input_tokens", || 0) += r.input;
+        *st.counts.entry_or("cached_tokens", || 0) += r.cached;
+        *st.counts.entry_or("output_tokens", || 0) += r.output;
+        st.spent.push_back((http::now(), price));
     }
 
     fn account(&self, kind: &str, name: &str, r: &ModelReply) {
@@ -9663,10 +10076,9 @@ impl Brain {
         let key = k2(session, &c.name);
         let refused = {
             let mut st = self.lock();
-            if !st.characters.contains_key(&key) && st.characters.len() >= MAX_CHARACTERS {
+            if !Brain::store(&mut st, session, &c) {
                 true
             } else {
-                st.characters.insert(key.clone(), c.clone());
                 st.declared.insert(key.clone());
                 if !from_config {
                     st.game_declared.insert(key);
@@ -9675,7 +10087,7 @@ impl Brain {
             }
         };
         if refused {
-            self.log("refused", &c.name, &format!("too many characters ({}): not stored", MAX_CHARACTERS), None);
+            self.log("refused", &c.name, &format!("too many characters ({} in all, {} per session): not stored", MAX_CHARACTERS, MAX_PER_SESSION), None);
             return Ok(c);
         }
         self.log("character", &c.name, &c.personality(), None);
@@ -9975,8 +10387,10 @@ impl Brain {
                             Some(l) => l,
                             None => continue,
                         };
-                        let talks = if py::is_number(v.get("talks")) { py::num(v.get("talks")) } else { 1.0 };
-                        r.insert(b.clone(), [talks, py::finite(v.get("first")).unwrap_or(0.0), last]);
+                        // each value checked: a hand-edited file or a loaded save never breaks chat() later
+                        let talks = py::finite(v.get("talks")).filter(|t| *t != 0.0).unwrap_or(1.0).min(1e9).trunc().max(1.0);
+                        let first = py::finite(v.get("first")).filter(|f| *f != 0.0).unwrap_or(last);
+                        r.insert(b.clone(), [talks, first, last]);
                     }
                     table.insert(a.clone(), r);
                 }
@@ -10021,7 +10435,9 @@ impl Brain {
                             gained = 0.0;
                         }
                         change = change.min(c.warm_up - gained).max(0.0);
-                        st.rises.insert(rkey, [start, gained + change, now]);
+                        let s = &mut *st;
+                        make_room(&mut s.rises, &mut s.rise_order, &rkey);
+                        s.rises.insert(rkey, [start, gained + change, now]);
                     }
                     if change < feel {
                         self.log("refused", &c.name, &format!("feel: {} already won {} this conversation", speaker, py::fixed_sign(c.warm_up, 1, true)), None);
@@ -10163,6 +10579,7 @@ impl Brain {
     pub fn say(self: &Arc<Self>, session: &str, name: &Json, e: &Json, facts0: &Json, fresh: bool, max_chars: &Json) -> Result<Said, Bad> {
         let c = self.character(session, name);
         let facts = Brain::mapping(facts0, "facts")?;
+        self.clip_note(&c.name, "facts", &facts, prompts::CLIP, false);
         let ev = event_key(e);
         let limit = Brain::box_limit(max_chars).or(c.max_chars);
         let fact_names: Vec<String> = facts.as_obj().map(|m| m.keys().cloned().collect()).unwrap_or_default();
@@ -10174,12 +10591,18 @@ impl Brain {
                               &format!("{}{}", self.context(session, Some(&c.name), &ev, true), prompts::facts_block(&facts)), false, true, 120, None, None, &[]);
             if r.ok {
                 let t = text::find_json(&r.text);
+                // only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
                 let line = match &t {
                     Json::Obj(_) => t.get("line").clone(),
-                    _ => Json::Str(r.text.clone()),
+                    Json::Null => Json::Str(r.text.clone()),
+                    _ => Json::Null,
                 };
                 let names: HashSet<String> = fact_names.iter().cloned().collect();
-                if let Some(v) = self.valid_line(&py::text(&line), Some(&names), &persona) {
+                let checked = match &line {
+                    Json::Str(s) => self.valid_line(s, Some(&names), &persona),
+                    _ => None,
+                };
+                if let Some(v) = checked {
                     let spoken = souls::fit_chars(&lines::fill(&v, &facts), limit);
                     self.log("say", &c.name, &spoken, Some(obj! { "event" => ev.as_str(), "source" => "fresh" }.as_obj().unwrap().clone()));
                     return Ok(Said { text: spoken, source: "model".into(), actions: Vec::new() });
@@ -10191,7 +10614,9 @@ impl Brain {
         let covered = |t: &String| lines::placeholders(t).iter().all(|p| names.contains(p.as_str()));
         let (chosen, low) = {
             let mut st = self.lock();
-            let bank = st.banks.entry(key.clone()).or_default();
+            let s = &mut *st;
+            make_room(&mut s.banks, &mut s.bank_order, &key);
+            let bank = s.banks.entry(key.clone()).or_default();
             let usable: Vec<String> = bank.unused.iter().filter(|t| covered(t)).cloned().collect();
             let known: Vec<String> = bank.templates.iter().filter(|t| covered(t)).cloned().collect();
             let fresh_ones = Brain::fitting(&usable, &facts, limit);
@@ -10366,7 +10791,9 @@ impl Brain {
         let key = k3(session, &c.name, e);
         {
             let mut st = self.lock();
-            let bank = st.banks.entry(key.clone()).or_default();
+            let s = &mut *st;
+            make_room(&mut s.banks, &mut s.bank_order, &key);
+            let bank = s.banks.entry(key.clone()).or_default();
             if bank.filling || bank.failures >= 3 {
                 return;
             }
@@ -10450,6 +10877,7 @@ impl Brain {
             Json::Obj(_) => situation0.clone(),
             other => obj! { "situation" => other.clone() },
         };
+        self.clip_note(&c.name, "situation", &situation, prompts::CLIP, false);
         let ev = match every {
             Json::Null => c.every,
             e => arg_num(e, "every")?.max(0.2),
@@ -10457,7 +10885,9 @@ impl Brain {
         let now = self.clock();
         let (due, value) = {
             let mut st = self.lock();
-            let d = st.decisions.entry(key.clone()).or_insert_with(|| DecisionSlot { value: shape.default_value(), at: None, situation: None, thinking: false });
+            let s = &mut *st;
+            make_room(&mut s.decisions, &mut s.decision_order, &key);
+            let d = s.decisions.entry(key.clone()).or_insert_with(|| DecisionSlot { value: shape.default_value(), at: None, situation: None, thinking: false });
             let due = !d.thinking
                 && match d.at {
                     None => true,
@@ -10528,6 +10958,8 @@ impl Brain {
             }
             Err(e) => {
                 self.log("repair", name, &format!("{}: {}", kind, e), None);
+                // stopped by the token limit: room to finish
+                let max_tokens = if e == text::CUT { (max_tokens * 2).min(4000) } else { max_tokens };
                 let r = self.call(kind, name, system, &format!("{}{}", user, prompts::repair(&e)), true, foreground, max_tokens, None, timeout, images);
                 if !r.ok {
                     return None;
@@ -10681,6 +11113,7 @@ impl Brain {
             Json::Null => Json::Obj(Map::new()),
             other => obj! { "situation" => other.clone() },
         };
+        self.clip_note(&c.name, "situation", &situation, prompts::CLIP, false);
         let now = self.clock();
         let (ready, due) = {
             let mut st = self.lock();
@@ -11267,7 +11700,10 @@ impl Brain {
             other => other.clone(),
         };
         let shape = Shape::of(&example).map_err(Bad::Arg)?;
-        let what = py::head(&text::clean(&py::text(what0)), 200).to_string();
+        let what = text::clean(&py::text(what0));
+        self.clip_note(py::head(&what, MAX_WHAT), "what", &Json::Str(what.clone()), MAX_WHAT, true);
+        self.clip_note(py::head(&what, MAX_WHAT), "context", context, prompts::CLIP, false);
+        let what = py::head(&what, MAX_WHAT).to_string();
         let pics = if image.is_null() { Vec::new() } else { self.pictures(&what, image) };
         if instant {
             if !pics.is_empty() {
@@ -11288,7 +11724,7 @@ impl Brain {
         }
         let system = prompts::create_system(&what, &shape, &self.written());
         let user = format!("{}{}{}", self.context(session, None, &what, true), prompts::context_block(context), prompts::picture_block(pics.len(), ""));
-        match self.structured("create", &what, &system, &user, &shape, true, 800, timeout, &pics) {
+        match self.structured("create", &what, &system, &user, &shape, true, 1500, timeout, &pics) {
             None => {
                 self.count("offline_answers");
                 Ok(shape.default_value())
@@ -11337,7 +11773,9 @@ impl Brain {
         let key = k3(session, what, &shape.signature());
         let (item, low) = {
             let mut st = self.lock();
-            let pool = st.pools.entry(key.clone()).or_default();
+            let s = &mut *st;
+            make_room(&mut s.pools, &mut s.pool_order, &key);
+            let pool = s.pools.entry(key.clone()).or_default();
             let item = if pool.items.is_empty() { None } else { Some(pool.items.remove(0)) };
             let low = pool.items.len() < 2 && !pool.filling && pool.failures < 3 && self.provider.is_some();
             if low {
@@ -11369,11 +11807,13 @@ impl Brain {
     pub fn chat(self: &Arc<Self>, session: &str, name: &Json, message0: &Json, facts0: &Json, speaker0: &Json, stream: Option<OnText>, timeout: Option<f64>,
                 max_chars: &Json, image: &Json) -> Result<Said, Bad> {
         let c = self.character(session, name);
+        let began = Instant::now();
         let pics = if image.is_null() { Vec::new() } else { self.pictures(&c.name, image) };
         let limit = Brain::box_limit(max_chars).or(c.max_chars);
         let message = py::head(&text::clean(&if message0.is_null() { String::new() } else { py::text(message0) }), 1000).to_string();
         let speaker = name_of(speaker0).unwrap_or_else(|| "player".to_string());
         let facts = Brain::mapping(facts0, "facts")?;
+        self.clip_note(&c.name, "facts", &facts, prompts::CLIP, false);
         let hkey = k3(session, &c.name, &speaker);
         let now = wall();
         {
@@ -11456,6 +11896,7 @@ impl Brain {
                 let show: Option<OnText> = match (&shown, &stream) {
                     (Some(sh), Some(out)) => {
                         let (sh, out, hidden, public, message, streamed) = (sh.clone(), out.clone(), hidden.clone(), public.clone(), message.clone(), streamed.clone());
+                        let me = self.clone();
                         Some(Arc::new(move |piece: &str| {
                             let mut s = sh.lock().unwrap_or_else(|e| e.into_inner());
                             let a = s.splitter.feed(piece);
@@ -11464,7 +11905,9 @@ impl Brain {
                             let d = s.echo.feed(&cc);
                             let piece_out = s.cut.feed(&d);
                             if !piece_out.is_empty() && !s.shut {
-                                if !hidden.is_empty() && souls::leaks(&format!("{}{}", s.text, piece_out), &hidden, &public, 0.5, &message).is_some() {
+                                // nothing reaches the player before the checks the final reply gets: secrets, content filter
+                                let so_far = format!("{}{}", s.text, piece_out);
+                                if !hidden.is_empty() && souls::leaks(&so_far, &hidden, &public, 0.5, &message).is_some() || !me.allowed_text(&so_far) {
                                     s.shut = true;
                                     return;
                                 }
@@ -11488,7 +11931,8 @@ impl Brain {
                     let e2 = s.echo.finish();
                     let mut tail = s.cut.feed(&format!("{}{}", e1, e2));
                     tail.push_str(&s.cut.finish());
-                    if !hidden.is_empty() && souls::leaks(&format!("{}{}", s.text, tail), &hidden, &public, 0.5, &message).is_some() {
+                    let so_far = format!("{}{}", s.text, tail);
+                    if !hidden.is_empty() && souls::leaks(&so_far, &hidden, &public, 0.5, &message).is_some() || !tail.is_empty() && !self.allowed_text(&so_far) {
                         tail.clear();
                     }
                     if !tail.is_empty() && r.ok && !r.cut && !s.shut {
@@ -11574,7 +12018,9 @@ impl Brain {
                 if stored {
                     let mut data = inner_data.clone().unwrap_or_else(|| Json::Obj(Map::new()));
                     if c.has_tools() && source == "model" && souls::inner_of_reply(&data).act.is_empty() {
-                        let found = self.deeds(&c, &speaker, &message, &r);
+                        // what the reply agreed to, within what is left of the reply's time (a player is waiting)
+                        let left = timeout.unwrap_or_else(|| self.reply_deadline()) - began.elapsed().as_secs_f64();
+                        let found = self.deeds(&c, &speaker, &message, &r, left.max(1.5));
                         if !found.is_empty() {
                             if let Json::Obj(m) = &mut data {
                                 m.insert("do".into(), Json::Arr(found));
@@ -11664,14 +12110,17 @@ impl Brain {
         Ok(Said { text: reply, source, actions: decided })
     }
 
-    fn deeds(self: &Arc<Self>, c: &CharacterDef, speaker: &str, message: &str, reply: &str) -> Vec<Json> {
+    /// budget: seconds for everything here (the asking again included).
+    fn deeds(self: &Arc<Self>, c: &CharacterDef, speaker: &str, message: &str, reply: &str, budget: f64) -> Vec<Json> {
         let system = prompts::deeds_system(&c.persona());
         let user = prompts::deeds_user(&c.name, speaker, message, reply);
-        let mut r = self.call("deeds", &c.name, &system, &user, true, true, 150, None, Some(self.call_timeout.min(5.0)), &[]);
-        if !r.ok {          // a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+        let start = Instant::now();
+        let mut r = self.call("deeds", &c.name, &system, &user, true, true, 150, None, Some(self.call_timeout.min(5.0).min(budget)), &[]);
+        let left = budget - start.elapsed().as_secs_f64();
+        if !r.ok && left >= 1.0 {   // a slow or failed call: what was agreed must not be lost, ask once more if time is left
             let why = r.error.clone().filter(|e| !e.is_empty()).unwrap_or_else(|| "failed".to_string());
             self.log("repair", &c.name, &format!("deeds: {}; asked again", why), None);
-            r = self.call("deeds", &c.name, &system, &user, true, true, 150, None, Some(self.call_timeout.min(5.0)), &[]);
+            r = self.call("deeds", &c.name, &system, &user, true, true, 150, None, Some(self.call_timeout.min(5.0).min(left)), &[]);
         }
         let data = if r.ok { text::find_json(&r.text) } else { Json::Null };
         data.get("do").as_array().iter().filter(|x| matches!(x, Json::Obj(_))).take(3).cloned().collect()
@@ -11939,6 +12388,7 @@ impl Brain {
     pub fn suggest(self: &Arc<Self>, session: &str, name: &Json, examples: &Json, speaker0: &Json, facts0: &Json) -> Result<Vec<String>, Bad> {
         let c = self.character(session, name);
         let facts = Brain::mapping(facts0, "facts")?;
+        self.clip_note(&c.name, "facts", &facts, prompts::CLIP, false);
         let list = match examples {
             Json::Arr(a) => a,
             _ => return Err(Bad::Arg("examples: a list of short replies the player could say, like [\"Ask about her past\", \"Leave\"]".to_string())),
@@ -12435,8 +12885,24 @@ impl Brain {
 
     pub fn set_state(&self, session: &str, state: &Json) -> Result<(), Bad> {
         let s = Brain::mapping(state, "state")?;
+        self.clip_note("state", "state", &s, prompts::CLIP, false);
         self.lock().state.insert(session.to_string(), s);
         Ok(())
+    }
+
+    /// Journals, once per name and label, that the model reads only the start of something too long.
+    fn clip_note(&self, name: &str, label: &str, value: &Json, limit: usize, is_text: bool) {
+        if !py::truthy(value) {
+            return;
+        }
+        let size = if is_text { py::len(&py::text(value)) } else { py::len(&py::dumps_text(value)) };
+        if size <= limit {
+            return;
+        }
+        if !self.lock().clips.insert(k2(name, label)) {
+            return;
+        }
+        self.log("clipped", name, &format!("{}: {} characters, the model reads the first {}", label, size, limit), None);
     }
 
     fn character_list(&self, session: &str) -> Vec<Arc<CharacterDef>> {
@@ -12936,7 +13402,7 @@ impl Kinloom {
     pub fn online(&self) -> bool {
         match &self.inner.brain {
             Some(b) => b.online(),
-            None => self.inner.state.lock().unwrap().down_until.map_or(true, |t| Instant::now() >= t),
+            None => self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).down_until.map_or(true, |t| Instant::now() >= t),
         }
     }
 
@@ -12979,6 +13445,9 @@ impl Kinloom {
                 m.insert("max_chars".into(), Json::Int(max_chars as i64));
             }
         }
+        if self.inner.brain.is_none() && !fresh {
+            return self.say_ahead(name, event, &facts, body);
+        }
         let r = self.post("say", &body, if fresh { self.inner.chat_timeout } else { Duration::from_secs(2) });
         self.set_source(name, r.as_ref());
         match r {
@@ -12987,6 +13456,77 @@ impl Kinloom {
                 r.get("text").as_str().to_string()
             }
             None => self.offline_line(name, event, &facts),
+        }
+    }
+
+    /// Relay say() never holds the game thread: a line asked earlier is used at once, else the server gets 30 ms, else your
+    /// own lines answer now; a late answer is kept for the next say() of the same line and facts.
+    fn say_ahead(&self, name: &str, event: &str, facts: &Json, body: Json) -> String {
+        let key = format!("{}\u{0}{}\u{0}{}\u{0}{}", name, event, facts.to_json(), body.get("max_chars").to_json());
+        let (mut got, fetch, start) = {
+            let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let got = st.said_ahead.remove(&key);
+            match st.say_fetching.get(&key) {
+                Some(f) => (got, f.clone(), false),
+                None => {
+                    let f = Arc::new(SayFetch::default());
+                    st.say_fetching.insert(key.clone(), f.clone());
+                    (got, f, true)
+                }
+            }
+        };
+        if start {
+            let (me, name, key, fetch) = (self.clone(), name.to_string(), key.clone(), fetch.clone());
+            thread::spawn(move || {
+                let r = me.post("say", &body, Duration::from_secs(2));
+                if let Some(r) = &r {
+                    me.redeclare(&name, r);
+                }
+                {
+                    let mut st = me.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                    if st.say_fetching.get(&key).map_or(false, |f| Arc::ptr_eq(f, &fetch)) {
+                        st.say_fetching.remove(&key);
+                    }
+                    if let Some(r) = &r {
+                        if !fetch.taken.swap(true, Ordering::SeqCst) && st.said_ahead.len() < 256 {
+                            let source = match r.get("source").as_str() {
+                                "" => "model".to_string(),
+                                s => s.to_string(),
+                            };
+                            st.said_ahead.insert(key, (r.get("text").as_str().to_string(), source));
+                        }
+                    }
+                }
+                *fetch.answer.lock().unwrap_or_else(|e| e.into_inner()) = Some(r);
+                fetch.ready.notify_all();
+            });
+        }
+        if got.is_none() {
+            let until = Instant::now() + Duration::from_millis(30);
+            let mut answer = fetch.answer.lock().unwrap_or_else(|e| e.into_inner());
+            while answer.is_none() {
+                let left = until.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                answer = fetch.ready.wait_timeout(answer, left).unwrap_or_else(|e| e.into_inner()).0;
+            }
+            if matches!(&*answer, Some(Some(_))) {
+                drop(answer);
+                got = self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).said_ahead.remove(&key);
+            }
+        }
+        let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        match got {
+            Some((text, source)) => {
+                st.sources.insert(name.to_string(), source);
+                text
+            }
+            None => {
+                st.sources.insert(name.to_string(), "offline".to_string());
+                drop(st);
+                self.offline_line(name, event, facts)
+            }
         }
     }
 
@@ -13013,8 +13553,8 @@ impl Kinloom {
                 self.redeclare(name, &r);
                 let decided = r.get("do").as_array().to_vec();
                 if !decided.is_empty() {
-                    let mut st = self.inner.state.lock().unwrap();
-                    let p = st.actions.entry(name.to_string()).or_insert_with(|| Pending { ready: Vec::new(), busy: false, at: None });
+                    let mut st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+                    let p = st.actions.entry(name.to_string()).or_default();
                     for a in decided {
                         p.ready.push(Action { tool: a.get("tool").as_str().to_string(), args: a.get("args").clone() });
                     }
@@ -13059,8 +13599,13 @@ impl Kinloom {
                 }
             };
         }
-        if self.inner.state.lock().unwrap().down_until.map_or(false, |t| Instant::now() < t) {
-            return None;
+        self.ready(body); // the character's declaration first, as for every other call
+        {
+            let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+            let now = Instant::now();
+            if st.down_until.map_or(false, |t| now < t) || st.busy_until.map_or(false, |t| now < t) {
+                return None;
+            }
         }
         let mut streamed = body.clone();
         if let Json::Obj(m) = &mut streamed {
@@ -13071,7 +13616,9 @@ impl Kinloom {
             headers.push(("Authorization".to_string(), format!("Bearer {}", self.inner.token)));
         }
         let mut done = None;
+        let mut heard = false; // the server answered something: a later failure is not a server that is down
         let mut lines = |line: &str| -> bool {
+            heard = true;
             if let Some(payload) = line.strip_prefix("data: ") {
                 if let Some(ev) = Json::parse(payload) {
                     if let Json::Str(p) = ev.get("piece") {
@@ -13085,9 +13632,15 @@ impl Kinloom {
             true
         };
         let url = format!("{}/v1/{}", self.inner.base, verb);
-        match SystemTransport.send("POST", &url, &headers, streamed.to_json().as_bytes(), self.inner.chat_timeout, Some(&mut lines)) {
+        let sent = SystemTransport.send("POST", &url, &headers, streamed.to_json().as_bytes(), self.inner.chat_timeout, Some(&mut lines));
+        match sent {
             Ok(a) if a.status == 200 => done,
+            Ok(a) if a.status == 429 => {
+                self.busy(&a.retry_after);
+                None
+            }
             Ok(_) => None,
+            Err(e) if e == "timed out" || heard => None, // slow or cut off: this reply is offline, the server is still there
             Err(_) => {
                 self.down();
                 None
@@ -13182,6 +13735,13 @@ pub mod vectors {
                 Json::Str(s) => text::find_json(&s),
                 _ => Json::Null,
             },
+            "parse" => {
+                let (ok, value, error) = match Shape::of(&arg(0))?.parse(&text(&arg(1))) {
+                    Ok(v) => (true, v, Json::Null),
+                    Err(e) => (false, Json::Null, Json::Str(e)),
+                };
+                obj! { "ok" => ok, "value" => value, "error" => error }
+            }
             "clean_text" => Json::Str(text::clean(&py::text(&arg(0)))),
             "fill" => Json::Str(lines::fill(&text(&arg(0)), &arg(1))),
             "event_key" => Json::Str(event_key(&arg(0))),
@@ -13287,9 +13847,9 @@ pub mod vectors {
             "recall" => {
                 let t = Arc::new(Mutex::new(0.0f64));
                 let t2 = t.clone();
-                let m = Arc::new(Memory::new(None, Box::new(move || *t2.lock().unwrap())));
+                let m = Arc::new(Memory::new(None, Box::new(move || *t2.lock().unwrap_or_else(|e| e.into_inner()))));
                 for n in arg(0).as_array() {
-                    *t.lock().unwrap() = py::num(n.get("t"));
+                    *t.lock().unwrap_or_else(|e| e.into_inner()) = py::num(n.get("t"));
                     let about = n.as_obj().and_then(|o| o.get("about")).map(|a| [("about".to_string(), a.clone())].into_iter().collect::<Map>());
                     m.add("s", "MIRA", &text(n.get("text")), py::num(n.get("importance")), about.as_ref());
                 }
@@ -13312,7 +13872,7 @@ pub mod vectors {
             "compile" => Mind::new(declaration_of(&arg(0))?, None).compiled(),
             "think" | "explain" => {
                 let key = py::dumps_with(&arg(0), true, true);
-                let mut all = thinkers().lock().unwrap();
+                let mut all = thinkers().lock().unwrap_or_else(|e| e.into_inner());
                 if !all.contains_key(&key) {
                     let m = Mind::new(declaration_of(&arg(0))?, None);
                     all.insert(key.clone(), m);
@@ -13495,9 +14055,13 @@ impl Kinloom {
         let url = format!("{}/v1/{}", self.inner.base, verb);
         match SystemTransport.send(method, &url, &headers, data.as_bytes(), timeout, None) {
             Ok(a) => {
-                self.inner.state.lock().unwrap().failures = 0;
+                self.inner.state.lock().unwrap_or_else(|e| e.into_inner()).failures = 0;
                 if method == "GET" && a.status == 404 {
                     return Ok(Some(obj! { "missing" => true }));
+                }
+                if a.status == 429 {
+                    self.busy(&a.retry_after);
+                    return Ok(None);
                 }
                 if a.status != 200 {
                     return Ok(None);

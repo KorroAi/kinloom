@@ -94,6 +94,7 @@ GETS = {
     "/v1/mind": ("A mind and its report (404 when unknown).", [("name", S)]),
     "/v1/soul": ("Like POST /v1/soul.", [("name", S), ("speaker", S)]),
     "/v1/openapi.json": ("This description.", []),
+    "/healthz": ("For a host's health checks: {ok: true}, no token, no data.", []),
 }
 
 
@@ -112,9 +113,10 @@ def spec():
             "responses": {
                 "200": {"description": "the answer", "content": {"application/json": {"schema": {
                     "type": "object", "properties": answer}}}},
-                "400": {"description": "a missing or wrong field: {error}"},
+                "400": {"description": "a missing or wrong field: {error, code}"},
                 "401": {"description": "this server needs its token"},
-                "429": {"description": "a player over its limits: answer offline"}}}}
+                "403": {"description": "not for this token (code player_forbidden, speaker_bound) or this page's origin"},
+                "429": {"description": "a player over its limits: answer offline; Retry-After says when to ask again"}}}}
     for path in sorted(GETS):
         summary, query = GETS[path]
         paths[path] = {"get": {

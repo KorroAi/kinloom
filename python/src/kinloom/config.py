@@ -39,7 +39,7 @@ def load(folder="."):
     cfg = dict(DEFAULTS)
     if os.path.exists(path):
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 data = json.load(f)
         except (OSError, ValueError) as e:
             raise ConfigError("%s is not valid JSON: %s" % (path, e))
@@ -59,7 +59,7 @@ def update(folder=".", **changes):
     data = {}
     if os.path.exists(path):
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8-sig") as f:
                 data = json.load(f)
         except (OSError, ValueError) as e:
             raise ConfigError("%s is not valid JSON (%s): fix it first, nothing was changed" % (path, e))

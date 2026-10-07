@@ -6,6 +6,7 @@ Reads the game's files (nothing is sent anywhere, no model is called): keys that
 game reaches a model once players have it, characters without offline answers, spending caps and prices, the content
 rating; then writes a draft disclosure of the AI the game uses, for the developer to review.
 """
+import hashlib
 import os
 import re
 
@@ -25,6 +26,9 @@ _LOCAL = re.compile(r"(127\.0\.0\.1|localhost):7717")
 _RELAY = re.compile(r"[\"'](https://[^\"'\s]+)[\"']")
 _SKIP = {".git", "node_modules", ".godot", "Library", "Temp", ".venv", "venv", "__pycache__", ".kinloom", ".claude", ".cursor"}
 _TEXT_LIMIT = 2_000_000
+# the admin token of an online server (the player token is meant to ship; this one never)
+_SERVER_TOKEN = re.compile(r"KINLOOM_SERVER_TOKEN[\"']?\s*[=:]\s*[\"']?([A-Za-z0-9_\-]{16,})")
+_MARK = re.compile(r"^<!-- kinloom ship: sha256 ([0-9a-f]{64})[^\n]*-->\n")
 
 # what the code calls -> what players get, for the disclosure (any engine: method names are the same everywhere)
 _FEATURES = [
@@ -107,6 +111,15 @@ def review(folder="."):
                                      "on your relay (kinloom deploy) or in the player's own environment" % where))
     if not keys:
         out.append(("ok", "no model key found in the game's files"))
+    deploys = set()
+    for rel, text in _files(folder):
+        for m in _SERVER_TOKEN.finditer(text):
+            out.append(("error", "%s:%d holds the server's admin token (KINLOOM_SERVER_TOKEN): it opens the journal and "
+                                 "everything; keep it on the host only" % (rel, _line(text, m.start()))))
+        if os.path.basename(rel) == "DEPLOY.md" and text.startswith("# Kinloom online server"):
+            deploys.add(os.path.dirname(rel) or ".")
+    for d in sorted(deploys):
+        out.append(("warn", "%s/ is an online server's folder (kinloom deploy): keep it out of the game you ship" % d))
 
     # 2. how the game reaches a model once players have it
     kind = facts["provider"].lower()
@@ -220,6 +233,23 @@ def disclosure(facts):
     return "\n".join(lines)
 
 
+def _write_draft(target, text):
+    """Writes the draft with a mark of what was written; a file edited since then (or not Kinloom's) is kept and the
+    draft goes to target.new. Returns the path written."""
+    def digest(body):
+        return hashlib.sha256(body.encode("utf-8")).hexdigest()
+    marked = "<!-- kinloom ship: sha256 %s (edit freely: an edited draft is never overwritten) -->\n%s" % (digest(text), text)
+    if os.path.exists(target):
+        with open(target, encoding="utf-8", newline="") as f:
+            old = f.read()
+        m = _MARK.match(old)
+        if not (m and digest(old[m.end():]) == m.group(1)):
+            target = target + ".new"
+    with open(target, "w", encoding="utf-8", newline="\n") as f:
+        f.write(marked)
+    return target
+
+
 def run(folder=".", path="kinloom-ai-disclosure.md"):
     engine, results, facts = review(folder)
     print("Kinloom ship (%s): before you release" % engine)
@@ -229,9 +259,12 @@ def run(folder=".", path="kinloom-ai-disclosure.md"):
     warns = sum(1 for level, _ in results if level == "warn")
     if path:
         target = path if os.path.isabs(path) else os.path.join(folder, path)
-        with open(target, "w", encoding="utf-8", newline="\n") as f:
-            f.write(disclosure(facts))
-        print("\nAI disclosure draft: %s (review it before you use it)" % os.path.relpath(target))
+        written = _write_draft(target, disclosure(facts))
+        if written == target:
+            print("\nAI disclosure draft: %s (review it before you use it)" % os.path.relpath(target))
+        else:
+            print("\nAI disclosure: %s was edited since Kinloom wrote it, so it was kept; the new draft is %s (compare "
+                  "them)" % (os.path.relpath(target), os.path.relpath(written)))
     print("\n%s" % ("Fix the errors before you ship." if errors else
                     "%d thing(s) to look at before you ship." % warns if warns else "Ready to ship."))
     return 1 if errors else 0

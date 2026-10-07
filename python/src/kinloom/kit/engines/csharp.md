@@ -1,8 +1,12 @@
 language: C# (Unity, MonoGame, FNA, Stride, Godot C#, any .NET)
 Setup: `kinloom init` copied `{client_path}` (one file, namespace `Kinloom`, no dependencies).
 While playing, run `kinloom serve` in a terminal. Or no server (native: the game calls the model itself, the key from the environment): `new KinloomClient(new KinloomOptions
-{ ProviderAuto = true })`. Unity: awaited calls continue on the main thread. (WebGL builds cannot
-use `HttpClient`: use the web client from JavaScript there.)
+{ ProviderAuto = true })`. Unity: awaited calls, and the pieces a streamed `Chat(..., onPiece: ...)` gives, continue on
+the thread that called (the main thread); warnings go to `KinloomClient.Warn` (the Unity console once `KinloomDialogue`
+is in the project). WebGL: `HttpClient` cannot run there: pass `KinloomOptions { Http = <your UnityWebRequest
+wrapper> }` (relay calls go through it too), or use the web client from JavaScript.
+Shipped game: one session per player (`new KinloomClient(url, playerId, token)`); `KinloomDialogue` with a Relay Token
+makes one per install (PlayerPrefs) by itself.
 Unity, no code: the `KinloomDialogue` component (`Assets/Kinloom/KinloomDialogue.cs`): character name, one-sentence soul,
 offline line, tools as JSON, reply choices for gamepads; events onReply, onAction(tool, argsJson), onGesture, onChoices.
 Set `KinloomDialogue.Client` from code for native mode or an online relay (never a key in a scene).

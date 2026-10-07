@@ -17,6 +17,15 @@ def _words(text):
     return {w.lower() for w in _WORD.findall(text or "") if w.lower() not in _STOP}
 
 
+def _number(x):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and x == x and abs(x) != float("inf")
+
+
+def _good_note(n):
+    """A note recall() can rank: text, time and importance (a file edited by hand or a save from elsewhere)."""
+    return isinstance(n, dict) and isinstance(n.get("text"), str) and _number(n.get("t")) and _number(n.get("importance"))
+
+
 class Memory:
     def __init__(self, path=None, clock=time.time):
         self.path = os.path.abspath(path) if path else None    # fixed now: a game that changes folder keeps its memory
@@ -26,18 +35,37 @@ class Memory:
         self._lock = threading.Lock()
         self._dirty = False
         self._timer = None
+        self.problem = ""         # what went wrong reading the file, if anything (the brain journals it)
         if path and os.path.exists(path):
+            self._read(self.path)
+
+    def _read(self, path):
+        """Loads what can be trusted, entry by entry: one bad note never costs the rest. A file that cannot be read
+        at all is kept aside (memory.json.corrupt-<time>) before anything overwrites it."""
+        try:
+            with open(path, encoding="utf-8-sig") as f:
+                data = json.load(f)
+        except (OSError, ValueError, RecursionError) as e:
+            data, self.problem = None, "memory file unreadable (%s)" % type(e).__name__
+        if not isinstance(data, dict):
+            if not self.problem:
+                self.problem = "memory file is not a JSON object"
             try:
-                with open(path, encoding="utf-8") as f:
-                    data = json.load(f)
-                for session, scopes in (data.get("sessions") or {}).items():
-                    for scope, notes in scopes.items():
-                        self._notes[(session, scope)] = [n for n in notes if isinstance(n, dict) and isinstance(n.get("text"), str)]
-                extra = data.get("extra")
-                if isinstance(extra, dict):
-                    self._extra = {str(k): v for k, v in extra.items() if isinstance(v, dict)}
-            except (OSError, ValueError, AttributeError):
-                pass  # a broken memory file must not stop the game; it is replaced on the next save
+                aside = "%s.corrupt-%d" % (path, int(time.time()))
+                os.replace(path, aside)
+                self.problem += "; kept as %s" % os.path.basename(aside)
+            except OSError:
+                pass
+            return
+        sessions = data.get("sessions")
+        for session, scopes in (sessions.items() if isinstance(sessions, dict) else ()):
+            for scope, notes in (scopes.items() if isinstance(scopes, dict) else ()):
+                kept = [n for n in (notes if isinstance(notes, list) else ()) if _good_note(n)]
+                if kept:
+                    self._notes[(str(session), str(scope))] = kept[-MAX_NOTES:]
+        extra = data.get("extra")
+        if isinstance(extra, dict):
+            self._extra = {str(k): v for k, v in extra.items() if isinstance(v, dict)}
 
     def add(self, session, scope, text, importance=0.5, **meta):
         """meta: small JSON values kept with the note (eid, tag, by, src, orig, impact: what the world layer tracks)."""
@@ -103,8 +131,7 @@ class Memory:
             for key in [k for k in self._notes if k[0] == session]:
                 del self._notes[key]
             for scope, items in notes.items():
-                kept = [dict(n) for n in items if isinstance(n, dict) and isinstance(n.get("text"), str)
-                        and isinstance(n.get("t"), (int, float)) and isinstance(n.get("importance"), (int, float))]
+                kept = [dict(n) for n in (items if isinstance(items, list) else ()) if _good_note(n)]
                 if kept:
                     self._notes[(session, str(scope))] = kept[-MAX_NOTES:]
             self._dirty = True
@@ -161,9 +188,11 @@ class Memory:
         folder = os.path.dirname(os.path.abspath(self.path))
         try:
             os.makedirs(folder, exist_ok=True)
-            tmp = self.path + ".tmp"
+            tmp = "%s.%d-%d.tmp" % (self.path, os.getpid(), threading.get_ident())   # saves from two threads never share it
             with open(tmp, "w", encoding="utf-8") as f:
                 json.dump(data, f)
+                f.flush()
+                os.fsync(f.fileno())     # a crash or power loss leaves the old file or the new one, never half of one
             os.replace(tmp, self.path)
         except OSError:
             with self._lock:

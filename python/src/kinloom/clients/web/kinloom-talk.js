@@ -128,14 +128,20 @@ export function talkBox(kl, name, { speaker = "player", parent = document.body, 
 
   // ---- microphone: hold the button (or the key) to talk ----
   let recorder = null;
+  let wanted = false;                                   // the button is held (it can be let go while the browser asks)
   let chunks = [];
   let recognition = null;
   let recognized = "";
 
   async function startRecording() {
-    if (recorder || busy) return;
+    if (recorder || busy || wanted) return;
+    wanted = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!wanted) {                                    // let go during the permission prompt: no recording left on
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       chunks = [];
       recorder = new MediaRecorder(stream);
       recorder.ondataavailable = (e) => { if (e.data && e.data.size) chunks.push(e.data); };
@@ -167,11 +173,13 @@ export function talkBox(kl, name, { speaker = "player", parent = document.body, 
       }
     } catch (e) {
       recorder = null;
+      wanted = false;
       micButton.title = "No microphone";
     }
   }
 
   function stopRecording() {
+    wanted = false;
     if (recognition) { try { recognition.stop(); } catch (e) { /* already stopped */ } }
     if (recorder && recorder.state !== "inactive") recorder.stop();
   }

@@ -236,6 +236,41 @@ def test_create_validates_repairs_and_falls_back():
     assert kl.create("next race", example) == {"challenge": "Win without touching a wall", "sky": "#ff7a45", "rival_speed": 1.0}
 
 
+def test_create_cut_by_the_token_limit_asks_again_with_room_then_counts_offline():
+    example = {"say": "Done.", "actions": [{"op": "build", "target": "house"}]}
+    cut = '{"say": "Building", "actions": [{"op": "build", "target": "harbour"}, {"op": "build", "target": "light'
+    whole = {"say": "Building", "actions": [{"op": "build", "target": "harbour"}, {"op": "build", "target": "lighthouse"}]}
+    p = model(create=[cut, whole])
+    limits = []
+    complete = p.complete
+
+    def spy(system, user, json_mode=False, max_tokens=400, **kw):
+        limits.append(max_tokens)
+        return complete(system, user, json_mode, max_tokens, **kw)
+
+    p.complete = spy
+    kl = make(p)
+    assert kl.create("a harbour", example) == whole
+    assert limits == [1500, 3000]
+    assert any(e["kind"] == "repair" and "cut off" in e["text"] for e in kl.journal())
+    kl = make(model(create=[cut, cut]))
+    assert kl.create("a harbour", example) == {"say": "Done.", "actions": [{"op": "build", "target": "house"}]}
+    assert kl.stats()["offline_answers"] == 1
+
+
+def test_what_the_model_cannot_read_is_journaled_once():
+    kl = make(model(create={"name": "x"}, chat="Hm."))
+    kl.create("a " + "very " * 150 + "long request", {"name": "Glowcap"}, {"rules": "r" * 5000})
+    kl.create("a " + "very " * 150 + "long request", {"name": "Glowcap"}, {"rules": "r" * 5000})
+    clipped = [e for e in kl.journal() if e["kind"] == "clipped"]
+    assert len(clipped) == 2
+    assert any(e["text"].startswith("what: 764 characters, the model reads the first 500") for e in clipped)
+    assert any(e["text"].startswith("context: 5013 characters, the model reads the first 4000") for e in clipped)
+    kl.character("MIRA", "a smith")
+    kl.chat("MIRA", "hi", {"short": 1})
+    assert len([e for e in kl.journal() if e["kind"] == "clipped"]) == 2
+
+
 def test_create_many_and_instant_pools():
     items = {"items": [{"name": "Rex"}, {"name": "Mo"}, {"name": 42}, {"name": "Zed"}]}
     kl = make(model(create=items))

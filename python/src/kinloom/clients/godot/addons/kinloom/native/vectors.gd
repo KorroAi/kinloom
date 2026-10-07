@@ -49,6 +49,9 @@ static func vector(fn: String, args: Array) -> Variant:
 			return null if r[0] != null else r[1]
 		"find_json":
 			return Py.find_json(args[0])
+		"parse":
+			var r: Array = ShapeLib.Shape.of(args[0])[0].parse(args[1])
+			return {"ok": r[0], "value": r[1], "error": r[2]}
 		"clean_text":
 			return Py.clean(Py.text_of(args[0]))
 		"fill":

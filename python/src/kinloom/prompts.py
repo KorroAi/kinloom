@@ -32,7 +32,10 @@ def _head(task, c, language):
     return "\n".join(lines)
 
 
-def _clip(obj, limit=1500):
+CLIP = 4000   # characters of facts, situation, context or state the model reads (more is cut, and journaled)
+
+
+def _clip(obj, limit=CLIP):
     text = json.dumps(obj, ensure_ascii=False, default=str)
     return text if len(text) <= limit else text[:limit] + "..."
 

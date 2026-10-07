@@ -137,8 +137,8 @@ def call(folder, name, args):
                              args.get("language"), bool(args.get("strict")), [str(x) for x in lore],
                              voice=str(args.get("voice") or ""), max_chars=args.get("max_chars")))
         if name == "kinloom_log":
-            port = int(args.get("port") or 7717)
-            from .cli import _server_get
+            from .cli import _port, _server_get
+            port = int(_port(folder, args.get("port")))
             try:
                 entries = _server_get(port, "/v1/journal?n=%d" % max(1, min(500, int(args.get("n") or 60))))
             except Exception:
@@ -280,9 +280,20 @@ def handle(folder, msg):
     return {"jsonrpc": "2.0", "id": mid, "result": result}
 
 
+def _utf8(stream, mode):
+    """The process's own stdin/stdout as UTF-8 text, whatever the console's code page (Windows: cp1252): MCP is
+    UTF-8 JSON, and a name such as "Rene" with an accent must reach kinloom.json as written."""
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        return stream
+    if mode == "r":
+        return io.TextIOWrapper(buffer, encoding="utf-8", errors="replace")
+    return io.TextIOWrapper(buffer, encoding="utf-8", errors="replace", line_buffering=True)
+
+
 def serve(folder=".", stdin=None, stdout=None):
-    stdin = stdin or sys.stdin
-    stdout = stdout or sys.stdout
+    stdin = stdin or _utf8(sys.stdin, "r")
+    stdout = stdout or _utf8(sys.stdout, "w")
     folder = os.path.abspath(folder)
     for line in stdin:
         line = line.strip()

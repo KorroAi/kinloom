@@ -27,7 +27,11 @@ static func head(task: String, c, language: String) -> String:
 	return "\n".join(lines)
 
 
-static func clip(obj: Variant, limit := 1500) -> String:
+## Characters of facts, situation, context or state the model reads (more is cut, and journaled).
+const CLIP := 4000
+
+
+static func clip(obj: Variant, limit := CLIP) -> String:
 	var text := Py.dumps(obj, false)
 	return text if text.length() <= limit else text.substr(0, limit) + "..."
 

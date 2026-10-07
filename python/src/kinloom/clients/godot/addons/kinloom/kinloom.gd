@@ -32,7 +32,8 @@ var _voice_player: AudioStreamPlayer = null
 var url := "http://127.0.0.1:7717"
 ## For an online server started with --token (env KINLOOM_SERVER_TOKEN).
 var token := ""
-## One session per player or match (separate memory).
+## One session per player or match (separate memory). With a token (a shipped game) and no session set, each install
+## gets its own id (kept in user://kinloom-session.txt), so players never share one memory on the server.
 var session := "default"
 ## Seconds a chat or create may take before the offline answer is used.
 var timeout := 12.0
@@ -41,6 +42,7 @@ var timeout := 12.0
 var autostart := true
 
 var _chars := {}
+var _declaring := {}   # relay: declarations on their way, by name
 var _decisions := {}
 var _actions := {}
 var _sources := {}
@@ -48,6 +50,8 @@ var _down_until := 0.0
 var _up_until := 0.0              # the server at _up_url answered lately: no need to check it is there
 var _up_url := ""
 var _failures := 0                # connections refused in a row (the offline time grows: 2, 4, 8, 10 s)
+var _limited_until := {}          # verb -> when the relay's rate limit (HTTP 429) lets it ask again
+var _warned := {}                 # relay problems already told once
 var _tried_start := false
 var _placeholder := RegEx.new()
 var _minds := {}
@@ -178,7 +182,10 @@ func character(name: String, personality: String, options := {}) -> void:
 	d["name"] = name
 	d["personality"] = personality
 	_chars[name] = d
-	_fire("character", d)
+	if _brain != null:
+		_fire("character", d)
+	else:
+		_declare(name, d, false)
 
 
 ## A line in character with the real facts filled in. Instant when prepared lines exist. fresh: a line the model
@@ -260,7 +267,7 @@ func decide(name: String, situation: Dictionary, choices: Variant) -> Variant:
 		_decisions[key] = {"value": default_of(choices), "pending": false, "at": -1.0}
 	var d: Dictionary = _decisions[key]
 	var now := Time.get_ticks_msec() / 1000.0
-	if not d.pending and now - d.at >= 0.25:
+	if not d.pending and now - d.at >= _poll_s(name):
 		d.pending = true
 		d.at = now
 		_refresh_decision(d, name, situation, choices)
@@ -330,7 +337,7 @@ func act(name: String, situation := {}, think := true) -> Array:
 	var ready: Array = a.ready
 	a.ready = []
 	var now := Time.get_ticks_msec() / 1000.0
-	if not a.pending and now - a.at >= 0.25:
+	if not a.pending and now - a.at >= _poll_s(name):
 		a.pending = true
 		a.at = now
 		_refresh_actions(a, name, situation, think)
@@ -723,14 +730,42 @@ func _refresh_actions(a: Dictionary, name: String, situation: Dictionary, think 
 func _redeclare(name: String, r: Dictionary) -> void:
 	# The server restarted and lost this character: declare it again (the answer already used a neutral one).
 	if r.get("declared", true) == false and _chars.has(name):
-		if _tools != null:                             # its tools first: the character may name them
-			await _post("tools", {"tools": _tools}, 5.0)
-		_fire("character", _chars[name])
+		_declare(name, _chars[name], true)             # its tools first: the character may name them
 
 
 # ---------------- HTTP ----------------
 
+## How often decide/act ask: at once in native mode (the brain keeps its own pace); through a relay, a quarter of the
+## character's `every` (8 s by default: every 2 s), never more than 4 times a second.
+func _poll_s(name: String) -> float:
+	if _brain != null:
+		return 0.25
+	var every = _chars.get(name, {}).get("every") if _chars.get(name) is Dictionary else null
+	var e: float = float(every) if typeof(every) in [TYPE_INT, TYPE_FLOAT] and float(every) > 0 else 8.0
+	return maxf(0.25, e / 4.0)
+
+
+## One session id per install (user://kinloom-session.txt): never "default", which every player of a relay would share.
+func _install_session() -> String:
+	var path := "user://kinloom-session.txt"
+	if FileAccess.file_exists(path):
+		var f := FileAccess.open(path, FileAccess.READ)
+		if f != null:
+			var id := f.get_as_text().strip_edges()
+			f.close()
+			if id != "":
+				return id
+	var made := "player-%x%x" % [randi(), Time.get_ticks_usec()]
+	var w := FileAccess.open(path, FileAccess.WRITE)
+	if w != null:
+		w.store_string(made)
+		w.close()
+	return made
+
+
 func _headers() -> PackedStringArray:
+	if token != "" and session == "default":
+		session = _install_session()
 	var h := PackedStringArray(["Content-Type: application/json", "X-Kinloom-Session: " + session])
 	if token != "":
 		h.append("Authorization: Bearer " + token)
@@ -748,7 +783,30 @@ func _http_get(verb: String) -> Variant:
 func _post(verb: String, body: Dictionary, seconds: float) -> Variant:
 	if _brain != null:
 		return await _native(verb, _plain(body))
+	if verb != "character" and verb != "tools":
+		await _wait_declared(body)
 	return await _request(verb, HTTPClient.METHOD_POST, JSON.stringify(body), seconds)
+
+
+## Relay: sends a character's declaration (after the game's tools when asked); calls naming it wait for it, so the
+## server never answers them without the character's soul and tools.
+func _declare(name: String, d: Dictionary, with_tools: bool) -> void:
+	var mark := {}
+	_declaring[name] = mark
+	if with_tools and _tools != null:
+		await _post("tools", {"tools": _tools}, 5.0)
+	await _post("character", d, 5.0)
+	if is_same(_declaring.get(name), mark):
+		_declaring.erase(name)
+
+
+## Waits (5 s at most) for the declarations of the characters a call names.
+func _wait_declared(body: Dictionary) -> void:
+	var until := Time.get_ticks_msec() + 5000
+	for field in ["name", "a", "b"]:
+		var who = body.get(field)
+		while who is String and _declaring.has(who) and Time.get_ticks_msec() < until and is_inside_tree():
+			await get_tree().process_frame
 
 
 ## A body as JSON would carry it (Godot values such as Vector2 become text, as on the wire).
@@ -775,7 +833,8 @@ func _request(verb: String, method: int, data: String, seconds: float, missing_o
 			return await _native("report", {"name": verb.substr(10).uri_decode()}, missing_ok)
 		var parsed = Py.loads(data)[1] if data != "" else {}
 		return await _native(verb, parsed if parsed is Dictionary else {}, missing_ok)
-	if Time.get_ticks_msec() / 1000.0 < _down_until or not is_inside_tree():
+	var plain := verb.get_slice("?", 0)
+	if Time.get_ticks_msec() / 1000.0 < _down_until or _now() < float(_limited_until.get(plain, 0.0)) or not is_inside_tree():
 		return null
 	var target := url
 	if not await _reachable(target):
@@ -804,7 +863,18 @@ func _request(verb: String, method: int, data: String, seconds: float, missing_o
 	if res[1] == 404 and missing_ok:
 		return {"missing": true}
 	if res[1] != 200:
-		push_warning("[kinloom] %s: HTTP %d %s" % [verb, res[1], res[3].get_string_from_utf8().left(200)])
+		if res[1] == 429:                # this player is over the relay's rate limit: offline for Retry-After seconds
+			var wait := 5.0
+			for h in res[2]:
+				if str(h).to_lower().begins_with("retry-after:"):
+					var v := str(h).get_slice(":", 1).strip_edges()
+					if v.is_valid_float() and float(v) > 0:
+						wait = minf(300.0, float(v))
+			_limited_until[plain] = _now() + wait
+		var told := "%s %d" % [plain, res[1]]
+		if not _warned.has(told):        # once per verb and status, not every frame
+			_warned[told] = true
+			push_warning("[kinloom] %s: HTTP %d %s" % [verb, res[1], res[3].get_string_from_utf8().left(200)])
 		return null
 	var parsed = JSON.parse_string(res[3].get_string_from_utf8())
 	return parsed if parsed is Dictionary else null
@@ -815,6 +885,8 @@ func _request(verb: String, method: int, data: String, seconds: float, missing_o
 ## the connection refused was not seen, so the offline answer came that late.
 func _reachable(target: String) -> bool:
 	if _now() < _up_until and _up_url == target:
+		return true
+	if OS.has_feature("web"):           # no raw TCP in a browser: the HTTP request itself tells
 		return true
 	var address := target.get_slice("://", 1).get_slice("/", 0)
 	var host := address

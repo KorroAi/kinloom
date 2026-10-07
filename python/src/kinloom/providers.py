@@ -399,11 +399,16 @@ class Anthropic(Provider):
                 elif o.get("type") == "message_delta":
                     usage.update(o.get("usage") or {})
                     stop.update(o.get("delta") or {})
+                elif o.get("type") == "error":      # overloaded mid-stream: what was said so far is not an answer
+                    stop["error"] = str((o.get("error") or {}).get("type") or "stream error")
 
             status, err = _Http.post(url, headers, dict(body, stream=True), deadline, stream=True, on_line=line)
             text = "".join(parts)
-            if status != 200 or stop.get("stop_reason") == "refusal" or not text.strip():
-                return Reply(False, text, err or "refused or empty", latency=time.monotonic() - start)
+            if status != 200:      # the status first: a dead key ("HTTP 401") lets the fallback switch, as without streaming
+                return Reply(False, text, ("HTTP %s: %s" % (status, (err or "")[:200])) if status else (err or "failed"),
+                             latency=time.monotonic() - start)
+            if stop.get("error") or stop.get("stop_reason") == "refusal" or not text.strip():
+                return Reply(False, text, stop.get("error") or "refused or empty", latency=time.monotonic() - start)
             cached = _int(usage, "cache_read_input_tokens")
             return Reply(True, text, None, _int(usage, "input_tokens") + cached + _int(usage, "cache_creation_input_tokens"),
                          cached, _int(usage, "output_tokens"), time.monotonic() - start)

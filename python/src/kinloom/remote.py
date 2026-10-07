@@ -82,10 +82,16 @@ class RemoteBrain:
             wait = self._down(True)
             self._note("%s: server not reached: offline answers for %.0f s" % (verb, wait))
             return None
-        headers = {"Content-Type": "application/json", "X-Kinloom-Session": str(session)}
+        # the session goes in the body (any text); the header only when it is plain ASCII (headers are Latin-1)
+        session = str(session)
+        headers = {"Content-Type": "application/json"}
+        if session.isascii() and session.isprintable():
+            headers["X-Kinloom-Session"] = session
         if self.token:
             headers["Authorization"] = "Bearer " + self.token
-        data = dict(body, stream=True) if stream is not None else body
+        data = dict(body, session=session)
+        if stream is not None:
+            data["stream"] = True
         req = urllib.request.Request(self.url + "/v1/" + verb, data=json.dumps(data).encode("utf-8"), method="POST",
                                      headers=headers)
         try:

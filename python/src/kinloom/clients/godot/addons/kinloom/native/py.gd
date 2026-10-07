@@ -825,6 +825,51 @@ static func clean_value(v: Variant) -> String:
 
 
 ## The first JSON object or array in a model answer, or null.
+const CUT := "the answer was cut off before its end: write it shorter and complete"
+
+
+## Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or -1.
+static func unclosed(t: String) -> int:
+	var n := t.length()
+	var i := 0
+	while i < n:
+		var c := t[i]
+		if c == "{" or c == "[":
+			var j := i + 1
+			while j < n and " \t\r\n".contains(t[j]):
+				j += 1
+			if j < n and (("\"}" if c == "{" else "\"{[]-0123456789tfn").contains(t[j])):
+				var depth := 0
+				var quoted := false
+				var k := i
+				while k < n:
+					var ch := t[k]
+					if quoted:
+						if ch == "\\":
+							k += 1
+						elif ch == "\"":
+							quoted = false
+					elif ch == "\"":
+						quoted = true
+					elif ch == "{" or ch == "[":
+						depth += 1
+					elif ch == "}" or ch == "]":
+						depth -= 1
+						if depth == 0:
+							break
+					k += 1
+				if k >= n:
+					return i
+				i = k
+		i += 1
+	return -1
+
+
+## True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that.
+static func cut_off(text_in: Variant) -> bool:
+	return typeof(text_in) == TYPE_STRING and find_json(text_in) == null and unclosed(strip(text_in)) >= 0
+
+
 static func find_json(text_in: Variant) -> Variant:
 	if typeof(text_in) != TYPE_STRING:
 		return null
@@ -840,13 +885,74 @@ static func find_json(text_in: Variant) -> Variant:
 	var whole := loads(t)
 	if whole[0]:
 		return whole[1]
+	# never an object nested in JSON that stops before its end (an answer cut by the token limit)
+	var stop := unclosed(t)
 	for open in ["{", "["]:
 		var at := t.find(open)
 		var tries := 0
-		while at >= 0 and tries < 20:
+		while at >= 0 and (stop < 0 or at < stop) and tries < 20:
 			var r := decode(t, at)
 			if r[0]:
 				return r[1]
+			var end := close_at(t, at)
+			if end > at:            # it closes but does not parse: a trailing comma? (never its inner object)
+				var fixed := loads(no_trailing_commas(t.substr(at, end - at + 1)))
+				if fixed[0]:
+					return fixed[1]
 			at = t.find(open, at + 1)
 			tries += 1
 	return null
+
+
+## Where the bracket opened at `at` closes (brackets in strings skipped), or -1.
+static func close_at(t: String, at: int) -> int:
+	var depth := 0
+	var quoted := false
+	var k := at
+	var n := t.length()
+	while k < n:
+		var ch := t[k]
+		if quoted:
+			if ch == "\\":
+				k += 1
+			elif ch == "\"":
+				quoted = false
+		elif ch == "\"":
+			quoted = true
+		elif ch == "{" or ch == "[":
+			depth += 1
+		elif ch == "}" or ch == "]":
+			depth -= 1
+			if depth == 0:
+				return k
+		k += 1
+	return -1
+
+
+## The text without commas right before } or ] (outside strings): what models often write.
+static func no_trailing_commas(t: String) -> String:
+	var out := PackedStringArray()
+	var quoted := false
+	var k := 0
+	var n := t.length()
+	while k < n:
+		var ch := t[k]
+		if quoted:
+			if ch == "\\" and k + 1 < n:
+				out.append(t.substr(k, 2))
+				k += 2
+				continue
+			if ch == "\"":
+				quoted = false
+		elif ch == "\"":
+			quoted = true
+		elif ch == ",":
+			var j := k + 1
+			while j < n and " \t\r\n".contains(t[j]):
+				j += 1
+			if j < n and (t[j] == "}" or t[j] == "]"):
+				k += 1
+				continue
+		out.append(ch)
+		k += 1
+	return "".join(out)

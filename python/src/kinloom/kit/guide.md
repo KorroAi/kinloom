@@ -28,14 +28,14 @@ game still works with no key, no network or a slow model.
 - **The game decides**: `steer(name, "admit you were in the office")`: their next reply does it, even a secret. Trust: `warmth` 0,
   `warm_up` 0.3 a talk, `secret_trust` 0.6. Source (Python `line.source`, others `source(name)`) "offline" with a model set up: late, show silence (`"reply_timeout"` 8 s).
 - **Shapes by example**, and the example is the offline answer: `["a", "b"]` one of them; `[0.0, 1.0]` a number in that
-  range; `[1, 10]` a whole number; `0.5`, `true`, `"A sample."` that type (shown offline); `[example]` a list; `{...}` an object. Answers are
+  range; `[1, 10]` a whole number; `0.5`, `true`, `"A sample."` that type (shown offline); `[example]` a list (of texts: one sample, as two texts are a choice); `{...}` an object. Answers are
   validated and clamped: use them as they are, no re-checks (the example is the fallback). `image=` (chat, create): it sees.
 - **`say` is instant**: lines written ahead, filled with *your* facts (pass every value raw). Declare each character
   once with `lines` (offline `{fact}` lines per event or `"*"`; `{"dare": {"when": "what is happening", "lines": [...]}}`
   tells the model the moment) and `events` (fact names): lines ready (`prepare()` waits). `event`, `state`: facts.
 - **No keyboard**: `suggest(name, [examples], speaker)` -> what the player can pick, one per example (offline: the
   examples). `converse(a, b, about)`: they talk together. `save()`/`load(text)`: the AI in your save file. `inspect()`.
-- **`decide` and `act` are instant** every frame (refreshed in the background, `every` s); once, before a level: `create(...)`, ~1-2 s.
+- **`decide` and `act` are instant** every frame (refreshed in the background, `every` s); once, before a level: `create(...)` (the request in `what`, data in `context`), ~1-2 s.
 - The model, the developer's choice: a key in the environment for `kinloom serve` or the native SDK (`ANTHROPIC_API_KEY`,
   `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` + `KINLOOM_MODEL`; never in the game) or their agent's plan (`kinloom use`).
   kinloom.json `"rating": "everyone"|"teen"|"mature"`, `"models": {"background": "a-cheaper-model"}`. Before a release:

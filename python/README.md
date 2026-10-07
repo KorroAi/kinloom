@@ -72,8 +72,12 @@ often and how long ago you talked. With no key, characters answer with their off
 - **Never frozen**: if no word comes after 2.5 s the request is sent again (the first to speak wins); a reply that
   stalls for 3 s or passes 8 s ends with the sentences already said; with no complete sentence, the offline line.
   A model on this machine is never asked twice at once and gets 15 s (it only slows down when asked twice).
-- **Shippable**: `kinloom deploy` prepares an online server (Dockerfile, guide): the game carries a player token that
-  plays but cannot read other players' conversations, rate limits per player and per address, cost caps per hour/day.
+- **Shippable**: `kinloom deploy` prepares an online server in its own folder (`kinloom-deploy/`: Dockerfile, guide;
+  the tokens are printed once, never written): the game carries a player token that cannot read the journal or
+  other sessions, rate limits per player session and per address (`--trust-proxy` behind Railway or Fly.io reads the
+  player's address), a connection cap, `GET /healthz`, cost caps per hour/day. Any bind beyond this machine (`--host`)
+  and `--allow-origin null` need a token. `--player-can none` keeps state, memories, feelings and steering for a
+  shared world's own game server (default: a single-player game rules its own session).
   Checked in a local Docker container (2026-09-29): the folder builds and serves, the JavaScript client talks through
   it with the player token, a wrong token gets the offline answers, the player token cannot read the journal, memories
   survive a restart. Not yet run on a real host. Python games need no server while you build them (the package ships
@@ -308,8 +312,15 @@ tried in order (a dead key hands over to the next). Every SDK has `stats()`, `jo
 the platform's own (fetch, HttpClient, HttpURLConnection, Godot's HTTPClient; WinHTTP on Windows and the `curl`
 command elsewhere for Rust and C++; LuaSec or LÖVE 12 for Lua), or a transport the game gives in C#, C++ and Lua
 (Unity WebGL's UnityWebRequest, Unreal's FHttpModule, Defold's `http.request`) and in Rust through a provider's
-`with_transport`. Python only: a coding agent's plan as the model, the operating system's voice, the CLI and the
-developer tools.
+`with_transport`. In C#, the transport given (`KinloomOptions.Http`) also carries a relay's calls. Python only: a
+coding agent's plan as the model, the operating system's voice, the CLI and the developer tools.
+
+Relay mode in a shipped game: the relay keeps memory per session, so give each player's id as `session`. With a relay
+token and no session, the browser client (localStorage), the Godot addon (user://kinloom-session.txt) and Unity's
+`KinloomDialogue` (PlayerPrefs) keep one id per install instead of the shared "default". Every client asks the relay
+for `decide` and `act` at a quarter of the character's `every` (at most 4 times a second), and a rate limit
+(HTTP 429) keeps that call offline for the relay's Retry-After (5 s by default), told once. C#: streamed pieces (`onPiece`) and awaited calls
+come back on the thread that called; warnings go to `KinloomClient.Warn` (Unity's console with `KinloomDialogue`).
 
 ## Models
 

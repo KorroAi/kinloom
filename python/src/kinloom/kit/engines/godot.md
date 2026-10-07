@@ -4,6 +4,8 @@ Setup: `kinloom init` copied `addons/kinloom` and enabled it: the `Kinloom` auto
 While playing, `kinloom serve` must run (the addon starts it itself in editor/debug runs when `kinloom` is installed;
 with `kinloom bundle`, a `kinloom-server/` folder next to the exported game or in the project is started in any build,
 so players need no Python). Or no server (native: the game calls the model itself, the key from the environment): `Kinloom.native({"provider": "auto"})`.
+Shipped game: set `Kinloom.token` (the relay's player token) and `Kinloom.session` per player; left at "default", each
+install gets its own id (user://kinloom-session.txt). Web exports reach the relay over HTTP only (no TCP check).
 No-code options: an `AIDialogue` node (a dialogue box with a character in it: name, one-sentence soul, tools;
 `open()` shows it and the character speaks first; `acted(tool, args)` signal), an `AICharacter` node (name, personality, watched node, signals, output label, controls), and an
 `AIMind` node under any unit (senses = its properties, actions = its methods, rules; `reward_property` + `done_signal`

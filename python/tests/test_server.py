@@ -178,9 +178,10 @@ def test_file_pages_get_a_clear_answer_and_can_be_allowed(server):
     _, url = server()
     status, body, _ = call(url, "/v1/say", {"name": "A", "event": "x"}, {"Origin": "null"})
     assert status == 403 and "allow-origin null" in body["error"]
-    _, url2 = server(allow_origins=["null", "https://html.itch.zone"])
-    assert call(url2, "/v1/say", {"name": "A", "event": "x"}, {"Origin": "null"})[0] == 200
-    status, _, headers = call(url2, "/v1/say", {"name": "A", "event": "x"}, {"Origin": "https://html.itch.zone"})
+    _, url2 = server(token="s3cret", allow_origins=["null", "https://html.itch.zone"])   # null: any site could be it
+    auth = {"Authorization": "Bearer s3cret"}
+    assert call(url2, "/v1/say", {"name": "A", "event": "x"}, dict(auth, Origin="null"))[0] == 200
+    status, _, headers = call(url2, "/v1/say", {"name": "A", "event": "x"}, dict(auth, Origin="https://html.itch.zone"))
     assert status == 200 and headers.get("Access-Control-Allow-Origin") == "https://html.itch.zone"
 
 
@@ -269,8 +270,8 @@ def test_the_player_token_never_reads_secrets_or_other_players(shipped):
     admin = {"Authorization": "Bearer admin-secret"}
     player = {"Authorization": "Bearer player-key"}
     call(url, "/v1/character", {"name": "Mira", "soul": {"summary": "a smith", "secrets": ["she sold the sword"]}}, admin)
-    call(url, "/v1/chat", {"name": "Mira", "message": "I'm Bob, I hid the gold under the bridge", "speaker": "Bob"}, player)
-    call(url, "/v1/chat", {"name": "Mira", "message": "hi", "speaker": "Ana"}, player)
+    call(url, "/v1/chat", {"name": "Mira", "message": "I'm Bob, I hid the gold under the bridge", "speaker": "Bob"}, admin)
+    call(url, "/v1/chat", {"name": "Mira", "message": "hi", "speaker": "Ana"}, player)   # a player token: one speaker
     for soul in (call(url, "/v1/soul", {"name": "Mira", "speaker": "Ana"}, player)[1],
                  call(url, "/v1/soul?name=Mira&speaker=Ana", headers=player)[1]):
         text = json.dumps(soul)

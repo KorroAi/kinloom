@@ -35,11 +35,14 @@ export class Kinloom {
         /** Optional: called with every line said. */
         this.onSaid = null;
         this.chars = new Map();
+        this.declaring = new Map(); // relay: declarations on their way, by name
         this.decisions = new Map();
         this.actions = new Map();
         this.sources = new Map();
         this.downUntil = 0;
         this.failures = 0;
+        this.limitedUntil = new Map(); // relay: verb -> when its rate limit (HTTP 429) lets it ask again
+        this.warned = new Set(); // relay problems already told once
         this.minds = new Map();
         this.units = new Map();
         this.rewards = [];
@@ -48,7 +51,10 @@ export class Kinloom {
         this.gameTools = null;
         const { url = "http://127.0.0.1:7717", session = "default", token = "", timeoutMs = 12000 } = options;
         this.url = url.replace(/\/$/, "");
-        this.session = session;
+        // A shipped game (a relay token) with no session of its own: one id per install, kept in the browser, so players
+        // never share one memory on the server
+        this.session = token && session === "default" && !options.brain && !options.offline && options.provider === undefined
+            ? installSession() : session;
         this.token = token;
         this.timeoutMs = timeoutMs;
         if (options.brain)
@@ -91,7 +97,10 @@ export class Kinloom {
         if (options.maxChars)
             d.max_chars = options.maxChars;
         this.chars.set(name, d);
-        this.fire("character", d);
+        if (this.brain)
+            this.fire("character", d);
+        else
+            this.declaring.set(name, this.post("character", d, 5000));
         return this;
     }
     /** A line in character with the real facts filled in (instant when prepared lines exist). fresh: a line the model
@@ -191,7 +200,8 @@ export class Kinloom {
                 return null;
             }
         }
-        if (Date.now() < this.downUntil)
+        await this.ready(body);
+        if (Date.now() < this.downUntil || Date.now() < (this.limitedUntil.get("chat") || 0))
             return null;
         const headers = { "Content-Type": "application/json", "X-Kinloom-Session": this.session };
         if (this.token)
@@ -201,7 +211,11 @@ export class Kinloom {
         try {
             const res = await fetch(this.url + "/v1/chat", { method: "POST", headers, body: JSON.stringify({ ...body, stream: true }), signal: ctrl.signal });
             this.failures = 0;
-            if (!res.ok || !res.body)
+            if (!res.ok) {
+                this.refusedBy("chat", res);
+                return null;
+            }
+            if (!res.body)
                 return null;
             const reader = res.body.getReader();
             const dec = new TextDecoder();
@@ -218,7 +232,15 @@ export class Kinloom {
                     buf = buf.slice(i + 2);
                     if (!line.startsWith("data: "))
                         continue;
-                    const ev = JSON.parse(line.slice(6));
+                    let ev;
+                    try {
+                        ev = JSON.parse(line.slice(6));
+                    }
+                    catch {
+                        continue;
+                    } // a bad event, not a dead server
+                    if (!isObj(ev))
+                        continue;
                     if (ev.piece)
                         onPiece(String(ev.piece));
                     if (ev.done)
@@ -245,7 +267,7 @@ export class Kinloom {
             this.decisions.set(key, (d = { value: defaultOf(choices), pending: false, at: -1 }));
         const entry = d;
         const now = Date.now();
-        if (!entry.pending && now - entry.at >= 250) {
+        if (!entry.pending && now - entry.at >= this.pollMs(name)) {
             entry.pending = true;
             entry.at = now;
             void this.post("decide", { name, situation, choices }, 2000).then((r) => {
@@ -265,7 +287,7 @@ export class Kinloom {
         const ready = entry.ready;
         entry.ready = [];
         const now = Date.now();
-        if (!entry.pending && now - entry.at >= 250) {
+        if (!entry.pending && now - entry.at >= this.pollMs(name)) {
             entry.pending = true;
             entry.at = now;
             void this.post("act", { name, situation, think }, 2000).then((r) => {
@@ -275,6 +297,14 @@ export class Kinloom {
             });
         }
         return ready;
+    }
+    /** How often decide/act ask: at once in native mode (the brain keeps its own pace); through a relay, a quarter of
+     * the character's `every` (8 s by default: every 2 s), never more than 4 times a second. */
+    pollMs(name) {
+        if (this.brain)
+            return 250;
+        const every = Number((this.chars.get(name) || {}).every);
+        return Math.max(250, (Number.isFinite(every) && every > 0 ? every : 8) * 1000 / 4);
     }
     actionsOf(name) {
         let a = this.actions.get(name);
@@ -464,18 +494,36 @@ export class Kinloom {
         const d = this.chars.get(name);
         if (r.declared === false && d) { // the server restarted: its tools, then the character
             const tools = this.gameTools ? this.post("tools", { tools: this.gameTools }, 5000) : Promise.resolve(null);
-            void tools.then(() => this.fire("character", d));
+            this.declaring.set(name, tools.then(() => this.post("character", d, 5000)));
         }
     }
     // ---------------- HTTP ----------------
     fire(verb, body) { void this.post(verb, body, 5000); }
-    post(verb, body, ms) {
+    async post(verb, body, ms) {
+        if (!this.brain && verb !== "character" && verb !== "tools")
+            await this.ready(body);
         return this.request("POST", verb, body, ms);
+    }
+    /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
+     * without their soul and tools. */
+    async ready(body) {
+        const waits = [];
+        for (const field of ["name", "a", "b"]) {
+            const v = body[field];
+            const w = typeof v === "string" ? this.declaring.get(v) : undefined;
+            if (w)
+                waits.push(w);
+        }
+        if (!waits.length)
+            return;
+        let timer;
+        await Promise.race([Promise.all(waits), new Promise((done) => { timer = setTimeout(done, 5000); })]);
+        clearTimeout(timer);
     }
     async request(method, verb, body, ms, missingOk = false) {
         if (this.brain)
             return this.local(method, verb, body);
-        if (Date.now() < this.downUntil)
+        if (Date.now() < this.downUntil || Date.now() < (this.limitedUntil.get(verb.split("?")[0]) || 0))
             return null;
         const headers = { "Content-Type": "application/json", "X-Kinloom-Session": this.session };
         if (this.token)
@@ -488,7 +536,7 @@ export class Kinloom {
             if (!res.ok) {
                 if (missingOk && res.status === 404)
                     return { missing: true };
-                console.warn(`[kinloom] ${verb}: HTTP ${res.status}`);
+                this.refusedBy(verb.split("?")[0], res);
                 return null;
             }
             return (await res.json());
@@ -501,6 +549,20 @@ export class Kinloom {
         finally {
             clearTimeout(timer);
         }
+    }
+    /** A relay that said no: told once per verb and status; HTTP 429 (this player is over the relay's rate limit) keeps
+     * that verb offline for Retry-After seconds (5 by default), without taking the server for gone. */
+    refusedBy(verb, res) {
+        if (res.status === 429) {
+            const after = Number(res.headers.get("Retry-After"));
+            const wait = Number.isFinite(after) && after > 0 ? Math.min(after, 300) : 5;
+            this.limitedUntil.set(verb, Date.now() + wait * 1000);
+        }
+        const told = verb + " " + res.status;
+        if (this.warned.has(told))
+            return;
+        this.warned.add(told);
+        console.warn(`[kinloom] ${verb}: HTTP ${res.status}` + (res.status === 429 ? " (the relay's rate limit for this player: answered offline for a while)" : ""));
     }
     /** The native brain answers what the relay would (the same JSON, verb by verb). */
     async local(method, verb, body) {
@@ -1266,6 +1328,45 @@ const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 export function cleanText(text) {
     return squash(String(text).replace(ANSI, "").replace(CONTROL, ""));
 }
+export const CUT = "the answer was cut off before its end: write it shorter and complete";
+/** Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or -1. */
+function unclosed(t) {
+    const n = t.length;
+    for (let i = 0; i < n; i++) {
+        const c = t[i];
+        if (c !== "{" && c !== "[")
+            continue;
+        let j = i + 1;
+        while (j < n && " \t\r\n".includes(t[j]))
+            j++;
+        if (j >= n || !(c === "{" ? '"}'.includes(t[j]) : '"{[]-0123456789tfn'.includes(t[j])))
+            continue;
+        let depth = 0, quoted = false, k = i;
+        for (; k < n; k++) {
+            const ch = t[k];
+            if (quoted) {
+                if (ch === "\\")
+                    k++;
+                else if (ch === '"')
+                    quoted = false;
+            }
+            else if (ch === '"')
+                quoted = true;
+            else if (ch === "{" || ch === "[")
+                depth++;
+            else if ((ch === "}" || ch === "]") && --depth === 0)
+                break;
+        }
+        if (k >= n)
+            return i;
+        i = k;
+    }
+    return -1;
+}
+/** True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that. */
+export function cutOff(text) {
+    return typeof text === "string" && findJson(text) === null && unclosed(pyStrip(text)) >= 0;
+}
 /** The first JSON object or array in a model answer, or null. Never throws. */
 export function findJson(text, limit = 100000) {
     if (typeof text !== "string" || !pyStrip(text))
@@ -1284,19 +1385,75 @@ export function findJson(text, limit = 100000) {
         return pyLoads(t);
     }
     catch { /* chatter around it */ }
+    // never an object nested in JSON that stops before its end (an answer cut by the token limit)
+    const stop = unclosed(t);
     for (const open of ["{", "["]) {
         let at = t.indexOf(open), tries = 0;
-        while (at >= 0 && tries < 20) {
+        while (at >= 0 && (stop < 0 || at < stop) && tries < 20) {
             try {
                 return rawDecode(t, at)[0];
             }
-            catch {
-                at = t.indexOf(open, at + 1);
-                tries++;
+            catch { /* below */ }
+            const end = closeAt(t, at);
+            if (end > at) { // it closes but does not parse: a trailing comma? (never its inner object)
+                try {
+                    return pyLoads(noTrailingCommas(t.slice(at, end + 1)));
+                }
+                catch { /* the next one */ }
             }
+            at = t.indexOf(open, at + 1);
+            tries++;
         }
     }
     return null;
+}
+/** Where the bracket opened at `at` closes (brackets in strings skipped), or -1. */
+function closeAt(t, at) {
+    let depth = 0, quoted = false;
+    for (let k = at; k < t.length; k++) {
+        const ch = t[k];
+        if (quoted) {
+            if (ch === "\\")
+                k++;
+            else if (ch === '"')
+                quoted = false;
+        }
+        else if (ch === '"')
+            quoted = true;
+        else if (ch === "{" || ch === "[")
+            depth++;
+        else if ((ch === "}" || ch === "]") && --depth === 0)
+            return k;
+    }
+    return -1;
+}
+/** The text without commas right before } or ] (outside strings): what models often write. */
+function noTrailingCommas(t) {
+    let out = "", quoted = false;
+    const n = t.length;
+    for (let k = 0; k < n; k++) {
+        const ch = t[k];
+        if (quoted) {
+            if (ch === "\\" && k + 1 < n) {
+                out += t.slice(k, k + 2);
+                k++;
+                continue;
+            }
+            if (ch === '"')
+                quoted = false;
+        }
+        else if (ch === '"')
+            quoted = true;
+        else if (ch === ",") {
+            let j = k + 1;
+            while (j < n && " \t\r\n".includes(t[j]))
+                j++;
+            if (j < n && (t[j] === "}" || t[j] === "]"))
+                continue;
+        }
+        out += ch;
+    }
+    return out;
 }
 // ---------------- shapes by example ----------------
 const MAX_DEPTH = 12, MAX_LIST = 50, MAX_TEXT = 200, MAX_INT = 2 ** 31 - 1, MAX_NUMBER = 1e9;
@@ -1452,10 +1609,27 @@ export class Shape {
             const fields = this.info.fields;
             if (!isObj(value))
                 return [false, null, path + " must be an object with " + Object.keys(fields).join(", ")];
+            // a key matched exactly, else case-insensitively (the first key of the answer with that lowercase)
+            const lower = {};
+            for (const key of Object.keys(value))
+                if (!Object.prototype.hasOwnProperty.call(lower, key.toLowerCase()))
+                    lower[key.toLowerCase()] = key;
+            const found = {};
+            for (const name of Object.keys(fields)) {
+                found[name] = Object.prototype.hasOwnProperty.call(value, name) ? name
+                    : Object.prototype.hasOwnProperty.call(lower, name.toLowerCase()) ? lower[name.toLowerCase()] : null;
+            }
+            if (Object.keys(fields).length && Object.values(found).every((x) => x === null)) {
+                const keys = Object.keys(value);
+                const inner = keys.length === 1 ? value[keys[0]] : null;
+                if (isObj(inner))
+                    return this.check(inner, path); // {"item": {...}}: the answer wrapped once
+                return [false, null, path + " must be an object with " + Object.keys(fields).join(", ")];
+            }
             const out = {};
             for (const [name, field] of Object.entries(fields)) {
-                if (Object.prototype.hasOwnProperty.call(value, name)) {
-                    const [ok, v, err] = field.check(value[name], name);
+                if (found[name] !== null) {
+                    const [ok, v, err] = field.check(value[found[name]], name);
                     if (!ok)
                         return [false, null, err];
                     out[name] = v;
@@ -1471,7 +1645,7 @@ export class Shape {
     parse(text) {
         const data = findJson(text);
         if (data === null)
-            return [false, null, "the answer was not JSON"];
+            return [false, null, cutOff(text) ? CUT : "the answer was not JSON"];
         return this.check(data);
     }
     describe(indent = "") {
@@ -2299,7 +2473,7 @@ export const prompts = {
         lines.push(DATA_RULE);
         return lines.join("\n");
     },
-    clip(obj, limit = 1500) {
+    clip(obj, limit = CLIP) {
         const text = pyDumps(obj, false);
         return cpLen(text) <= limit ? text : cpSlice(text, 0, limit) + "...";
     },
@@ -2633,30 +2807,61 @@ const MEM_STOP = new Set(["the", "and", "for", "with", "that", "this", "you", "y
 function memWords(text) {
     return new Set((String(text || "").match(MEM_WORD) || []).map((w) => w.toLowerCase()).filter((w) => !MEM_STOP.has(w)));
 }
+const isNumber = (x) => typeof x === "number" && Number.isFinite(x);
+/** A note recall() can rank: text, time and importance (a file edited by hand or a save from elsewhere). */
+function goodNote(n) {
+    return isObj(n) && typeof n.text === "string" && isNumber(n.t) && isNumber(n.importance);
+}
 export class Memory {
     constructor(store = null, clock = () => Date.now() / 1000) {
         this.notesBy = new Map();
         this.extra = {};
         this.timer = null;
         this.dirty = false;
+        /** What went wrong reading the stored memory, if anything (the brain journals it). */
+        this.problem = "";
         this.store = store;
         this.clock = clock;
-        if (store) {
-            try {
-                const text = store.load();
-                if (text) {
-                    const data = JSON.parse(text);
-                    for (const [session, scopes] of Object.entries((data.sessions || {})))
-                        for (const [scope, notes] of Object.entries(scopes))
-                            this.notesBy.set(session + "\u0000" + scope, (Array.isArray(notes) ? notes : []).filter((n) => isObj(n) && typeof n.text === "string"));
-                    if (isObj(data.extra))
-                        for (const [k, v] of Object.entries(data.extra))
-                            if (isObj(v))
-                                this.extra[k] = v;
-                }
-            }
-            catch { /* a broken memory must not stop the game; it is replaced on the next save */ }
+        if (store)
+            this.read(store);
+    }
+    /** Loads what can be trusted, entry by entry: one bad note never costs the rest. A store that cannot be read at all
+     * is kept aside (memory.json.corrupt-<time> for a file) before anything overwrites it. */
+    read(store) {
+        let text = null;
+        let data = null;
+        try {
+            text = store.load();
+            if (!text)
+                return;
+            data = JSON.parse(text.charCodeAt(0) === 0xfeff ? text.slice(1) : text);
         }
+        catch (e) {
+            data = null;
+            this.problem = "memory file unreadable (" + (e && e.name ? e.name : "Error") + ")";
+        }
+        if (!isObj(data)) {
+            if (!this.problem)
+                this.problem = "memory file is not a JSON object";
+            try {
+                const aside = store.aside ? store.aside() : null;
+                if (aside)
+                    this.problem += "; kept as " + aside;
+            }
+            catch { /* it stays where it is */ }
+            return;
+        }
+        const sessions = data.sessions;
+        for (const [session, scopes] of Object.entries(isObj(sessions) ? sessions : {}))
+            for (const [scope, notes] of Object.entries(isObj(scopes) ? scopes : {})) {
+                const kept = (Array.isArray(notes) ? notes : []).filter(goodNote);
+                if (kept.length)
+                    this.notesBy.set(session + "\u0000" + scope, kept.slice(-MAX_NOTES));
+            }
+        if (isObj(data.extra))
+            for (const [k, v] of Object.entries(data.extra))
+                if (isObj(v))
+                    this.extra[k] = v;
     }
     add(session, scope, text, importance = 0.5, meta = {}) {
         text = cpSlice(squash(String(text)), 0, MAX_NOTE);
@@ -2721,8 +2926,7 @@ export class Memory {
             if (key.slice(0, key.indexOf("\u0000")) === session)
                 this.notesBy.delete(key);
         for (const [scope, items] of Object.entries(notes)) {
-            const kept = (Array.isArray(items) ? items : []).filter((n) => isObj(n) && typeof n.text === "string" &&
-                typeof n.t === "number" && typeof n.importance === "number").map((n) => ({ ...n }));
+            const kept = (Array.isArray(items) ? items : []).filter(goodNote).map((n) => ({ ...n }));
             if (kept.length)
                 this.notesBy.set(session + "\u0000" + scope, kept.slice(-MAX_NOTES));
         }
@@ -2808,8 +3012,24 @@ function storeOf(memory) {
             save: (t) => {
                 if (path)
                     fs.mkdirSync(path.dirname(path.resolve(memory)), { recursive: true });
-                fs.writeFileSync(memory + ".tmp", t);
-                fs.renameSync(memory + ".tmp", memory);
+                // a unique name: two saves never share it; the rename leaves the old file or the new one, never half of one
+                const tmp = memory + "." + (globalThis.process?.pid ?? 0) + "-" + Math.random().toString(36).slice(2) + ".tmp";
+                fs.writeFileSync(tmp, t);
+                try {
+                    fs.renameSync(tmp, memory);
+                }
+                catch (e) {
+                    try {
+                        fs.unlinkSync(tmp);
+                    }
+                    catch { /* gone */ }
+                    throw e;
+                }
+            },
+            aside: () => {
+                const name = memory + ".corrupt-" + Math.floor(Date.now() / 1000);
+                fs.renameSync(memory, name);
+                return path ? path.basename(name) : name;
             },
         };
     }
@@ -2822,6 +3042,25 @@ function storeOf(memory) {
                 return null;
             } }, save: (t) => deno.writeTextFileSync(memory, t) };
     return null;
+}
+/** One session id per install for a shipped game: kept in the browser (localStorage), a fresh one where nothing can
+ * keep it. Never "default", which every player of a relay would share. */
+function installSession() {
+    const fresh = "player-" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+    try {
+        const ls = globalThis.localStorage;
+        if (!ls)
+            return fresh;
+        let id = ls.getItem("kinloom-session");
+        if (!id) {
+            id = fresh;
+            ls.setItem("kinloom-session", id);
+        }
+        return id;
+    }
+    catch {
+        return fresh;
+    }
 }
 /** A Node built-in, synchronously (Node 20.16+, Bun), or null (browsers). */
 function nodeModule(name) {
@@ -4152,7 +4391,16 @@ function pictureOf(value) {
     return { mime, b64: b64encode(data), bytes: data.length };
 }
 // ---------------- the brain: every verb, in this process ----------------
+/** Characters of facts, situation, context or state the model reads (more is cut, and journaled); of create's `what`. */
+const CLIP = 4000, MAX_WHAT = 500;
 const MAX_NAME = 48, MAX_EVENT = 160, MAX_CHARACTERS = 5000, MAX_WAITING = 50, MAX_SPEAKERS = 500;
+const MAX_PER_SESSION = 300; // one session (one player online) never fills the table for everyone else
+const MAX_KEYS = 2000; // entries per cache (decisions, banks, pools...): games that put live data in keys stay bounded
+/** The oldest entries go once a table passes its cap (Maps keep insertion order). */
+function trim(table, cap = MAX_KEYS) {
+    while (table.size > cap)
+        table.delete(table.keys().next().value);
+}
 const BANK_SIZE = 8, POOL_SIZE = 5, MAX_LINE = 140, MAX_REPLY = 400, MAX_TOOLS = 100;
 const DEFAULT_LANGUAGE = "English";
 const MIN_SAMPLES = 12, MIN_EPISODES = 6, GAMMA = 0.8, CREDIT_CUTOFF = GAMMA ** 10, COMPOUND = 0.4, BUFFER = 4000;
@@ -4242,7 +4490,7 @@ export class Character {
             for (const [k, v] of Object.entries(trust))
                 if (finite(v) !== null)
                     this.trustWanted[k] = Math.max(-1.0, Math.min(1.0, v));
-        this.trust = Object.fromEntries(Object.entries(this.trustWanted).filter(([k]) => k in this.tools));
+        this.trust = Object.fromEntries(Object.entries(this.trustWanted).filter(([k]) => Object.prototype.hasOwnProperty.call(this.tools, k)));
         // warmth: the feeling for anyone before any talk; warm_up: the most one conversation can win (however sweet the
         // words); secret_trust: the feeling above which the character may share a secret
         this.warmth = feelSetting(warmth, "warmth", -1.0, 1.0, 0.0);
@@ -4379,6 +4627,7 @@ export class Brain {
         this.spent = [];
         this.calls = [];
         this.characters = new Map();
+        this.perSession = new Map();
         this.declared = new Set();
         this.gameDeclared = new Set();
         this.cfgDeclared = new Map();
@@ -4403,6 +4652,7 @@ export class Brain {
         this.greetings = new Map();
         this.greetingBusy = new Set();
         this.bonds = new Map();
+        this.clips = new Set(); // name + label already journaled as too long
         this.said = new Map();
         this.switches = 0;
         this.rises = new Map();
@@ -4427,7 +4677,7 @@ export class Brain {
             const fs = nodeModule("fs");
             try {
                 if (fs && fs.existsSync(o.config))
-                    cfg = { ...cfg, ...JSON.parse(fs.readFileSync(o.config, "utf8")) };
+                    cfg = { ...cfg, ...JSON.parse(fs.readFileSync(o.config, "utf8").replace(/^\uFEFF/, "")) };
             }
             catch { /* a broken file: defaults */ }
         }
@@ -4443,10 +4693,19 @@ export class Brain {
         this.voiceLanguage = o.language || (cfg.language !== DEFAULT_LANGUAGE ? cfg.language : null);
         this.limit = Math.max(1, Math.trunc(o.callsPerMinute || cfg.calls_per_minute || 30));
         this.prices = o.prices || cfg.prices || null;
+        if (this.prices !== null && !(isObj(this.prices) && Object.entries(this.prices).every(([k, v]) => !["input", "output", "cached_input"].includes(k) || (finite(v) !== null && v >= 0)))) {
+            if (o.prices)
+                throw new Error('prices: {"input": $/M tokens, "output": ..., "cached_input": ...} as numbers, got ' + pyRepr(o.prices));
+            this.log("refused", "kinloom", 'kinloom.json: prices must be {"input": n, "output": n, "cached_input": n} in dollars per million tokens, got ' +
+                pyRepr(this.prices) + " (no cost is counted)");
+            this.prices = null;
+        }
         const words = (Array.isArray(cfg.banned_words) ? cfg.banned_words : []).filter((w) => typeof w === "string" && pyStrip(w));
         this.banned = words.length ? new RegExp("(?<![" + W + "])(" + words.map((w) => pyStrip(w).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|") + ")(?![" + W + "])", "iu") : null;
         this.contentFilter = o.contentFilter || null;
         this.memory = new Memory(storeOf(o.memory === undefined ? null : o.memory), () => this.wall());
+        if (this.memory.problem)
+            this.log("error", "kinloom", this.memory.problem);
         this.callTimeout = o.callTimeout ?? 12.0;
         this.maxCostPerHour = finite(cfg.max_cost_per_hour);
         this.maxCostPerDay = finite(cfg.max_cost_per_day);
@@ -4510,10 +4769,40 @@ export class Brain {
         let c = this.characters.get(key);
         if (!c) {
             c = new Character(n);
-            if (this.characters.size < MAX_CHARACTERS)
-                this.characters.set(key, c);
+            this.store(session, c);
         }
         return c;
+    }
+    /** Keeps a character. A full table first lets go of the oldest one the game never declared (made on the fly from a
+     * name); a session past its share keeps nothing more. false: not stored (a throwaway). */
+    store(session, c) {
+        const key = session + "\u0000" + c.name;
+        if (this.characters.has(key)) {
+            this.characters.set(key, c);
+            return true;
+        }
+        if ((this.perSession.get(session) || 0) >= MAX_PER_SESSION)
+            return false;
+        if (this.characters.size >= MAX_CHARACTERS) {
+            let old = null;
+            for (const k of this.characters.keys())
+                if (!this.declared.has(k)) {
+                    old = k;
+                    break;
+                }
+            if (old === null)
+                return false;
+            this.characters.delete(old);
+            const s = old.slice(0, old.indexOf("\u0000"));
+            const left = (this.perSession.get(s) || 1) - 1;
+            if (left > 0)
+                this.perSession.set(s, left);
+            else
+                this.perSession.delete(s);
+        }
+        this.characters.set(key, c);
+        this.perSession.set(session, (this.perSession.get(session) || 0) + 1);
+        return true;
     }
     log(kind, name, text, detail = {}) {
         const entry = { time: Date.now() / 1000, kind, name, text, ...detail };
@@ -4557,12 +4846,24 @@ export class Brain {
         system = this.rated(system);
         const work = provider.complete(system, user, { json, maxTokens, timeout: limit, onText, images: images && images.length ? images : null })
             .catch((e) => modelReply(false, "", (e && e.name ? e.name : "Error") + ": " + (e && e.message ? e.message : e)));
-        let timer;
+        let timer, answered = false, gaveUp = false;
+        void work.then((r) => { answered = true; if (gaveUp)
+            this.late(r); });
         const late = new Promise((r) => { timer = setTimeout(() => r(modelReply(false, "", "timed out after " + pyFixed(limit, 1) + " s")), (limit + 0.25) * 1000); });
         const r = await Promise.race([work, late]);
         clearTimeout(timer);
+        if (!answered)
+            gaveUp = true;
         this.account(kind, name, r);
         return r;
+    }
+    /** A call given up on that answered later: its tokens were billed all the same, so they count (and the caps). */
+    late(r) {
+        const s = this.statsOf;
+        s.input_tokens += r.input;
+        s.cached_tokens += r.cached;
+        s.output_tokens += r.output;
+        this.spent.push([nowSec(), this.price(r)]);
     }
     /** The model of a task: conversations and what players wait for use "chat", the rest "background". */
     providerFor(kind) {
@@ -4730,11 +5031,10 @@ export class Brain {
     character(session, name, spec = {}, fromConfig = false) {
         const c = new Character(name, spec.personality ?? "", spec.lines ?? null, spec.offline ?? null, spec.events ?? null, spec.tools ?? null, spec.max_words ?? null, spec.every ?? 8.0, spec.language ?? null, spec.group ?? null, spec.trust ?? null, spec.invent !== false, spec.voice ?? null, spec.max_chars ?? null, spec.warmth ?? null, spec.secret_trust ?? null, spec.warm_up ?? null);
         const key = session + "\u0000" + c.name;
-        if (!this.characters.has(key) && this.characters.size >= MAX_CHARACTERS) {
-            this.log("refused", c.name, "too many characters (" + MAX_CHARACTERS + "): not stored");
+        if (!this.store(session, c)) {
+            this.log("refused", c.name, "too many characters (" + MAX_CHARACTERS + " in all, " + MAX_PER_SESSION + " per session): not stored");
             return c;
         }
-        this.characters.set(key, c);
         this.declared.add(key);
         if (!fromConfig)
             this.gameDeclared.add(key);
@@ -4763,7 +5063,7 @@ export class Brain {
                 missing.push(n);
         }
         c.tools = tools;
-        c.trust = Object.fromEntries(Object.entries(c.trustWanted).filter(([k]) => k in tools));
+        c.trust = Object.fromEntries(Object.entries(c.trustWanted).filter(([k]) => Object.prototype.hasOwnProperty.call(tools, k)));
         if (missing.length && tell)
             this.log("refused", c.name, "tools: " + missing.join(", ") + ' not declared by the game (kl.tools({...}) or "tools" in kinloom.json)');
     }
@@ -4923,9 +5223,11 @@ export class Brain {
                     if (!isObj(row))
                         continue;
                     const out = {};
+                    // Each value checked: a hand-edited file or a loaded save never breaks chat() later
                     for (const [b, v] of Object.entries(row))
                         if (isObj(v) && finite(v.last) !== null)
-                            out[b] = { talks: Math.trunc(Number(v.talks ?? 1)), first: Number(v.first ?? 0), last: Number(v.last ?? 0) };
+                            out[b] = { talks: Math.max(1, Math.trunc(Math.min(1e9, finite(v.talks) || 1))), first: finite(v.first) || finite(v.last),
+                                last: finite(v.last) };
                     table[a] = out;
                 }
             }
@@ -4955,6 +5257,7 @@ export class Brain {
                 }
                 change = Math.max(0.0, Math.min(change, c.warm_up - gained));
                 this.rises.set(rkey, [start, gained + change, now]);
+                trim(this.rises);
                 if (change < i.feel)
                     this.log("refused", c.name, "feel: " + speaker + " already won " + pyFixed(c.warm_up, 1, "+") + " this conversation");
             }
@@ -5024,6 +5327,7 @@ export class Brain {
     async say(session, name, event, facts0 = null, fresh = false, maxChars = null) {
         const c = this.char(session, name);
         const facts = mapping(facts0, "facts");
+        this.clipNote(c.name, "facts", facts);
         const ev = eventKey(event);
         const limit = boxLimit(maxChars) || c.max_chars;
         const fitting = (templates) => limit ? templates.filter((t) => cpLen(fillLine(t, facts)) <= limit) : templates;
@@ -5031,8 +5335,9 @@ export class Brain {
             const r = await this.call("line", c.name, prompts.lineSystem(c, c.moment(ev), Object.keys(facts).sort(), this.lang(c), limit), this.context(session, c.name, ev) + prompts.factsBlock(facts), false, true, 120);
             if (r.ok) {
                 const t = findJson(r.text);
-                const line = isObj(t) ? t.line : r.text;
-                const [ok, template] = this.validLine(pyStr(line), new Set(Object.keys(facts)), c);
+                // Only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+                const line = isObj(t) ? t.line : t !== null ? null : r.text;
+                const [ok, template] = typeof line === "string" ? this.validLine(line, new Set(Object.keys(facts)), c) : [false, null];
                 if (ok) {
                     const said = fitChars(fillLine(template, facts), limit);
                     this.log("say", c.name, said, { event: ev, source: "fresh" });
@@ -5043,8 +5348,10 @@ export class Brain {
         const key = session + "\u0000" + c.name + "\u0000" + ev;
         const names = new Set(Object.keys(facts));
         let bank = this.banks.get(key);
-        if (!bank)
+        if (!bank) {
             this.banks.set(key, (bank = { templates: [], unused: [], recent: [], filling: false, failures: 0 }));
+            trim(this.banks);
+        }
         const usable = bank.unused.filter((t) => placeholders(t).every((p) => names.has(p)));
         const known = bank.templates.filter((t) => placeholders(t).every((p) => names.has(p)));
         let template = null;
@@ -5154,8 +5461,10 @@ export class Brain {
         if (this.provider === null)
             return;
         let bank = this.banks.get(key);
-        if (!bank)
+        if (!bank) {
             this.banks.set(key, (bank = { templates: [], unused: [], recent: [], filling: false, failures: 0 }));
+            trim(this.banks);
+        }
         if (bank.filling || bank.failures >= 3)
             return;
         bank.filling = true;
@@ -5190,11 +5499,14 @@ export class Brain {
         const shape = Shape.of(isObj(choices) ? choices : { choice: choices });
         const key = session + "\u0000" + c.name + "\u0000" + shape.signature();
         const situation = isObj(situation0) ? situation0 : { situation: situation0 };
+        this.clipNote(c.name, "situation", situation);
         const ev = every === null || every === undefined ? c.every : Math.max(0.2, argNum(every, "every"));
         const now = this.clock();
         let d = this.decisions.get(key);
-        if (!d)
+        if (!d) {
             this.decisions.set(key, (d = { value: shape.default(), at: null, situation: null, thinking: false }));
+            trim(this.decisions);
+        }
         const due = !d.thinking && (d.at === null || now - d.at >= ev || (now - d.at >= ev / 4 && changedSituation(d.situation, situation)));
         if (due) {
             d.thinking = true;
@@ -5237,6 +5549,8 @@ export class Brain {
         if (ok)
             return value;
         this.log("repair", name, kind + ": " + error);
+        if (error === CUT)
+            maxTokens = Math.min(4000, maxTokens * 2); // stopped by the token limit: room to finish
         r = await this.call(kind, name, system, user + prompts.repair(error), true, foreground, maxTokens, null, timeout, images);
         if (!r.ok)
             return null;
@@ -5343,6 +5657,7 @@ export class Brain {
             return [];
         const key = session + "\u0000" + c.name;
         const situation = isObj(situation0) ? situation0 : situation0 !== null && situation0 !== undefined ? { situation: situation0 } : {};
+        this.clipNote(c.name, "situation", situation);
         const now = this.clock();
         let entry = this.pending.get(key);
         if (!entry)
@@ -5386,7 +5701,7 @@ export class Brain {
             if (!isObj(item))
                 continue;
             const tool = item.tool || item.name;
-            if (typeof tool !== "string" || !(tool in c.tools)) {
+            if (typeof tool !== "string" || !Object.prototype.hasOwnProperty.call(c.tools, tool)) {
                 this.log("refused", c.name, "unknown tool " + pyRepr(tool ?? null));
                 continue;
             }
@@ -5680,7 +5995,10 @@ export class Brain {
         if (count && Array.isArray(example) && example.length === 1)
             example = example[0];
         const shape = Shape.of(example);
-        const what = cpSlice(cleanText(pyStr(what0)), 0, 200);
+        let what = cleanText(pyStr(what0));
+        this.clipNote(cpSlice(what, 0, MAX_WHAT), "what", what, MAX_WHAT, true);
+        this.clipNote(cpSlice(what, 0, MAX_WHAT), "context", context);
+        what = cpSlice(what, 0, MAX_WHAT);
         const pictures = image !== null && image !== undefined ? this.pictures(what, image) : [];
         if (instant) {
             if (pictures.length)
@@ -5696,7 +6014,7 @@ export class Brain {
             return shape.default();
         const system = prompts.createSystem(what, shape, this.written());
         const user = this.context(session, null, what) + prompts.contextBlock(context) + prompts.pictureBlock(pictures.length);
-        const value = await this.structured("create", what, system, user, shape, true, 800, timeout, pictures);
+        const value = await this.structured("create", what, system, user, shape, true, 1500, timeout, pictures);
         if (value === null) {
             this.statsOf.offline_answers++;
             return shape.default();
@@ -5728,8 +6046,10 @@ export class Brain {
     fromPool(session, what, shape, context) {
         const key = session + "\u0000" + what + "\u0000" + shape.signature();
         let pool = this.pools.get(key);
-        if (!pool)
+        if (!pool) {
             this.pools.set(key, (pool = { items: [], filling: false, failures: 0 }));
+            trim(this.pools);
+        }
         const item = pool.items.length ? pool.items.shift() : undefined;
         const low = pool.items.length < 2 && !pool.filling && pool.failures < 3 && this.provider !== null;
         const p = pool;
@@ -5751,11 +6071,13 @@ export class Brain {
     // ---------------- chat ----------------
     async chat(session, name, message0, facts0 = null, speaker0 = "player", stream = null, timeout = null, maxChars = null, image = null) {
         const c = this.char(session, name);
+        const began = nowSec();
         const pictures = image !== null && image !== undefined ? this.pictures(c.name, image) : [];
         const limit = boxLimit(maxChars) || c.max_chars;
         const message = cpSlice(cleanText(message0 || ""), 0, 1000);
         const speaker = nameOf(speaker0) || "player";
         const facts = mapping(facts0, "facts");
+        this.clipNote(c.name, "facts", facts);
         const hkey = session + "\u0000" + c.name + "\u0000" + speaker;
         const now = this.wall();
         const table = this.bondTable(session);
@@ -5810,7 +6132,8 @@ export class Brain {
                     show = (piece) => {
                         const shown = cut.feed(echo.feed(unstager.feed(guard.feed(splitter.feed(piece)))));
                         if (shown && !gate.shut) {
-                            if (hidden.length && leaks(gate.shown + shown, hidden, pub, 0.5, message)) {
+                            // Nothing reaches the player before the checks the final reply gets: secrets, content filter
+                            if ((hidden.length && leaks(gate.shown + shown, hidden, pub, 0.5, message)) || !this.allowed(gate.shown + shown)) {
                                 gate.shut = true;
                                 return;
                             }
@@ -5824,7 +6147,7 @@ export class Brain {
                 if (splitter && guard && echo && stream) {
                     let tail = cut.feed(echo.feed(unstager.feed(guard.feed(splitter.finish()[2]) + guard.finish()) + unstager.finish()) + echo.finish());
                     tail += cut.finish();
-                    if (hidden.length && leaks(gate.shown + tail, hidden, pub, 0.5, message))
+                    if ((hidden.length && leaks(gate.shown + tail, hidden, pub, 0.5, message)) || (tail && !this.allowed(gate.shown + tail)))
                         tail = "";
                     if (tail && r.ok && !r.cut && !gate.shut) {
                         streamed = true;
@@ -5895,7 +6218,9 @@ export class Brain {
         let decided = [];
         if (reply !== null && stored) {
             if (Object.keys(c.tools).length && source === "model" && !innerOfReply(inner).do.length) {
-                const found = await this.deeds(c, speaker, message, reply);
+                // what the reply agreed to, within what is left of the reply's time (a player is waiting)
+                const left = (timeout || this.replyDeadline()) - (nowSec() - began);
+                const found = await this.deeds(c, speaker, message, reply, Math.max(1.5, left));
                 if (found.length)
                     inner = { ...(inner || {}), do: found };
             }
@@ -5948,12 +6273,15 @@ export class Brain {
         this.log("chat", c.name, reply, { message, speaker, ...(inner === null ? { offline: true } : {}) });
         return { text: reply, source, actions: decided };
     }
-    async deeds(c, speaker, message, reply) {
+    /** budget: seconds for everything here (the asking again included). */
+    async deeds(c, speaker, message, reply, budget = 10.0) {
         const system = prompts.deedsSystem(c), user = prompts.deedsUser(c.name, speaker, message, reply);
-        let r = await this.call("deeds", c.name, system, user, true, true, 150, null, Math.min(this.callTimeout, 5.0));
-        if (!r.ok) { // a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+        const start = nowSec();
+        let r = await this.call("deeds", c.name, system, user, true, true, 150, null, Math.min(this.callTimeout, 5.0, budget));
+        const left = budget - (nowSec() - start);
+        if (!r.ok && left >= 1.0) { // a slow or failed call: what was agreed must not be lost, ask once more if time is left
             this.log("repair", c.name, "deeds: " + (r.error || "failed") + "; asked again");
-            r = await this.call("deeds", c.name, system, user, true, true, 150, null, Math.min(this.callTimeout, 5.0));
+            r = await this.call("deeds", c.name, system, user, true, true, 150, null, Math.min(this.callTimeout, 5.0, left));
         }
         const data = r.ok ? findJson(r.text) : null;
         const found = isObj(data) ? data.do : null;
@@ -6068,6 +6396,7 @@ export class Brain {
     async suggest(session, name, examples, speaker0 = "player", facts0 = null) {
         const c = this.char(session, name);
         const facts = mapping(facts0, "facts");
+        this.clipNote(c.name, "facts", facts);
         if (typeof examples === "string" || !Array.isArray(examples))
             throw new Error('examples: a list of short replies the player could say, like ["Ask about her past", "Leave"]');
         const given = examples.slice(0, MAX_SUGGESTIONS).filter((x) => x !== null && x !== undefined && cleanText(pyStr(x)))
@@ -6366,7 +6695,25 @@ export class Brain {
     remember(session, name, note, importance = 0.6) {
         this.memory.add(session, pyStr(name), pyStr(note), typeof importance === "number" ? importance : 0.6);
     }
-    setState(session, state) { this.stateOf.set(session, mapping(state, "state")); }
+    setState(session, state) {
+        const s = mapping(state, "state");
+        this.clipNote("state", "state", s);
+        this.stateOf.set(session, s);
+    }
+    /** Journals, once per name and label, that the model reads only the start of something too long. */
+    clipNote(name, label, value, limit = CLIP, text = false) {
+        if (value === null || value === undefined || value === "" || value === false || value === 0 ||
+            (Array.isArray(value) && !value.length) || (isObj(value) && !Object.keys(value).length))
+            return;
+        const size = text ? cpLen(String(value)) : cpLen(pyDumps(value, false));
+        if (size <= limit)
+            return;
+        const key = name + "\u0000" + label;
+        if (this.clips.has(key))
+            return;
+        this.clips.add(key);
+        this.log("clipped", name, label + ": " + size + " characters, the model reads the first " + limit);
+    }
     characterList(session) { return [...this.characters].filter(([k]) => k.startsWith(session + "\u0000")).map(([, c]) => c); }
     isDeclared(session, name) {
         const n = cpSlice(cleanText(pyStr(name)), 0, MAX_NAME) || "?";
@@ -6666,6 +7013,10 @@ export function vector(fn, args) {
             return e.message;
         }
         case "find_json": return findJson(args[0]);
+        case "parse": {
+            const [ok, value, error] = Shape.of(args[0]).parse(args[1]);
+            return { ok, value, error };
+        }
         case "clean_text": return cleanText(args[0]);
         case "fill": return fillLine(args[0], args[1]);
         case "event_key": return eventKey(args[0]);

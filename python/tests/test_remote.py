@@ -10,9 +10,9 @@ from kinloom.talk import Talk
 from test_brain import model
 
 
-def online(provider, player_token="play-123"):
+def online(provider, player_token="play-123", **kw):
     brain = Brain(provider=provider, memory_path=None)
-    srv = make_server(brain, host="127.0.0.1", port=0, token="admin-456", public=True, player_token=player_token)
+    srv = make_server(brain, host="127.0.0.1", port=0, token="admin-456", public=True, player_token=player_token, **kw)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return brain, srv, "http://127.0.0.1:%d" % srv.server_address[1]
 

@@ -107,7 +107,8 @@ type Reply = Record<string, any>;
 export interface KinloomOptions {
     /** A relay: `kinloom serve` (or any server speaking /v1). Default http://127.0.0.1:7717 when no provider is given. */
     url?: string;
-    /** One per player, match or save. */
+    /** One per player, match or save. With a relay token and no session given, one id per install (kept in
+     * localStorage in a browser) instead of "default", which every player would share. */
     session?: string;
     /** The relay's player token (kinloom serve --token / --player-token). */
     token?: string;
@@ -151,11 +152,14 @@ export declare class Kinloom {
     /** Optional: called with every line said. */
     onSaid: ((character: string, text: string) => void) | null;
     private chars;
+    private declaring;
     private decisions;
     private actions;
     private sources;
     private downUntil;
     private failures;
+    private limitedUntil;
+    private warned;
     private minds;
     private units;
     private rewards;
@@ -225,6 +229,9 @@ export declare class Kinloom {
     /** Instant: tool calls chosen since the last call (on their own, or while talking), as [{tool, args}].
      * think false: only what they decided while talking (no model call of their own). */
     act(name: string, situation?: Facts, think?: boolean): Action[];
+    /** How often decide/act ask: at once in native mode (the brain keeps its own pace); through a relay, a quarter of
+     * the character's `every` (8 s by default: every 2 s), never more than 4 times a second. */
+    private pollMs;
     private actionsOf;
     /** Content shaped like the example (which is also the offline answer). count > 0 gives a list; instant: from a ready
      * pool; image: a picture the model looks at (a Blob, a data: URL, an ArrayBuffer, base64). */
@@ -282,7 +289,13 @@ export declare class Kinloom {
     private redeclare;
     private fire;
     private post;
+    /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
+     * without their soul and tools. */
+    private ready;
     private request;
+    /** A relay that said no: told once per verb and status; HTTP 429 (this player is over the relay's rate limit) keeps
+     * that verb offline for Retry-After seconds (5 by default), without taking the server for gone. */
+    private refusedBy;
     /** The native brain answers what the relay would (the same JSON, verb by verb). */
     private local;
 }
@@ -325,6 +338,9 @@ export declare function pyDumps(v: unknown, ascii?: boolean, sort?: boolean): st
 export declare function sha1(text: string): string;
 /** One tidy line: control characters (terminal escapes, NUL...) removed, whitespace collapsed. */
 export declare function cleanText(text: unknown): string;
+export declare const CUT = "the answer was cut off before its end: write it shorter and complete";
+/** True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that. */
+export declare function cutOff(text: unknown): boolean;
 /** The first JSON object or array in a model answer, or null. Never throws. */
 export declare function findJson(text: unknown, limit?: number): any;
 export declare class Shape {
@@ -506,9 +522,11 @@ export declare const prompts: {
     converseUser(a: string, ctxA: string, b: string, ctxB: string, about: string): string;
 };
 /** Where memory is kept between runs: a file (Node, Deno, Bun), localStorage (browsers), or your own. */
+/** Where memory lives. aside(): moves an unreadable copy out of the way and says where (optional). */
 export interface MemoryStore {
     load(): string | null;
     save(text: string): void;
+    aside?(): string | null;
 }
 export type Note = {
     t: number;
@@ -523,7 +541,12 @@ export declare class Memory {
     private extra;
     private timer;
     private dirty;
+    /** What went wrong reading the stored memory, if anything (the brain journals it). */
+    problem: string;
     constructor(store?: MemoryStore | null, clock?: () => number);
+    /** Loads what can be trusted, entry by entry: one bad note never costs the rest. A store that cannot be read at all
+     * is kept aside (memory.json.corrupt-<time> for a file) before anything overwrites it. */
+    private read;
     add(session: string, scope: string, text: string, importance?: number, meta?: Record<string, any>): void;
     notes(session: string, scope: string): Note[];
     annotate(session: string, scope: string, eid: string, meta: Record<string, any>): void;
@@ -813,6 +836,7 @@ export declare class Brain {
     private spent;
     private calls;
     private characters;
+    private perSession;
     private declared;
     private gameDeclared;
     private cfgDeclared;
@@ -837,6 +861,7 @@ export declare class Brain {
     private greetings;
     private greetingBusy;
     private bonds;
+    private clips;
     private said;
     private switches;
     private rises;
@@ -858,9 +883,14 @@ export declare class Brain {
     constructor(o?: BrainOptions);
     private fromConfig;
     private char;
+    /** Keeps a character. A full table first lets go of the oldest one the game never declared (made on the fly from a
+     * name); a session past its share keeps nothing more. false: not stored (a throwaway). */
+    private store;
     log(kind: string, name: string, text: string, detail?: Record<string, any>): void;
     private allow;
     private call;
+    /** A call given up on that answered later: its tokens were billed all the same, so they count (and the caps). */
+    private late;
     /** The model of a task: conversations and what players wait for use "chat", the rest "background". */
     private providerFor;
     private rated;
@@ -929,6 +959,7 @@ export declare class Brain {
     private createMany;
     private fromPool;
     chat(session: string, name: unknown, message0: unknown, facts0?: unknown, speaker0?: unknown, stream?: ((piece: string) => void) | null, timeout?: number | null, maxChars?: unknown, image?: unknown): Promise<Said>;
+    /** budget: seconds for everything here (the asking again included). */
     private deeds;
     private nextOffline;
     /** The spoken reply, cleaned; "" when unusable (why gets "filter" or "character"). */
@@ -959,6 +990,8 @@ export declare class Brain {
     spread(session: string, group?: unknown, rounds?: unknown): Record<string, any>[];
     remember(session: string, name: unknown, note: unknown, importance?: unknown): void;
     setState(session: string, state: unknown): void;
+    /** Journals, once per name and label, that the model reads only the start of something too long. */
+    clipNote(name: string, label: string, value: unknown, limit?: number, text?: boolean): void;
     characterList(session: string): Character[];
     isDeclared(session: string, name: unknown): boolean;
     stats(): Record<string, any>;

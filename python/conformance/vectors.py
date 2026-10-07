@@ -53,6 +53,10 @@ SHAPES = [
     ({"strategy": ["attack", "block"], "aggression": [0, 1], "nested": {"ok": True, "tags": ["a"]}},
      [{"strategy": "block", "aggression": 0.9, "nested": {"ok": "no", "tags": ["b", "c"]}}, {}]),
     ("a long example text " * 12, ["short", "y" * 500]),
+    # an answer with none of the fields is not one; keys in another case and one wrapper are read
+    ({"name": "Sword", "power": [1, 10]}, [{"Name": "Frost", "POWER": 8}, {"item": {"name": "Frost", "power": 8}},
+                                           {"title": "x"}, {"item": {"title": "x"}}, {"name": "a", "Name": "b"},
+                                           {"item": {"name": "x"}, "other": 1}]),
 ]
 for example, values in SHAPES:
     shape = Shape.of(example)
@@ -71,8 +75,22 @@ for bad in ([], {}, [[[[[[[[[[[[[[["deep"]]]]]]]]]]]]]]]):
 
 for text in ['{"a": 1}', 'Sure! ```json\n{"lines": ["x"]}\n``` hope it helps', 'noise {"a": {"b": [1, 2]}} trailing } {',
              '[1, 2, 3] and more', "not json at all", "", '{"broken": ', 'x {"a": 1} {"b": 2}', '```\n[{"k": "v"}]\n```',
-             '{"text": "a } inside"} after']:
+             '{"text": "a } inside"} after',
+             # an answer cut by the token limit: never its first inner object
+             '{"say": "ok", "actions": [{"op": "build", "parts": ["pier"]}, {"op": "bu',
+             '```json\n[{"a": 1}, {"a": 2','{"a": "} no end", "b": [1, 2', 'Smile :-[ here {"a": 1}',
+             '{bad} then {"ok": true}', '[ "x", {"a": 1}', 'chat [not json] {"a": [1, {"b": 2}]}', '{ "k" : {"a": 1} ',
+             # trailing commas, as models write them: the whole answer, never its inner object
+             '{"name": "Frost", "stats": {"atk": 7},}', 'Here: {"a": [1, 2,], "b": "x,}"} done', '[1, 2, 3,]',
+             '{"a": "q\\"", "b": [1 , ] , }', '{"a": 1,,}']:
     add("find_json", [text], find_json(text))
+
+for example, text in [({"say": "Done.", "actions": [{"op": "build"}]}, '{"say": "ok", "actions": [{"op": "build"}, {"op": "bu'),
+                      ({"say": "Done.", "actions": [{"op": "build"}]}, 'Here: {"say": "ok", "actions": []}'),
+                      ({"name": "Glowcap"}, "no json here"), ({"name": "Glowcap"}, '```json\n{"name": "Mossb'),
+                      (["a", "b"], '"b"'), ([{"n": 1}], '[{"n": 2}, {"n": 3')]:
+    ok, value, error = Shape.of(example).parse(text)
+    add("parse", [example, text], {"ok": ok, "value": value, "error": error})
 
 for text in ["  hello   world ", "tab\tnew\nline", "\x00bell\x07", "\x1b[1mbold\x1b[0m", "bidi‮ok⁦", "é à ü 漢字"]:
     add("clean_text", [text], clean_text(text))
@@ -288,7 +306,7 @@ add("prompt", ["create_many_system", None, ["villagers", {"name": "Ana", "hp": [
 add("prompt", ["context", None, [["Ana likes ships", "the king died"], {"lap": 3, "weather": "rain"}, {"Ana": 0.7, "Bo": -0.3, "Cy": 0.05}]],
     prompts.context(["Ana likes ships", "the king died"], {"lap": 3, "weather": "rain"}, {"Ana": 0.7, "Bo": -0.3, "Cy": 0.05}))
 add("prompt", ["context", None, [[], None, None]], prompts.context([], None, None))
-add("prompt", ["context", None, [[], {"big": "x" * 2000}, None]], prompts.context([], {"big": "x" * 2000}, None))
+add("prompt", ["context", None, [[], {"big": "x" * 5000}, None]], prompts.context([], {"big": "x" * 5000}, None))
 add("prompt", ["facts_block", None, [{"who": "BLAZE", "gap": 0.4, "list": [1, "é"]}]], prompts.facts_block({"who": "BLAZE", "gap": 0.4, "list": [1, "é"]}))
 add("prompt", ["situation_block", None, [{"lap": 1, "nested": {"a": [True, None]}}]], prompts.situation_block({"lap": 1, "nested": {"a": [True, None]}}))
 add("prompt", ["context_block", None, [None]], prompts.context_block(None))

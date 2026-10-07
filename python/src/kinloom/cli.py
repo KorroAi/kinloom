@@ -88,6 +88,9 @@ def cmd_serve(args):
     if args.public and not token:
         print("error: --public needs --token (or KINLOOM_SERVER_TOKEN) so only your game can use your key", file=sys.stderr)
         return 2
+    trust_proxy = args.trust_proxy or os.environ.get("KINLOOM_TRUST_PROXY", "").lower() in ("1", "true", "yes")
+    player_can = [v.strip() for item in (args.player_can or []) + [os.environ.get("KINLOOM_PLAYER_CAN", "")]
+                  for v in item.split(",") if v.strip()] or None        # None: everything in the player's session
     if args.max_cost_per_hour is not None:
         brain.max_cost_per_hour = args.max_cost_per_hour
     if args.max_cost_per_day is not None:
@@ -97,7 +100,12 @@ def cmd_serve(args):
               "\"source\": ...}); without them the caps cannot be enforced", file=sys.stderr)
     try:
         server = make_server(brain, host, port, token, args.public, args.allow_origin, player_token,
-                             args.rate_per_session, args.rate_per_ip)
+                             args.rate_per_session, args.rate_per_ip, trust_proxy, player_can,
+                             max_connections=args.max_connections)
+    except ValueError as e:
+        brain.close()
+        print("error: %s" % e, file=sys.stderr)
+        return 2
     except OSError as e:
         if getattr(args, "open", False) and _is_kinloom(port):
             brain.close()
@@ -112,6 +120,11 @@ def cmd_serve(args):
     if brain.memory.path:
         print("memory: " + os.path.abspath(brain.memory.path))
     print("Ctrl+C to stop\n")
+    declare = getattr(args, "declare", None)
+    if declare:                                  # kinloom talk NAME "who they are" --web
+        name, soul, language, voice = declare
+        brain.character("talk", name, soul=soul or True, language=language or None, voice=voice or None,
+                        offline="(no model: %s stays silent. Set a key for real conversations.)" % name)
     if getattr(args, "open", False):
         page = "http://localhost:%d/talk%s" % (port, ("#token=" + token) if token else "")
         print("talk to your characters: " + page)
@@ -247,7 +260,7 @@ def cmd_run(args):
 def _read_run_log(path):
     entries = []
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:
             for line in f:
                 try:
                     entries.append(json.loads(line))
@@ -272,8 +285,19 @@ def _add_stats(stats, entries):
     return out
 
 
+def _port(folder, given=None):
+    """The port given, else kinloom.json's, else 7717 (as `kinloom serve` and `kinloom run` choose it)."""
+    if given:
+        return given
+    from . import config
+    try:
+        return config.load(folder or ".").get("port") or 7717
+    except config.ConfigError:
+        return 7717
+
+
 def cmd_log(args):
-    port = args.port or 7717
+    port = _port(args.dir, args.port)
     try:
         entries = _server_get(port, "/v1/journal?n=%d" % max(1, min(500, args.n))).get("entries", [])
     except Exception:
@@ -596,8 +620,14 @@ def cmd_demo(args):
 
 def cmd_think(args):
     from . import minds
-    with open(args.mind, encoding="utf-8") as f:
+    with open(args.mind, encoding="utf-8-sig") as f:
         spec = json.load(f)
+    missing = [k for k in ("senses", "actions") if not isinstance(spec, dict) or not isinstance(spec.get(k), dict)]
+    if missing:
+        print('error: %s needs %s, e.g. {"senses": {"hp": [0, 1]}, "actions": {"charge": {}, "retreat": {}}, '
+              '"rules": {"retreat": ["hp low"]}}' % (args.mind, " and ".join('"%s" (an object)' % k for k in missing)),
+              file=sys.stderr)
+        return 2
     decl = minds.Declaration(spec.get("name", "mind"), spec.get("personality", ""), spec["senses"], spec["actions"],
                              spec.get("rules"), 1)
     for e in decl.rule_errors:
@@ -611,19 +641,46 @@ def cmd_think(args):
     return 1 if decl.rule_errors else 0
 
 
-def main(argv=None):
+def _talk_web(a):
+    """kinloom talk NAME "who they are" --web: the server with the Talk page, NAME already there."""
+    args = ["serve", "--open", "--dir", a.dir] + (["--memory", a.memory] if a.memory else [])
+    ns = main_parser().parse_args(args)
+    ns.declare = (a.name, a.soul, a.language or "", a.voice or "")
+    return cmd_serve(ns)
+
+
+def _safe_output():
+    """Output never crashes on a character the console cannot show (Windows: cp1252). Piped output (coding agents,
+    logs) is UTF-8; a console keeps its encoding and replaces what it cannot show."""
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            tty = stream.isatty()
+        except (OSError, ValueError):
+            tty = False
+        try:
+            reconfigure(errors="replace") if tty else reconfigure(encoding="utf-8", errors="replace", line_buffering=True)
+        except (OSError, ValueError):
+            pass
+
+
+def main_parser():
+    """The `kinloom` command line."""
     ap = argparse.ArgumentParser(prog="kinloom", description="Deep AI in any game, any engine, any model, in minutes.")
     ap.add_argument("--version", action="version", version="kinloom " + __version__)
     sub = ap.add_subparsers(dest="cmd")
 
     s = sub.add_parser("serve", help="the local server every engine talks to, with a live dashboard")
     s.add_argument("--port", type=int)
-    s.add_argument("--host", default="127.0.0.1")
+    s.add_argument("--host", default="127.0.0.1", help="the address to listen on; beyond this machine it needs --token")
     s.add_argument("--public", action="store_true", help="listen on all interfaces (online server; needs --token)")
     s.add_argument("--token", help="secret the game must send (Authorization: Bearer <token>)")
     s.add_argument("--memory", help="memory file (default .kinloom/memory.json)")
     s.add_argument("--allow-origin", action="append", default=[], metavar="ORIGIN",
-                   help="also accept web pages from this origin, e.g. https://html.itch.zone or null (file:// pages)")
+                   help="also accept web pages from this origin, e.g. https://html.itch.zone, or null (file:// pages; "
+                        "needs --token: any website can send origin null)")
     s.add_argument("--dir", default=".")
     s.add_argument("--quiet", action="store_true")
     s.set_defaults(fn=cmd_serve)
@@ -631,15 +688,22 @@ def main(argv=None):
     s.add_argument("--open", action="store_true", help="open the Talk page in the browser")
     s.add_argument("--player-token", help="the secret a shipped game carries: plays, cannot read the journal "
                                           "(or KINLOOM_PLAYER_TOKEN)")
-    s.add_argument("--rate-per-session", type=int, default=30, help="model-backed requests a minute per player "
-                                                                     "(player token only; default 30)")
-    s.add_argument("--rate-per-ip", type=int, default=60, help="model-backed requests a minute per address "
-                                                                "(player token only; default 60)")
+    s.add_argument("--rate-per-session", type=int, default=30, help="requests that start model work, a minute per "
+                   "player session (player token only; default 30; polling decide/act has 20 times more)")
+    s.add_argument("--rate-per-ip", type=int, default=60, help="the same per address (player token only; default 60)")
+    s.add_argument("--trust-proxy", action="store_true", help="behind a proxy (Railway, Fly.io...): the player's address "
+                   "is read from Fly-Client-IP or X-Forwarded-For (or KINLOOM_TRUST_PROXY=1)")
+    s.add_argument("--player-can", action="append", default=[], metavar="WHAT",
+                   help="what the player token keeps of feel, remember, state, steer, tools, lore and several speakers "
+                        "per session (speakers): default all (a single-player game is the authority of its own "
+                        "session); none for a shared world run by your own game server with the admin token; "
+                        "comma-separated or repeated (or KINLOOM_PLAYER_CAN)")
+    s.add_argument("--max-connections", type=int, default=256, help="connections served at once (default 256)")
     s.add_argument("--max-cost-per-hour", type=float, help="dollars; needs prices in kinloom.json")
     s.add_argument("--max-cost-per-day", type=float, help="dollars; needs prices in kinloom.json")
 
     dp = sub.add_parser("deploy", help="prepare an online server for a shipped game (Dockerfile + guide; deploys nothing)")
-    dp.add_argument("dir", nargs="?", default="kinloom-server")
+    dp.add_argument("dir", nargs="?", default="kinloom-deploy")
     dp.set_defaults(fn=lambda a: __import__("kinloom.deploy", fromlist=["run"]).run(a.dir))
 
     tk = sub.add_parser("talk", help="talk to a character in the terminal (the character speaks first)")
@@ -652,7 +716,7 @@ def main(argv=None):
     tk.add_argument("--web", action="store_true", help="talk in the browser instead (starts the server, opens the page)")
     tk.add_argument("--voice", nargs="?", const="natural", default="",
                     help='say the replies aloud (optionally how they sound, e.g. --voice "low, warm")')
-    tk.set_defaults(fn=lambda a: main(["serve", "--open"]) if a.web else cmd_talk(a))
+    tk.set_defaults(fn=lambda a: _talk_web(a) if a.web else cmd_talk(a))
 
     sp = sub.add_parser("speak", help="say a line aloud with the voice Kinloom found (a key, or the system's): check your setup")
     sp.add_argument("text", nargs="+")
@@ -695,7 +759,8 @@ def main(argv=None):
     lg = sub.add_parser("log", help="what the running server did, as text")
     lg.add_argument("-n", type=int, default=40)
     lg.add_argument("--follow", action="store_true")
-    lg.add_argument("--port", type=int)
+    lg.add_argument("--port", type=int, help="default: kinloom.json's port, else 7717")
+    lg.add_argument("--dir", default=".")
     lg.set_defaults(fn=cmd_log)
 
     t = sub.add_parser("try", help="hear a character in the terminal")
@@ -785,6 +850,12 @@ def main(argv=None):
     th.add_argument("senses", help='the moment as JSON, e.g. \'{"hp": 0.2, "dist": 12}\'')
     th.set_defaults(fn=cmd_think)
 
+    return ap
+
+
+def main(argv=None):
+    ap = main_parser()
+    _safe_output()
     argv = list(sys.argv[1:] if argv is None else argv)
     program = []
     if argv[:1] == ["use"] and "--" in argv:     # the program for `use command` (argparse versions differ on "--")

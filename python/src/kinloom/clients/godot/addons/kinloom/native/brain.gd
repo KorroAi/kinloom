@@ -17,7 +17,10 @@ const M = preload("model.gd")
 
 const SEP := "\u0001"
 const MAX_NAME := 48
+const MAX_WHAT := 500   # characters of create's `what` (more is cut, and journaled)
 const MAX_CHARACTERS := 5000
+const MAX_PER_SESSION := 300      # one session (one player online) never fills the table for everyone else
+const MAX_KEYS := 2000            # entries per cache (decisions, banks, pools...): live data in keys stays bounded
 const MAX_WAITING := 50
 const MAX_SPEAKERS := 500
 const BANK_SIZE := 8
@@ -48,6 +51,7 @@ var listeners: Array = []
 var spent: Array = []
 var calls: Array = []
 var characters := {}
+var per_session := {}             # session -> how many characters it keeps
 var declared := {}
 var game_declared := {}
 var cfg_declared := {}
@@ -73,6 +77,7 @@ var greetings := {}
 var greeting_busy := {}
 var bonds := {}
 var said_by := {}
+var _clips := {}   # name + label already journaled as too long
 var switches := 0
 var rises := {}
 var steers := {}                  # session|name -> what the game decided for the next reply (steer)
@@ -121,7 +126,7 @@ func _init(o := {}) -> void:
 	var cfg := {"language": "English", "calls_per_minute": 30}
 	var given = o.get("config")
 	if typeof(given) == TYPE_STRING and given != "" and FileAccess.file_exists(given):
-		var r := Py.loads(FileAccess.get_file_as_string(given))
+		var r := Py.loads(FileAccess.get_file_as_string(given).trim_prefix(String.chr(0xFEFF)))
 		if r[0] and r[1] is Dictionary:
 			cfg.merge(r[1], true)
 	elif given is Dictionary:
@@ -148,7 +153,14 @@ func _init(o := {}) -> void:
 	voice_language = str(lang) if Py.truthy(lang) else (str(cfg["language"]) if Py.truthy(cfg.get("language")) and str(cfg["language"]) != DEFAULT_LANGUAGE else null)
 	var per_minute = o.get("calls_per_minute") if Py.truthy(o.get("calls_per_minute")) else cfg.get("calls_per_minute", 30)
 	limit = maxi(1, int(Py.num(per_minute)) if Py.truthy(per_minute) else 30)
-	prices = o.get("prices") if o.get("prices") is Dictionary else (cfg.get("prices") if cfg.get("prices") is Dictionary else null)
+	prices = o.get("prices") if o.get("prices") != null else cfg.get("prices")
+	if prices != null and not _good_prices(prices):
+		if o.get("prices") != null:
+			_raise("prices: {\"input\": $/M tokens, \"output\": ..., \"cached_input\": ...} as numbers, got " + Py.py_repr(o.get("prices")))
+		else:
+			_log("refused", "kinloom", "kinloom.json: prices must be {\"input\": n, \"output\": n, \"cached_input\": n} in dollars per million tokens, got " +
+				Py.py_repr(prices) + " (no cost is counted)")
+		prices = null
 	var words := []
 	if cfg.get("banned_words") is Array:
 		for w in cfg["banned_words"]:
@@ -159,6 +171,8 @@ func _init(o := {}) -> void:
 	content_filter = o.get("content_filter") if o.get("content_filter") is Callable else null
 	var path = o.get("memory")
 	memory = Mem.Memory.new(str(path) if typeof(path) == TYPE_STRING else "", wall)
+	if memory.problem != "":
+		_log("error", "kinloom", memory.problem)
 	if o.get("call_timeout") != null:
 		call_timeout = float(o["call_timeout"])
 	max_cost_per_hour = Py.finite(cfg.get("max_cost_per_hour"))
@@ -253,9 +267,52 @@ func char_of(session: String, name: Variant) -> Variant:
 	var c = characters.get(key)
 	if c == null:
 		c = Lines.character(n, {})[0]
-		if characters.size() < MAX_CHARACTERS:
-			characters[key] = c
+		_store(session, c)
 	return c
+
+
+## Keeps a character. A full table first lets go of the oldest one the game never declared (made on the fly from a
+## name); a session past its share keeps nothing more. false: not stored (a throwaway).
+func _store(session: String, c) -> bool:
+	var key: String = session + SEP + c.name
+	if characters.has(key):
+		characters[key] = c
+		return true
+	if per_session.get(session, 0) >= MAX_PER_SESSION:
+		return false
+	if characters.size() >= MAX_CHARACTERS:
+		var old = null
+		for k in characters:
+			if not declared.has(k):
+				old = k
+				break
+		if old == null:
+			return false
+		characters.erase(old)
+		var s: String = old.substr(0, old.find(SEP))
+		per_session[s] = per_session.get(s, 1) - 1
+		if per_session[s] <= 0:
+			per_session.erase(s)
+	characters[key] = c
+	per_session[session] = per_session.get(session, 0) + 1
+	return true
+
+
+## The oldest entries go once a table passes its cap (Dictionaries keep insertion order).
+static func _trim(table: Dictionary, cap := MAX_KEYS) -> void:
+	while table.size() > cap:
+		table.erase(table.keys()[0])
+
+
+static func _good_prices(p) -> bool:
+	if not (p is Dictionary):
+		return false
+	for k in p:
+		if k in ["input", "output", "cached_input"]:
+			var v = Py.finite(p[k])
+			if v == null or v < 0:
+				return false
+	return true
 
 
 func _log(kind: String, name: Variant, text: Variant, detail := {}) -> void:
@@ -303,18 +360,32 @@ func _ask(kind: String, name: String, system: String, user: String, json: bool, 
 	var o := {"json": json, "max_tokens": max_tokens, "timeout": limit_s, "images": images if not images.is_empty() else null}
 	if on_text is Callable:
 		o["on_text"] = on_text
-	var box := {"r": null}
+	var box := {"r": null, "gave_up": false, "late": _late}
 	_complete_into(box, _provider_for(kind), _rated(system), user, o)
 	var end := clock() + limit_s + 0.25
 	while box.r == null and clock() < end:
 		await Http.frame()
+	if box.r == null:
+		box.gave_up = true
 	var r: Dictionary = box.r if box.r != null else M.reply(false, "", "timed out after " + Py.fixed(limit_s, 1) + " s")
 	_account(kind, name, r)
 	return r
 
 
 static func _complete_into(box: Dictionary, used, system: String, user: String, o: Dictionary) -> void:
-	box.r = await used.complete(system, user, o)
+	var r = await used.complete(system, user, o)
+	box.r = r
+	if box.gave_up:
+		box.late.call(r)
+
+
+## A call given up on that answered later: its tokens were billed all the same, so they count (and the caps).
+func _late(r: Dictionary) -> void:
+	var s := stats_of
+	s.input_tokens += int(r.input)
+	s.cached_tokens += int(r.cached)
+	s.output_tokens += int(r.output)
+	spent.append([clock(), _price(r)])
 
 
 func _account(kind: String, name: String, r: Dictionary) -> void:
@@ -486,10 +557,9 @@ func character(session: String, name: Variant, spec := {}, from_config := false)
 		return null
 	var c = made[0]
 	var key: String = session + SEP + c.name
-	if not characters.has(key) and characters.size() >= MAX_CHARACTERS:
-		_log("refused", c.name, "too many characters (" + str(MAX_CHARACTERS) + "): not stored")
+	if not _store(session, c):
+		_log("refused", c.name, "too many characters (" + str(MAX_CHARACTERS) + " in all, " + str(MAX_PER_SESSION) + " per session): not stored")
 		return c
-	characters[key] = c
 	declared[key] = true
 	if not from_config:
 		game_declared[key] = true
@@ -710,8 +780,13 @@ func _bond_table(session: String) -> Dictionary:
 				var out := {}
 				for b in row:
 					var v = row[b]
-					if v is Dictionary and Py.finite(v.get("last")) != null:
-						out[b] = {"talks": int(Py.num(v.get("talks", 1))), "first": Py.num(v.get("first", 0)), "last": Py.num(v.get("last", 0))}
+					# Each value checked: a hand-edited file or a loaded save never breaks chat() later
+					if v is Dictionary and typeof(v.get("last")) != TYPE_BOOL and Py.finite(v.get("last")) != null:
+						var last: float = Py.finite(v.get("last"))
+						var talks = Py.finite(v.get("talks")) if typeof(v.get("talks")) != TYPE_BOOL else null
+						var first = Py.finite(v.get("first")) if typeof(v.get("first")) != TYPE_BOOL else null
+						out[b] = {"talks": maxi(1, int(minf(1e9, talks if talks != null and talks != 0 else 1.0))),
+							"first": first if first != null and first != 0 else last, "last": last}
 				table[a] = out
 		bonds[session] = table
 	return bonds[session]
@@ -746,6 +821,7 @@ func _inner(session: String, c, speaker: String, data: Variant) -> Array:
 				rise = [now, 0.0, rise[2]]
 			change = maxf(0.0, minf(change, c.warm_up - rise[1]))
 			rises[rkey] = [rise[0], rise[1] + change, now]
+			_trim(rises)
 			if change < i.feel:
 				_log("refused", c.name, "feel: " + speaker + " already won " + Py.fixed(c.warm_up, 1, true) + " this conversation")
 		if change != 0:
@@ -849,6 +925,7 @@ func _mapping(value: Variant, what: String) -> Dictionary:
 func say(session: String, name: Variant, event: Variant, facts0: Variant = null, fresh := false, max_chars: Variant = null) -> Dictionary:
 	var c = char_of(session, name)
 	var facts := _mapping(facts0, "facts")
+	_clip_note(c.name, "facts", facts)
 	if _fault != "":
 		return {}
 	var ev := Lines.event_key(event)
@@ -859,8 +936,9 @@ func say(session: String, name: Variant, event: Variant, facts0: Variant = null,
 			_context(session, c.name, ev) + Prompts.facts_block(facts), false, true, 120)
 		if r.ok:
 			var t = Py.find_json(r.text)
-			var line = t.get("line") if t is Dictionary else r.text
-			var v := _valid_line(Py.text_of(line), facts.keys(), c)
+			# Only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+			var line = t.get("line") if t is Dictionary else (null if t != null else r.text)
+			var v := _valid_line(line, facts.keys(), c) if typeof(line) == TYPE_STRING else [false, null]
 			if v[0]:
 				var said := Stream.fit_chars(Lines.fill(v[1], facts), limit_c)
 				_log("say", c.name, said, {"event": ev, "source": "fresh"})
@@ -869,6 +947,7 @@ func say(session: String, name: Variant, event: Variant, facts0: Variant = null,
 	var names := facts.keys()
 	if not banks.has(key):
 		banks[key] = {"templates": [], "unused": [], "recent": [], "filling": false, "failures": 0}
+		_trim(banks)
 	var bank: Dictionary = banks[key]
 	var usable := []
 	for t in bank.unused:
@@ -1006,6 +1085,7 @@ func _refill(session: String, c, event: String, names: Variant, chars := 0) -> v
 		return
 	if not banks.has(key):
 		banks[key] = {"templates": [], "unused": [], "recent": [], "filling": false, "failures": 0}
+		_trim(banks)
 	var bank: Dictionary = banks[key]
 	if bank.filling or bank.failures >= 3:
 		return
@@ -1042,6 +1122,7 @@ func decide(session: String, name: Variant, situation0: Variant, choices: Varian
 	var shape = made[0]
 	var key: String = session + SEP + c.name + SEP + shape.signature()
 	var situation: Dictionary = situation0 if situation0 is Dictionary else {"situation": situation0}
+	_clip_note(c.name, "situation", situation)
 	var ev: float = c.every
 	if every != null:
 		var r := Lines.arg_num(every, "every")
@@ -1052,6 +1133,7 @@ func decide(session: String, name: Variant, situation0: Variant, choices: Varian
 	var now := clock()
 	if not decisions.has(key):
 		decisions[key] = {"value": shape.default_value(), "at": null, "situation": null, "thinking": false}
+		_trim(decisions)
 	var d: Dictionary = decisions[key]
 	var due: bool = not d.thinking and (d.at == null or now - d.at >= ev or (now - d.at >= ev / 4 and Lines.changed_situation(d.situation, situation)))
 	if due:
@@ -1091,6 +1173,8 @@ func _structured(kind: String, name: String, system: String, user: String, shape
 	if p[0]:
 		return p[1]
 	_log("repair", name, kind + ": " + str(p[2]))
+	if p[2] == Py.CUT:				  # stopped by the token limit: room to finish
+		max_tokens = mini(4000, max_tokens * 2)
 	r = await _ask(kind, name, system, user + Prompts.repair(str(p[2])), true, foreground, max_tokens, null, timeout, images)
 	if not r.ok:
 		return null
@@ -1188,6 +1272,7 @@ func act(session: String, name: Variant, situation0: Variant = null, think_now :
 		return []
 	var key: String = session + SEP + c.name
 	var situation: Dictionary = situation0 if situation0 is Dictionary else ({"situation": situation0} if situation0 != null else {})
+	_clip_note(c.name, "situation", situation)
 	var now := clock()
 	if not pending.has(key):
 		pending[key] = {"actions": [], "at": null, "thinking": false}
@@ -1592,7 +1677,10 @@ func create(session: String, what0: Variant, example: Variant, ctx: Variant = nu
 		_raise(made[1])
 		return null
 	var shape = made[0]
-	var what := Py.clean(Py.text_of(what0)).substr(0, 200)
+	var what := Py.clean(Py.text_of(what0))
+	_clip_note(what.substr(0, MAX_WHAT), "what", what, MAX_WHAT, true)
+	_clip_note(what.substr(0, MAX_WHAT), "context", ctx)
+	what = what.substr(0, MAX_WHAT)
 	var pictures: Array = _pictures(what, image) if image != null else []
 	if instant:
 		if not pictures.is_empty():
@@ -1612,7 +1700,7 @@ func create(session: String, what0: Variant, example: Variant, ctx: Variant = nu
 		return shape.default_value()
 	var system := Prompts.create_system(what, shape, _written())
 	var user := _context(session, null, what) + Prompts.context_block(ctx) + Prompts.picture_block(not pictures.is_empty())
-	var value = await _structured("create", what, system, user, shape, true, 800, timeout, pictures)
+	var value = await _structured("create", what, system, user, shape, true, 1500, timeout, pictures)
 	if value == null:
 		stats_of.offline_answers += 1
 		return shape.default_value()
@@ -1645,6 +1733,7 @@ func _from_pool(session: String, what: String, shape, ctx: Variant) -> Variant:
 	var key: String = session + SEP + what + SEP + shape.signature()
 	if not pools.has(key):
 		pools[key] = {"items": [], "filling": false, "failures": 0}
+		_trim(pools)
 	var pool: Dictionary = pools[key]
 	var has_item: bool = not pool.items.is_empty()
 	var item = pool.items.pop_front() if has_item else null
@@ -1667,6 +1756,7 @@ func _fill_pool(session: String, what: String, shape, ctx: Variant, pool: Dictio
 func chat(session: String, name: Variant, message0: Variant, facts0: Variant = null, speaker0: Variant = "player", stream: Variant = null,
 		timeout := 0.0, max_chars: Variant = null, image: Variant = null) -> Dictionary:
 	var c = char_of(session, name)
+	var began := Http.now()
 	var pictures: Array = _pictures(c.name, image) if image != null else []
 	var box := Lines.box_limit(max_chars)
 	var limit_c: int = box if box > 0 else c.max_chars
@@ -1676,6 +1766,7 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 	var facts := _mapping(facts0, "facts")
 	if _fault != "":
 		return {}
+	_clip_note(c.name, "facts", facts)
 	var hkey: String = session + SEP + c.name + SEP + speaker
 	var now := wall()
 	var table := _bond_table(session)
@@ -1742,7 +1833,9 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 				show = func(piece: String) -> void:
 					var shown := cut.feed(echo.feed(unstager.feed(guard.feed(splitter.feed(piece)))))
 					if shown != "" and not gate.shut:
-						if not hidden.is_empty() and Souls.leaks(gate.shown + shown, hidden, pub, 0.5, message) != null:
+						# Nothing reaches the player before the checks the final reply gets: secrets, content filter
+						if not hidden.is_empty() and Souls.leaks(gate.shown + shown, hidden, pub, 0.5, message) != null \
+								or not _allowed(gate.shown + shown):
 							gate.shut = true
 							return
 						gate.shown += shown
@@ -1752,7 +1845,8 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 			if streaming:
 				var tail := cut.feed(echo.feed(unstager.feed(guard.feed(splitter.finish()[2]) + guard.finish()) + unstager.finish()) + echo.finish())
 				tail += cut.finish()
-				if not hidden.is_empty() and Souls.leaks(gate.shown + tail, hidden, pub, 0.5, message) != null:
+				if not hidden.is_empty() and Souls.leaks(gate.shown + tail, hidden, pub, 0.5, message) != null \
+						or tail != "" and not _allowed(gate.shown + tail):
 					tail = ""
 				if tail != "" and r.ok and not r.cut and not gate.shut:
 					flow.streamed = true
@@ -1818,7 +1912,9 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 	var decided := []
 	if reply != null and stored:
 		if not c.tools.is_empty() and source == "model" and Souls.inner_of_reply(inner).do.is_empty():
-			var found: Array = await _deeds(c, speaker, message, reply)
+			# what the reply agreed to, within what is left of the reply's time (a player is waiting)
+			var left: float = (timeout if timeout > 0 else _reply_deadline()) - (Http.now() - began)
+			var found: Array = await _deeds(c, speaker, message, reply, maxf(1.5, left))
 			if not found.is_empty():
 				inner = (inner if inner is Dictionary else {}).duplicate()
 				inner["do"] = found
@@ -1882,13 +1978,16 @@ func chat(session: String, name: Variant, message0: Variant, facts0: Variant = n
 	return {"text": reply, "source": source, "actions": decided}
 
 
-func _deeds(c, speaker: String, message: String, reply: String) -> Array:
+## budget: seconds for everything here (the asking again included).
+func _deeds(c, speaker: String, message: String, reply: String, budget := 10.0) -> Array:
 	var system := Prompts.deeds_system(c)
 	var user := Prompts.deeds_user(c.name, speaker, message, reply)
-	var r: Dictionary = await _ask("deeds", c.name, system, user, true, true, 150, null, minf(call_timeout, 5.0))
-	if not r.ok:        # a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+	var start := Http.now()
+	var r: Dictionary = await _ask("deeds", c.name, system, user, true, true, 150, null, minf(minf(call_timeout, 5.0), budget))
+	var left := budget - (Http.now() - start)
+	if not r.ok and left >= 1.0:   # a slow or failed call: what was agreed must not be lost, ask once more if time is left
 		_log("repair", c.name, "deeds: " + (str(r.error) if r.error != null and str(r.error) != "" else "failed") + "; asked again")
-		r = await _ask("deeds", c.name, system, user, true, true, 150, null, minf(call_timeout, 5.0))
+		r = await _ask("deeds", c.name, system, user, true, true, 150, null, minf(minf(call_timeout, 5.0), left))
 	var data = Py.find_json(r.text) if r.ok else null
 	var found = data.get("do") if data is Dictionary else null
 	var out := []
@@ -2098,6 +2197,7 @@ static func _rating_of(value: Variant) -> Array:
 func suggest(session: String, name: Variant, examples: Variant, speaker0: Variant = "player", facts0: Variant = null) -> Array:
 	var c = char_of(session, name)
 	var facts := _mapping(facts0, "facts")
+	_clip_note(c.name, "facts", facts)
 	if _fault != "":
 		return []
 	if not (examples is Array):
@@ -2494,7 +2594,22 @@ func remember(session: String, name: Variant, note: Variant, importance: Variant
 func set_state(session: String, values: Variant) -> void:
 	var m := _mapping(values, "state")
 	if _fault == "":
+		_clip_note("state", "state", m)
 		state_of[session] = m
+
+
+## Journals, once per name and label, that the model reads only the start of something too long.
+func _clip_note(name: String, label: String, value: Variant, limit := Prompts.CLIP, is_text := false) -> void:
+	if not Py.truthy(value):
+		return
+	var size: int = Py.text_of(value).length() if is_text else Py.dumps(value, false).length()
+	if size <= limit:
+		return
+	var key := name + "\u0000" + label
+	if _clips.has(key):
+		return
+	_clips[key] = true
+	_log("clipped", name, "%s: %d characters, the model reads the first %d" % [label, size, limit])
 
 
 func _character_list(session: String) -> Array:

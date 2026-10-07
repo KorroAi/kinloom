@@ -33,7 +33,7 @@ seen_by_ai = kl.inspect()             # a debug overlay: moods, feelings, last w
 
 ## gdscript
 # Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
-var sky := Kinloom.decide("WEATHER", {"season": "winter", "day": 12}, {"sky": ["sun", "snow"], "wind": [0.0, 1.0]})
+var sky = Kinloom.decide("WEATHER", {"season": "winter", "day": 12}, {"sky": ["sun", "snow"], "wind": [0.0, 1.0]})
 #   -> {"sky": "snow", "wind": 0.7}: instant every frame, refreshed in the background
 var item = await Kinloom.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50], "story": "Found under a cold stone."}, {"depth": 3})
 #   -> one Dictionary like the example (~1-2 s); create(what, example, {}, 5) -> an Array of 5
@@ -54,7 +54,7 @@ Kinloom.mind("RAIDER", "a cautious raider", {"senses": {"hp": [0.0, 1.0], "allie
 	"actions": {"flee": {}, "flank": {}}, "rules": {"flee": ["hp low"], "flank": ["allies above 2"]}})   # once (or an AIMind node)
 var t := Kinloom.think("RAIDER", {"hp": 0.3, "allies": 5}, "raider-7")    # every frame, no model call: t.action
 var picks: Array = await Kinloom.suggest("MIRA", ["Ask about the sword", "Leave"], "Ana")   # choices for gamepads: one per example
-for said in await Kinloom.converse("MIRA", "BAKER", "the smoke"): print(said.who, ": ", said.text)   # they talk together
+for turn in await Kinloom.converse("MIRA", "BAKER", "the smoke"): print(turn.who, ": ", turn.text)   # they talk together
 var slot: String = await Kinloom.save_state()      # the AI's whole state as one string in your save file; load_state(slot)
 var seen_by_ai = await Kinloom.inspect()           # a debug overlay: moods, feelings, last words, waiting actions
 # People talking to a character, ready-made: an AIDialogue node (character_name, soul, tools, voice; open()).
@@ -85,7 +85,7 @@ kl.Mind("RAIDER", "a cautious raider", new Dictionary<string, object> { ["hp"] =
     new Dictionary<string, object> { ["flee"] = new List<object> { "hp low" } });                    // once: senses, actions, rules
 var t = kl.Think("RAIDER", new Dictionary<string, object> { ["hp"] = 0.3 }, "raider-7");         // every frame, no model call: t.Action
 var picks = await kl.Suggest("MIRA", new[] { "Ask about the sword", "Leave" }, "Ana");          // choices for gamepads: one per example
-foreach (var said in await kl.Converse("MIRA", "BAKER", "the smoke")) Show(said["who"], said["text"]);   // they talk together
+foreach (var turn in await kl.Converse("MIRA", "BAKER", "the smoke")) Show(turn["who"], turn["text"]);   // they talk together
 string slot = await kl.Save(); await kl.Load(slot);   // the AI's whole state as one string in your save file
 var seenByAi = await kl.Inspect();                    // a debug overlay: moods, feelings, last words, waiting actions
 // People talking to a character in Unity, ready-made: the KinloomDialogue component (name, soul, reply choices, events).
@@ -105,14 +105,14 @@ kl.character("VEGA", "a short, excited announcer", { lines: { built: ["{who} bui
 const line = await kl.say("VEGA", "built", { who: "Ana", what: "bridge" });   // instant
 const reply = await kl.chat("MIRA", typedText, { gold: 3 }, "Ana");           // free answer, ~1 s (onPiece to stream)
 await kl.steer("MIRA", "admit you sold the king's sword");    // the game decides her next reply (even a secret)
-const line = await kl.speak("MIRA", reply); if (line) new Audio(line.url).play();   // null: show the text only
+const voice = await kl.speak("MIRA", reply); if (voice) new Audio(voice.url).play();   // null: show the text only
 const said = await kl.listen(recordedBlob);                                    // microphone (MediaRecorder) -> text
 kl.event("the player stole bread", [], { by: "PLAYER", seenBy: ["BAKER"] });  // then knows / opinion / reputation
 kl.mind("RAIDER", "a cautious raider", { senses: { hp: [0, 100], allies: [0, 20] }, actions: { flee: {}, flank: {} },
   rules: { flee: ["hp low"], flank: ["allies above 2"] } });                  // once: rules are the offline mind
 const t = kl.think("RAIDER", { hp: 30, allies: 5 }, "raider-7");              // every frame, no model call: t.action
 const picks = await kl.suggest("MIRA", ["Ask about the sword", "Leave"], "Ana");   // choices for gamepads: one per example
-for (const said of await kl.converse("MIRA", "BAKER", "the smoke")) show(said.who, said.text);   // they talk together
+for (const turn of await kl.converse("MIRA", "BAKER", "the smoke")) show(turn.who, turn.text);   // they talk together
 const slot = await kl.save(); await kl.load(slot);   // the AI's whole state as one string in your save file
 const seenByAi = await kl.inspect();                  // a debug overlay: moods, feelings, last words, waiting actions
 // People talking to a character, ready-made: talkBox(kl, "MIRA", { speaker: "Ana", voice: true }).open() from
@@ -164,7 +164,7 @@ kl.mind("RAIDER", "a cautious raider", obj! { "hp" => vec![0.0, 1.0] }, obj! { "
         obj! { "flee" => vec!["hp low"] }, 3, 30.0);                                   // once: senses, actions, rules
 let t = kl.think("RAIDER", &obj! { "hp" => 0.3 }, "raider-7");                        // every frame, no model call: t.action
 let picks = kl.suggest("MIRA", &["Ask about the sword", "Leave"], "Ana", Json::Null);   // choices for gamepads: one per example
-for said in kl.converse("MIRA", "BAKER", "the smoke", 4) { show(said.get("who").as_str(), said.get("text").as_str()); }
+for turn in kl.converse("MIRA", "BAKER", "the smoke", 4) { show(turn.get("who").as_str(), turn.get("text").as_str()); }
 let slot = kl.save(); kl.load(&slot);   // the AI's whole state as one string in your save file
 let seen_by_ai = kl.inspect();          // a debug overlay (Option<Json>): moods, feelings, last words, waiting actions
 
@@ -189,7 +189,7 @@ kl.mind("RAIDER", "a cautious raider", map("hp", list(0.0, 1.0)), map("flee", ma
         map("flee", list("hp low")), 3, 30);                                           // once: senses, actions, rules
 Kinloom.Thought t = kl.think("RAIDER", map("hp", 0.3), "raider-7");                   // every frame, no model call: t.action
 List<String> picks = kl.suggest("MIRA", Arrays.asList("Ask about the sword", "Leave"), "Ana");   // choices: one per example
-for (Map<String, Object> said : kl.converse("MIRA", "BAKER", "the smoke")) show(said.get("who"), said.get("text"));
+for (Map<String, Object> turn : kl.converse("MIRA", "BAKER", "the smoke")) show(turn.get("who"), turn.get("text"));
 String slot = kl.save(); kl.load(slot);   // the AI's whole state as one string in your save file
 Map<String, Object> seenByAi = kl.inspect();   // a debug overlay: moods, feelings, last words, waiting actions
 
@@ -214,7 +214,7 @@ kl.mind("RAIDER", "a cautious raider", obj({{"hp", arr({0.0, 1.0})}}), obj({{"fl
         obj({{"flee", arr({"hp low"})}}));                                              // once: senses, actions, rules
 kinloom::Thought t = kl.think("RAIDER", obj({{"hp", 0.3}}), "raider-7");              // every frame, no model call: t.action
 std::vector<std::string> picks = kl.suggest("MIRA", {"Ask about the sword", "Leave"}, "Ana");   // one per example
-for (auto& said : kl.converse("MIRA", "BAKER", "the smoke")) show(said["who"].str(), said["text"].str());   // they talk together
+for (auto& turn : kl.converse("MIRA", "BAKER", "the smoke")) show(turn["who"].str(), turn["text"].str());   // they talk together
 std::string slot = kl.save(); kl.load(slot);   // the AI's whole state as one string in your save file
 kinloom::Json seen_by_ai = kl.inspect();       // a debug overlay: moods, feelings, last words, waiting actions
 

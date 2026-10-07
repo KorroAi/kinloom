@@ -1506,6 +1506,46 @@ function Py.clean(s)
   return Py.squash(s)
 end
 
+Py.CUT = "the answer was cut off before its end: write it shorter and complete"
+
+--- Where the first JSON-looking object or array that never closes starts ({" or [ followed by a value), or nil.
+function Py.unclosed(t)
+  local n, i = #t, 1
+  while i <= n do
+    local c = sub(t, i, i)
+    if c == "{" or c == "[" then
+      local j = i + 1
+      while j <= n and (" \t\r\n"):find(sub(t, j, j), 1, true) do j = j + 1 end
+      local nxt = sub(t, j, j)
+      local looks = j <= n and ((c == "{" and ('"}'):find(nxt, 1, true)) or (c == "[" and ('"{[]-0123456789tfn'):find(nxt, 1, true)))
+      if looks then
+        local depth, quoted, k = 0, false, i
+        while k <= n do
+          local ch = sub(t, k, k)
+          if quoted then
+            if ch == "\\" then k = k + 1 elseif ch == '"' then quoted = false end
+          elseif ch == '"' then quoted = true
+          elseif ch == "{" or ch == "[" then depth = depth + 1
+          elseif ch == "}" or ch == "]" then
+            depth = depth - 1
+            if depth == 0 then break end
+          end
+          k = k + 1
+        end
+        if k > n then return i end
+        i = k
+      end
+    end
+    i = i + 1
+  end
+  return nil
+end
+
+--- True when a model answer stops in the middle of its JSON (the token limit): no complete JSON before that.
+function Py.cut_off(text)
+  return type(text) == "string" and Py.find_json(text) == nil and Py.unclosed(Py.strip(text)) ~= nil
+end
+
 --- The first JSON object or array in a model answer, or nil.
 function Py.find_json(text)
   if type(text) ~= "string" then return nil end
@@ -1519,16 +1559,72 @@ function Py.find_json(text)
   end
   local ok, v = Py.loads(t)
   if ok then return v end
+  -- never an object nested in JSON that stops before its end (an answer cut by the token limit)
+  local stop = Py.unclosed(t)
   for _, open in ipairs({ "{", "[" }) do
     local at, tries = t:find(open, 1, true), 0
-    while at and tries < 20 do
+    while at and (not stop or at < stop) and tries < 20 do
       local good, value = Py.decode(t, at)
       if good then return value end
+      -- it closes but does not parse: a trailing comma? (never its inner object)
+      local close = Py.bracket_end(t, at)
+      if close then
+        local ok2, v2 = Py.loads(Py.no_trailing_commas(sub(t, at, close)))
+        if ok2 then return v2 end
+      end
       at = t:find(open, at + 1, true)
       tries = tries + 1
     end
   end
   return nil
+end
+
+--- Where the bracket opened at `at` closes (brackets in strings skipped), or nil.
+function Py.bracket_end(t, at)
+  local depth, quoted, k, n = 0, false, at, #t
+  while k <= n do
+    local ch = sub(t, k, k)
+    if quoted then
+      if ch == "\\" then k = k + 1 elseif ch == '"' then quoted = false end
+    elseif ch == '"' then quoted = true
+    elseif ch == "{" or ch == "[" then depth = depth + 1
+    elseif ch == "}" or ch == "]" then
+      depth = depth - 1
+      if depth == 0 then return k end
+    end
+    k = k + 1
+  end
+  return nil
+end
+
+--- The text without commas right before } or ] (outside strings): what models often write.
+function Py.no_trailing_commas(t)
+  local out, quoted, k, n = {}, false, 1, #t
+  while k <= n do
+    local ch = sub(t, k, k)
+    local skip = false
+    if quoted then
+      if ch == "\\" and k < n then
+        out[#out + 1] = sub(t, k, k + 1)
+        k = k + 2
+        skip = true
+      elseif ch == '"' then quoted = false end
+    elseif ch == '"' then quoted = true
+    elseif ch == "," then
+      local j = k + 1
+      while j <= n and (" \t\r\n"):find(sub(t, j, j), 1, true) do j = j + 1 end
+      local nxt = sub(t, j, j)
+      if j <= n and (nxt == "}" or nxt == "]") then
+        k = k + 1
+        skip = true
+      end
+    end
+    if not skip then
+      out[#out + 1] = ch
+      k = k + 1
+    end
+  end
+  return concat(out)
 end
 
 --- Plain JSON values from the game's tables: arrays marked, Kinloom.real kept (a decimal even when whole).
@@ -2285,10 +2381,27 @@ function Shape:check(value, path)
     if not Py.is_obj(value) then
       return false, nil, path .. " must be an object with " .. concat(Py.keys(self.fields), ", ")
     end
+    -- keys matched exactly, else in another case (the first such key); none of them: one wrapper is read
+    local lower, given = {}, Py.keys(value)
+    for _, key in ipairs(given) do
+      local low = Py.lower(tostring(key))
+      if lower[low] == nil then lower[low] = key end
+    end
+    local found, any = {}, false
+    for k in Py.items(self.fields) do
+      local key = Py.has(value, k) and k or lower[Py.lower(k)]
+      found[k] = key
+      any = any or key ~= nil
+    end
+    if next(self.fields) ~= nil and not any then
+      if #given == 1 and Py.is_obj(value[given[1]]) then return self:check(value[given[1]], path) end
+      return false, nil, path .. " must be an object with " .. concat(Py.keys(self.fields), ", ")
+    end
     local out = Py.obj()
     for k, f in Py.items(self.fields) do
-      if not Py.is_null(value[k]) or Py.has(value, k) then
-        local ok, v, why = f:check(value[k] == NULL and nil or value[k], k)
+      local key = found[k]
+      if key ~= nil then
+        local ok, v, why = f:check(value[key] == NULL and nil or value[key], k)
         if not ok then return false, nil, why end
         Py.put(out, k, v)
       else
@@ -2303,7 +2416,7 @@ end
 --- A model's answer read and checked: ok, value, error.
 function Shape:parse(answer)
   local data = Py.find_json(answer)
-  if data == nil then return false, nil, "the answer was not JSON" end
+  if data == nil then return false, nil, Py.cut_off(answer) and Py.CUT or "the answer was not JSON" end
   return self:check(data, "value")
 end
 
@@ -3250,8 +3363,11 @@ function Prompts.head(task, c, language)
   return lines_text(lines)
 end
 
+--- Characters of facts, situation, context or state the model reads (more is cut, and journaled).
+Prompts.CLIP = 4000
+
 function Prompts.clip(obj, limit)
-  limit = limit or 1500
+  limit = limit or Prompts.CLIP
   local text = Py.dumps(obj, false)
   if Py.len(text) <= limit then return text end
   return Py.head(text, limit) .. "..."
@@ -3728,23 +3844,36 @@ end
 
 --- store: nil, a file path, or {load = function() -> text, save = function(text)}. clock: wall time in seconds.
 function Memory.new(store, clock)
-  local self = setmetatable({ notes_by = {}, extra = {}, dirty = false, changed_at = nil, clock = clock }, Memory)
+  local self = setmetatable({ notes_by = {}, extra = {}, dirty = false, changed_at = nil, clock = clock, problem = "" }, Memory)
   if type(store) == "string" and store ~= "" then
     local path = store
+    local saves = 0
     store = {
       load = function()
         local f = io.open(path, "rb")
         if not f then return nil end
         local t = f:read("*a")
         f:close()
+        if sub(t, 1, 3) == "\239\187\191" then t = sub(t, 4) end   -- saved with a BOM (Windows editors)
         return t
       end,
       save = function(text)
-        local f = assert(io.open(path .. ".tmp", "wb"))
-        f:write(text)
+        -- a unique name per save; Lua can neither sync a file nor replace one in one step on Windows: the old file goes last
+        saves = saves + 1
+        local tmp = path .. "." .. tostring(os.time()) .. "-" .. saves .. ".tmp"
+        local f = assert(io.open(tmp, "wb"))
+        local wrote = f:write(text)
         f:close()
-        os.remove(path)
-        assert(os.rename(path .. ".tmp", path))
+        if not wrote then os.remove(tmp); error("memory: could not write " .. tmp) end
+        if not os.rename(tmp, path) then
+          os.remove(path)
+          if not os.rename(tmp, path) then os.remove(tmp); error("memory: could not replace " .. path) end
+        end
+      end,
+      keep_aside = function()
+        local aside = path .. ".corrupt-" .. tostring(os.time())
+        if not os.rename(path, aside) then return nil end
+        return aside:match("[^/\\]+$") or aside
       end,
     }
   end
@@ -3752,14 +3881,25 @@ function Memory.new(store, clock)
   if self.store then
     local okl, text = pcall(self.store.load)
     local ok, data = Py.loads(okl and text or nil)
+    if okl and type(text) == "string" and not (ok and Py.is_obj(data)) then
+      -- a file that cannot be read is kept aside (memory.json.corrupt-<time>) before anything overwrites it
+      self.problem = ok and "memory file is not a JSON object" or "memory file unreadable (not JSON)"
+      local oka, aside = pcall(self.store.keep_aside or function() return nil end)
+      if oka and aside then self.problem = self.problem .. "; kept as " .. aside end
+    end
     if ok and Py.is_obj(data) then
       if Py.is_obj(data.sessions) then
         for session, scopes in Py.items(data.sessions) do
           if Py.is_obj(scopes) then
             for scope, notes in Py.items(scopes) do
-              local kept = self:_list(session, scope)
+              -- what can be trusted is loaded, entry by entry: one bad note never costs the rest
+              local good = {}
               for _, n in ipairs(type(notes) == "table" and notes or {}) do
-                if Py.is_obj(n) and type(n.text) == "string" then kept[#kept + 1] = n end
+                if Memory.good_note(n) then good[#good + 1] = n end
+              end
+              if #good > 0 then
+                local kept = self:_list(session, scope)
+                for i = math.max(1, #good - 119), #good do kept[#kept + 1] = good[i] end
               end
             end
           end
@@ -3771,6 +3911,12 @@ function Memory.new(store, clock)
     end
   end
   return self
+end
+
+--- A note recall() can rank: text, time and importance (a file edited by hand, or a save from elsewhere).
+function Memory.good_note(n)
+  return Py.is_obj(n) and type(n.text) == "string" and type(n.t) ~= "boolean" and Py.finite(n.t) ~= nil
+    and type(n.importance) ~= "boolean" and Py.finite(n.importance) ~= nil
 end
 
 function Memory:_list(session, scope)
@@ -3875,7 +4021,7 @@ function Memory:replace_session(session, given)
     local items, kept = given[scope], {}
     if Py.is_array(items) then
       for _, n in ipairs(items) do
-        if Py.is_obj(n) and type(n.text) == "string" and Py.is_number(n.t) and Py.is_number(n.importance) then kept[#kept + 1] = Py.deep(n) end
+        if Memory.good_note(n) then kept[#kept + 1] = Py.deep(n) end
       end
     end
     if #kept > 0 then
@@ -4656,7 +4802,7 @@ end
 
 -- ---------------- characters, tools, lines, numbers and replies (kinloom/brain.py helpers) ----------------
 
-local Lines = { MAX_NAME = 48, MAX_EVENT = 160, MAX_LINE = 140, MAX_REPLY = 400, MAX_TOOLS = 100, SELF = "(self)" }
+local Lines = { MAX_WHAT = 500, MAX_NAME = 48, MAX_EVENT = 160, MAX_LINE = 140, MAX_REPLY = 400, MAX_TOOLS = 100, SELF = "(self)" }
 Lines.PLACEHOLDER = "\\{([A-Za-z_][A-Za-z0-9_]*)\\}"
 Lines.DIGIT = "\\d"
 Lines.NUMBER = "(?<![A-Za-z])-?\\d+(?:[.,]\\d+)?"
@@ -5780,6 +5926,33 @@ local Brain = {}
 Brain.__index = Brain
 local SEP = "\1"
 local MAX_CHARACTERS, MAX_WAITING, MAX_SPEAKERS = 5000, 50, 500
+local MAX_PER_SESSION = 300   -- one session (one player online) never fills the table for everyone else
+local MAX_KEYS = 2000         -- entries per cache (decisions, banks, pools, rises): live data in keys stays bounded
+
+--- Makes room for a new key in a bounded cache (self[name], with its keys' order, oldest first): past MAX_KEYS the oldest go.
+local function make_room(self, name, key)
+  local tbl = self[name]
+  if tbl[key] ~= nil then return end
+  local q = self.key_order[name]
+  if not q then
+    q = { head = 1, tail = 0, n = Py.size(tbl) }
+    self.key_order[name] = q
+  end
+  while q.n >= MAX_KEYS and q.head <= q.tail do
+    local old = q[q.head]
+    q[q.head] = nil
+    q.head = q.head + 1
+    if tbl[old] ~= nil then
+      tbl[old] = nil
+      q.n = q.n - 1
+    else
+      q.n = Py.size(tbl)   -- a key let go elsewhere: count again
+    end
+  end
+  q.tail = q.tail + 1
+  q[q.tail] = key
+  q.n = q.n + 1
+end
 local BANK_SIZE, POOL_SIZE, MAX_AUDIO = 8, 5, 25 * 1024 * 1024
 local DEFAULT_LANGUAGE, LANG_AUTO = "English", "auto"
 local MIN_SAMPLES, MIN_EPISODES, GAMMA, COMPOUND, BUFFER = 12, 6, 0.8, 0.4, 4000
@@ -5807,7 +5980,7 @@ function Brain.new(o)
     cfg_declared = {}, banks = {}, decisions = {}, pending = {}, pools = {}, history = {}, state_of = {}, minds = Py.obj(),
     opinions_by = {}, moods = {}, gestures = {}, gesture_seen = {}, lore_by = {}, cfg_chars = Py.obj(), cfg_lore = {}, cfg_tools = Py.obj(),
     tool_sets = {}, blind_told = false, card_waiters = {}, greetings = {}, greeting_busy = {}, bonds = {}, said_by = {}, switches = 0,
-    rises = {}, steers = {}, reply_timeout = REPLY_TIMEOUT, events = 0, spreads = 0, empty_told = {}, n_empty = 0, journal_entries = {}, busy = 0, running = 0, queue = {},
+    rises = {}, key_order = {}, per_session = {}, steers = {}, reply_timeout = REPLY_TIMEOUT, events = 0, spreads = 0, empty_told = {}, n_empty = 0, journal_entries = {}, busy = 0, running = 0, queue = {},
     waiters = {}, voice_cache = {}, voice_order = {}, closed = false, provider = nil, voice = nil, call_timeout = 12.0, _fault = nil,
     _fault_type = false }, Brain)
   self.stats_of = { calls = 0, failures = 0, input_tokens = 0, cached_tokens = 0, output_tokens = 0, latency = 0.0, offline_answers = 0,
@@ -5820,7 +5993,9 @@ function Brain.new(o)
   if type(o.config) == "string" and o.config ~= "" then
     local f = io.open(o.config, "rb")
     if f then
-      local ok, data = Py.loads(f:read("*a"))
+      local text = f:read("*a")
+      if sub(text, 1, 3) == "\239\187\191" then text = sub(text, 4) end   -- saved with a BOM (Windows editors, PowerShell 5.1)
+      local ok, data = Py.loads(text)
       f:close()
       if ok and Py.is_obj(data) then for k, v in Py.items(data) do cfg[k] = v end end
     end
@@ -5848,7 +6023,20 @@ function Brain.new(o)
   local per_minute = Py.truthy(o.calls_per_minute) and o.calls_per_minute or cfg.calls_per_minute
   self.limit = math.max(1, floor(Py.num(per_minute ~= nil and per_minute or 30)))
   if self.limit == 0 then self.limit = 30 end
-  self.prices = Py.is_obj(o.prices) and o.prices or (Py.is_obj(cfg.prices) and cfg.prices or nil)
+  -- prices: input, output and cached_input numbers from 0 (dollars per million tokens; other keys, like "source", allowed)
+  local given_prices = not Py.is_null(o.prices) and o.prices or cfg.prices
+  local prices_ok = Py.is_obj(given_prices)
+  for _, k in ipairs({ "input", "output", "cached_input" }) do
+    if prices_ok and not Py.is_null(given_prices[k]) then
+      local v = type(given_prices[k]) ~= "boolean" and Py.finite(given_prices[k]) or nil
+      if v == nil or v < 0 then prices_ok = false end
+    end
+  end
+  self.prices = prices_ok and given_prices or nil
+  if not Py.is_null(given_prices) and not prices_ok then
+    self:_log("refused", "kinloom", (Py.is_null(o.prices) and "kinloom.json: " or "") .. 'prices must be {"input": n, "output": n, ' ..
+      '"cached_input": n} in dollars per million tokens, got ' .. Py.py_repr(given_prices) .. " (no cost is counted)")
+  end
   local words = {}
   for _, w in ipairs(Py.is_array(cfg.banned_words) and cfg.banned_words or {}) do
     if type(w) == "string" and Py.strip(w) ~= "" then words[#words + 1] = Py.escape(Py.lower(Py.strip(w))) end
@@ -5856,6 +6044,7 @@ function Brain.new(o)
   if #words > 0 then self.banned = Rx.compile("(?<!\\w)(" .. concat(words, "|") .. ")(?!\\w)") end
   self.content_filter = type(o.content_filter) == "function" and o.content_filter or nil
   self.memory = Memory.new(o.memory, self.wall)
+  if self.memory.problem ~= "" then self:_log("error", "kinloom", self.memory.problem) end
   if Py.is_number(o.call_timeout) then self.call_timeout = Py.num(o.call_timeout) end
   self.max_cost_per_hour = Py.finite(cfg.max_cost_per_hour)
   self.max_cost_per_day = Py.finite(cfg.max_cost_per_day)
@@ -5929,9 +6118,34 @@ function Brain:char_of(session, name)
   local c = self.characters[key]
   if not c then
     c = Lines.character(n, {})
-    if Py.size(self.characters) < MAX_CHARACTERS then Py.put(self.characters, key, c) end
+    self:_store(session, key, c)
   end
   return c
+end
+
+--- Keeps a character. A full table first lets go of the oldest one the game never declared (made on the fly from a name);
+--- a session past its share keeps nothing more. false: not stored (a throwaway).
+function Brain:_store(session, key, c)
+  if self.characters[key] then
+    Py.put(self.characters, key, c)
+    return true
+  end
+  if (self.per_session[session] or 0) >= MAX_PER_SESSION then return false end
+  if Py.size(self.characters) >= MAX_CHARACTERS then
+    local old
+    for _, k in ipairs(Py.keys(self.characters)) do
+      if not self.declared[k] then old = k; break end
+    end
+    if not old then return false end
+    Py.del(self.characters, old)
+    local cut = old:find(SEP, 1, true)
+    local old_session = cut and sub(old, 1, cut - 1) or old
+    local left = (self.per_session[old_session] or 1) - 1
+    self.per_session[old_session] = left > 0 and left or nil
+  end
+  Py.put(self.characters, key, c)
+  self.per_session[session] = (self.per_session[session] or 0) + 1
+  return true
 end
 
 function Brain:_log(kind, name, text, detail)
@@ -6113,11 +6327,10 @@ function Brain:character(session, name, spec, from_config)
     return nil
   end
   local key = session .. SEP .. c.name
-  if not self.characters[key] and Py.size(self.characters) >= MAX_CHARACTERS then
-    self:_log("refused", c.name, "too many characters (" .. MAX_CHARACTERS .. "): not stored")
+  if not self:_store(session, key, c) then
+    self:_log("refused", c.name, "too many characters (" .. MAX_CHARACTERS .. " in all, " .. MAX_PER_SESSION .. " per session): not stored")
     return c
   end
-  Py.put(self.characters, key, c)
   self.declared[key] = true
   if not from_config then self.game_declared[key] = true end
   self:_log("character", c.name, c.personality)
@@ -6317,8 +6530,15 @@ function Brain:_bond_table(session)
           local out = {}
           for b, v in Py.items(row) do
             if Py.is_obj(v) and Py.finite(v.last) then
-              out[b] = Kinloom.ordered({ talks = floor(Py.num(Py.is_null(v.talks) and 1 or v.talks)), first = Py.num(v.first or 0),
-                last = Py.num(v.last or 0) }, { "talks", "first", "last" })
+              -- each value checked: a hand-edited file or a loaded save never breaks chat() later
+              local last = Py.finite(v.last)
+              local talks = Py.finite(v.talks)
+              if talks == nil or talks == 0 then talks = 1 end
+              talks = math.max(1, math.min(1e9, talks))
+              talks = talks >= 0 and floor(talks) or -floor(-talks)
+              local first = Py.finite(v.first)
+              if first == nil or first == 0 then first = last end
+              out[b] = Kinloom.ordered({ talks = talks, first = first, last = last }, { "talks", "first", "last" })
             end
           end
           table_[a] = out
@@ -6356,6 +6576,7 @@ function Brain:_inner(session, c, speaker, data)
       local rise = self.rises[rkey] or { now, 0.0, -1e18 }
       if now - rise[3] > Souls.NEW_TALK then rise = { now, 0.0, rise[3] } end
       change = math.max(0.0, math.min(change, c.warm_up - rise[2]))
+      make_room(self, "rises", rkey)
       self.rises[rkey] = { rise[1], rise[2] + change, now }
       if change < i.feel then
         self:_log("refused", c.name, "feel: " .. speaker .. " already won " .. Py.fixed(c.warm_up, 1, true) .. " this conversation")
@@ -6469,6 +6690,7 @@ end
 function Brain:say(session, name, event, facts0, fresh, max_chars)
   local c = self:char_of(session, name)
   local facts = self:_mapping(facts0, "facts")
+  self:_clip_note(c.name, "facts", facts)
   if self._fault then return {} end
   local ev = Lines.event_key(event)
   local box = Lines.box_limit(max_chars)
@@ -6478,8 +6700,11 @@ function Brain:say(session, name, event, facts0, fresh, max_chars)
       self:_context(session, c.name, ev) .. Prompts.facts_block(facts), false, true, 120)
     if r.ok then
       local t = Py.find_json(r.text)
-      local line = Py.is_obj(t) and t.line or r.text
-      local ok, template = self:_valid_line(Py.text_of(line), name_set(facts), c)
+      -- only a text line counts: {"line": null}, {"text": ...} or a list is a failed answer, never "None" shown
+      local line
+      if Py.is_obj(t) then line = t.line elseif t == nil then line = r.text end
+      local ok, template = false, nil
+      if type(line) == "string" then ok, template = self:_valid_line(line, name_set(facts), c) end
       if ok then
         local said = Stream.fit_chars(Lines.fill(template, facts), limit_c)
         self:_log("say", c.name, said, { event = ev, source = "fresh" })
@@ -6492,6 +6717,7 @@ function Brain:say(session, name, event, facts0, fresh, max_chars)
   local bank = self.banks[key]
   if not bank then
     bank = { templates = {}, unused = {}, recent = {}, filling = false, failures = 0 }
+    make_room(self, "banks", key)
     self.banks[key] = bank
   end
   local usable, known = {}, {}
@@ -6613,6 +6839,7 @@ function Brain:_refill(session, c, event, names, chars)
   local bank = self.banks[key]
   if not bank then
     bank = { templates = {}, unused = {}, recent = {}, filling = false, failures = 0 }
+    make_room(self, "banks", key)
     self.banks[key] = bank
   end
   if bank.filling or bank.failures >= 3 then return end
@@ -6655,6 +6882,7 @@ function Brain:decide(session, name, situation0, choices, every)
   end
   local key = session .. SEP .. c.name .. SEP .. shape:signature()
   local situation = Py.is_obj(situation0) and situation0 or (Py.is_null(situation0) and Py.obj() or { situation = situation0 })
+  self:_clip_note(c.name, "situation", situation)
   local ev = c.every
   if not Py.is_null(every) then
     local v, w = Lines.arg_num(every, "every")
@@ -6668,6 +6896,7 @@ function Brain:decide(session, name, situation0, choices, every)
   local d = self.decisions[key]
   if not d then
     d = { value = shape:default(), at = nil, situation = nil, thinking = false }
+    make_room(self, "decisions", key)
     self.decisions[key] = d
   end
   local due = not d.thinking and (d.at == nil or now - d.at >= ev or (now - d.at >= ev / 4 and Lines.changed_situation(d.situation, situation)))
@@ -6708,6 +6937,7 @@ function Brain:_structured(kind, name, system, user, shape, foreground, max_toke
   end
   if ok then return value end
   self:_log("repair", name, kind .. ": " .. tostring(why))
+  if why == Py.CUT then max_tokens = math.min(4000, max_tokens * 2) end   -- stopped by the token limit: room to finish
   r = self:_ask(kind, name, system, user .. Prompts.repair(tostring(why)), true, foreground, max_tokens, nil, timeout, images)
   if not r.ok then return nil end
   ok, value, why = shape:parse(r.text)
@@ -6810,6 +7040,7 @@ function Brain:act(session, name, situation0, think_now)
   if next(c.tools) == nil then return {} end
   local key = session .. SEP .. c.name
   local situation = Py.is_obj(situation0) and situation0 or (Py.is_null(situation0) and Py.obj() or { situation = situation0 })
+  self:_clip_note(c.name, "situation", situation)
   local now = self.clock()
   local entry = self.pending[key]
   if not entry then entry = { actions = {}, at = nil, thinking = false }; self.pending[key] = entry end
@@ -7176,7 +7407,10 @@ function Brain:create(session, what0, example, ctx, count, instant, timeout, ima
     self:_raise(why)
     return nil
   end
-  local what = Py.head(Py.clean(Py.text_of(what0)), 200)
+  local what = Py.clean(Py.text_of(what0))
+  self:_clip_note(Py.head(what, Lines.MAX_WHAT), "what", what, Lines.MAX_WHAT, true)
+  self:_clip_note(Py.head(what, Lines.MAX_WHAT), "context", ctx)
+  what = Py.head(what, Lines.MAX_WHAT)
   local pictures = not Py.is_null(image) and self:_pictures(what, image) or {}
   if instant then
     if #pictures > 0 then self:_log("refused", what, "image: not used with instant=True (those items are made ahead)") end
@@ -7196,7 +7430,7 @@ function Brain:create(session, what0, example, ctx, count, instant, timeout, ima
   if self.provider == nil then return shape:default() end
   local system = Prompts.create_system(what, shape, self:_written())
   local user = self:_context(session, nil, what) .. Prompts.context_block(ctx) .. Prompts.picture_block(#pictures > 0)
-  local value = self:_structured("create", what, system, user, shape, true, 800, timeout, pictures)
+  local value = self:_structured("create", what, system, user, shape, true, 1500, timeout, pictures)
   if value == nil then
     self.stats_of.offline_answers = self.stats_of.offline_answers + 1
     return shape:default()
@@ -7229,6 +7463,7 @@ function Brain:_from_pool(session, what, shape, ctx)
   local pool = self.pools[key]
   if not pool then
     pool = { items = {}, filling = false, failures = 0 }
+    make_room(self, "pools", key)
     self.pools[key] = pool
   end
   local item = #pool.items > 0 and table.remove(pool.items, 1) or nil
@@ -7250,6 +7485,7 @@ end
 --- {text, source, actions}. stream: a function given each piece of the reply as it comes (nil: none).
 function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, max_chars, image)
   local c = self:char_of(session, name)
+  local began = self.clock()
   local pictures = not Py.is_null(image) and self:_pictures(c.name, image) or {}
   local box = Lines.box_limit(max_chars)
   local limit_c = box > 0 and box or c.max_chars
@@ -7258,6 +7494,7 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
   if speaker == nil or speaker == "" then speaker = "player" end
   local facts = self:_mapping(facts0, "facts")
   if self._fault then return {} end
+  self:_clip_note(c.name, "facts", facts)
   local hkey = session .. SEP .. c.name .. SEP .. speaker
   local now = self.wall()
   local table_ = self:_bond_table(session)
@@ -7318,7 +7555,8 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
         show = function(piece)
           local shown = cut:feed(echo:feed(unstager:feed(guard:feed(splitter:feed(piece)))))
           if shown ~= "" and not gate.shut then
-            if #hidden > 0 and Souls.leaks(gate.shown .. shown, hidden, pub, 0.5, message) ~= nil then
+            -- nothing reaches the player before the checks the final reply gets: secrets, content filter
+            if (#hidden > 0 and Souls.leaks(gate.shown .. shown, hidden, pub, 0.5, message) ~= nil) or not self:_allowed(gate.shown .. shown) then
               gate.shut = true
               return
             end
@@ -7333,7 +7571,8 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
         local _, _, tail0 = splitter:finish()
         local tail = cut:feed(echo:feed(unstager:feed(guard:feed(tail0) .. guard:finish()) .. unstager:finish()) .. echo:finish())
         tail = tail .. cut:finish()
-        if #hidden > 0 and Souls.leaks(gate.shown .. tail, hidden, pub, 0.5, message) ~= nil then tail = "" end
+        if (#hidden > 0 and Souls.leaks(gate.shown .. tail, hidden, pub, 0.5, message) ~= nil)
+            or (tail ~= "" and not self:_allowed(gate.shown .. tail)) then tail = "" end
         if tail ~= "" and r.ok and not r.cut and not gate.shut then
           streamed = true
           stream(tail)
@@ -7413,7 +7652,9 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
   local decided = {}
   if reply ~= nil and stored then
     if next(c.tools) ~= nil and source == "model" and #Souls.inner_of_reply(inner)["do"] == 0 then
-      local found = self:_deeds(c, speaker, message, reply)
+      -- what the reply agreed to, within what is left of the reply's time (a player is waiting)
+      local left = (timeout or self:_reply_deadline()) - (self.clock() - began)
+      local found = self:_deeds(c, speaker, message, reply, math.max(1.5, left))
       if #found > 0 then
         inner = Py.copy(Py.is_obj(inner) and inner or Py.obj())
         Py.put(inner, "do", found)
@@ -7475,12 +7716,16 @@ function Brain:chat(session, name, message0, facts0, speaker0, stream, timeout, 
   return { text = reply, source = source, actions = decided }
 end
 
-function Brain:_deeds(c, speaker, message, reply)
+--- budget: seconds for everything here (the asking again included).
+function Brain:_deeds(c, speaker, message, reply, budget)
+  budget = budget or 10.0
   local system, user = Prompts.deeds_system(c), Prompts.deeds_user(c.name, speaker, message, reply)
-  local r = self:_ask("deeds", c.name, system, user, true, true, 150, nil, math.min(self.call_timeout, 5.0))
-  if not r.ok then      -- a slow or failed call (not an empty answer): what was agreed must not be lost, ask once more
+  local start = self.clock()
+  local r = self:_ask("deeds", c.name, system, user, true, true, 150, nil, math.min(self.call_timeout, 5.0, budget))
+  local left = budget - (self.clock() - start)
+  if not r.ok and left >= 1.0 then   -- a slow or failed call: what was agreed must not be lost, ask once more if time is left
     self:_log("repair", c.name, "deeds: " .. ((r.error and r.error ~= "") and tostring(r.error) or "failed") .. "; asked again")
-    r = self:_ask("deeds", c.name, system, user, true, true, 150, nil, math.min(self.call_timeout, 5.0))
+    r = self:_ask("deeds", c.name, system, user, true, true, 150, nil, math.min(self.call_timeout, 5.0, left))
   end
   local data = r.ok and Py.find_json(r.text) or nil
   local found = Py.is_obj(data) and data["do"] or nil
@@ -7701,6 +7946,7 @@ local function v1_null(v) if v == nil then return NULL end return v end
 function Brain:suggest(session, name, examples, speaker0, facts0)
   local c = self:char_of(session, name)
   local facts = self:_mapping(facts0, "facts")
+  self:_clip_note(c.name, "facts", facts)
   if self._fault then return Py.arr({}) end
   if not (Py.is_array(examples) or (type(examples) == "table" and not Py.is_null(examples) and next(examples) == nil)) then
     self:_raise('examples: a list of short replies the player could say, like ["Ask about her past", "Leave"]')
@@ -8100,7 +8346,23 @@ end
 
 function Brain:set_state(session, values)
   local m = self:_mapping(values, "state")
-  if not self._fault then self.state_of[session] = m end
+  if not self._fault then
+    self:_clip_note("state", "state", m)
+    self.state_of[session] = m
+  end
+end
+
+--- Journals, once per name and label, that the model reads only the start of something too long.
+function Brain:_clip_note(name, label, value, limit, is_text)
+  if not Py.truthy(value) then return end
+  limit = limit or Prompts.CLIP
+  local size = is_text and Py.len(Py.text_of(value)) or Py.len(Py.dumps(value, false))
+  if size <= limit then return end
+  self.clips = self.clips or {}
+  local key = name .. SEP .. label
+  if self.clips[key] then return end
+  self.clips[key] = true
+  self:_log("clipped", name, label .. ": " .. size .. " characters, the model reads the first " .. limit)
 end
 
 function Brain:is_declared(session, name)
@@ -8524,6 +8786,9 @@ function Vectors.vector(fn, a)
     local s, why = Shape.of(a[1])
     return s == nil and why or nil
   elseif fn == "find_json" then return Py.find_json(a[1])
+  elseif fn == "parse" then
+    local ok, value, why = Shape.of(a[1]):parse(a[2])
+    return { ok = ok, value = value, error = why }
   elseif fn == "clean_text" then return Py.clean(Py.text_of(a[1]))
   elseif fn == "fill" then return Lines.fill(a[1], a[2])
   elseif fn == "event_key" then return Lines.event_key(a[1])
@@ -8808,10 +9073,36 @@ function Kinloom:_native(verb, body, callback, on_piece)
   if box.finished then return callback(box.r) end
 end
 
+--- Relay: sends a character's declaration (after the game's tools when asked); calls naming it wait for it, so the
+--- server never answers them without the character's soul and tools.
+function Kinloom:_declare(name, d, with_tools)
+  self._declaring = self._declaring or {}
+  local waiting = {}
+  self._declaring[name] = waiting
+  local function sent()
+    if self._declaring[name] == waiting then self._declaring[name] = nil end
+    for _, go in ipairs(waiting) do go() end
+  end
+  if with_tools then
+    self:_post("tools", { tools = self._tools }, 5, function() self:_post("character", d, 5, sent) end)
+  else
+    self:_post("character", d, 5, sent)
+  end
+end
+
 function Kinloom:_post(verb, body, timeout, callback)
   callback = callback or function() end
   if self.brain then return self:_native(verb, body, callback) end
-  if not self.transport or self._clock() < self._down_until then return callback(nil) end
+  if verb ~= "character" and verb ~= "tools" and self._declaring and type(body) == "table" then
+    for _, field in ipairs({ "name", "a", "b" }) do
+      local waiting = type(body[field]) == "string" and self._declaring[body[field]]
+      if waiting then
+        waiting[#waiting + 1] = function() self:_post(verb, body, timeout, callback) end
+        return
+      end
+    end
+  end
+  if not self.transport or self._clock() < self._down_until or self._clock() < (self._busy_until or -1) then return callback(nil) end
   local headers = { ["X-Kinloom-Session"] = self.session }
   if self.token ~= "" then headers["Authorization"] = "Bearer " .. self.token end
   self.transport(self.url .. "/v1/" .. verb, encode(body), timeout, headers, function(status, text)
@@ -8821,6 +9112,13 @@ function Kinloom:_post(verb, body, timeout, callback)
     else
       self._failures = 0
     end
+    if status == 429 then                   -- too many requests: offline answers for 5 s, the server is not down; told once
+      self._busy_until = self._clock() + 5
+      if not self._busy_told then
+        self._busy_told = true
+        if io and io.stderr then io.stderr:write("[kinloom] the server answered 429 (too many requests): offline answers for 5 s\n") end
+      end
+    end
     local result = status == 200 and decode(text or "") or nil
     callback(type(result) == "table" and result or nil)
   end)
@@ -8828,12 +9126,7 @@ end
 
 function Kinloom:_redeclare(name, r)
   if r and r.declared == false and self._chars[name] then   -- the server restarted: its tools, then the character
-    local d = self._chars[name]
-    if self._tools then
-      self:_post("tools", { tools = self._tools }, 5, function() self:_post("character", d, 5) end)
-    else
-      self:_post("character", d, 5)
-    end
+    self:_declare(name, self._chars[name], self._tools ~= nil)
   end
 end
 
@@ -8845,7 +9138,7 @@ function Kinloom:character(name, personality, options)
   for k, v in pairs(options or {}) do d[k] = v end
   d.name, d.personality = name, personality or ""
   self._chars[name] = d
-  self:_post("character", d, 5)
+  if self.brain then self:_post("character", d, 5) else self:_declare(name, d, false) end
 end
 
 -- An event's offline lines: {"..."}, "...", or {when = ..., lines = {...}}.
@@ -8938,6 +9231,14 @@ function Kinloom:chat(name, message, facts, callback, speaker, image, on_piece)
   return result
 end
 
+--- Relay: seconds between decide/act requests: a quarter of the character's `every` (8 s by default: every 2 s; the
+--- server refreshes early when the situation changes after every/4), never more than 4 times a second.
+function Kinloom:_poll_every(name)
+  local every = (self._chars[name] or {}).every
+  every = (type(every) == "number" and every == every and every < math.huge and every > 0) and every or 8.0
+  return math.max(0.25, every / 4)
+end
+
 --- Instant: the latest decision shaped like `choices` (the model refreshes it in the background).
 function Kinloom:decide(name, situation, choices)
   local key = name .. "|" .. encode(choices)
@@ -8947,7 +9248,7 @@ function Kinloom:decide(name, situation, choices)
     self._decisions[key] = d
   end
   local now = self._clock()
-  if not d.busy and (d.at < 0 or now - d.at >= 0.25) then
+  if not d.busy and (d.at < 0 or now - d.at >= self:_poll_every(name)) then
     d.busy, d.at = true, now
     self:_post("decide", { name = name, situation = situation or {}, choices = choices }, 2, function(r)
       if r and r.decision ~= nil then d.value = r.decision; self:_redeclare(name, r) end
@@ -8964,7 +9265,7 @@ function Kinloom:act(name, situation, think)
   local ready = a.ready
   a.ready = {}
   local now = self._clock()
-  if not a.busy and (a.at < 0 or now - a.at >= 0.25) then
+  if not a.busy and (a.at < 0 or now - a.at >= self:_poll_every(name)) then
     a.busy, a.at = true, now
     self:_post("act", { name = name, situation = situation or {}, think = think ~= false }, 2, function(r)
       for _, action in ipairs(r and r.actions or {}) do

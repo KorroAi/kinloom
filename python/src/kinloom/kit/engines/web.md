@@ -4,7 +4,8 @@ Setup: `kinloom init` copied `{client_path}` (typed): import it relative to your
 JavaScript projects also get `kinloom-talk.js`: a ready dialogue box (`talkBox(kl, "MIRA").open()`).
 While playing, run `kinloom serve` in a terminal (it allows local pages; for a deployed game see `kinloom serve --help`).
 Or no server (native: the game calls the model itself, the key from the environment): `new Kinloom({ provider: "auto" })` (Node, Deno, Bun; in a browser
-the key would reach players: a relay, or the player's own key).
+the key would reach players: a relay, or the player's own key). With a relay token and no `session`, a browser keeps one
+session id per install (localStorage), never the shared "default".
 ---
 ```ts
 import { Kinloom } from "{import_path}";
