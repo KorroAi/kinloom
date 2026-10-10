@@ -8,131 +8,129 @@ item = kl.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50]
 #   -> a dict like the example (~1-2 s); count=5 -> a list of 5; instant=True -> from a pool
 plan = kl.create("a hut", {"x": [0, 40]}, check=lambda p: "" if p["x"] < 30 else "no room", offline={"x": 3})
 #   check: your rules ("" or why, fixed once by the model); chat, decide, act, suggest take check= too
-kl.create("a town's parts", [{"kind": ["house", "well"]}], each=print)   # each part as it is written
-shout = kl.remark("a lighthouse went up", who="a fisherman")   # a passer-by's line, no character to declare
-kl.character("ROVER", "the player's dog", tools={"sit": {}, "fetch": {"item": "stick"}})   # or Python functions: they run
-for tool, args in kl.act("ROVER", {"order": typed_text}):   # instant: validated calls
+kl.create("a town's parts", [{"kind": ["house", "well"]}], each=print)  # each part as it is written
+shout = kl.remark("a lighthouse went up", who="a fisherman")  # a passer-by's line, no character to declare
+kl.character("ROVER", "the player's dog", tools={"sit": {}, "fetch": {"item": "stick"}})  # or Python functions: they run
+for tool, args in kl.act("ROVER", {"order": typed_text}):  # instant: validated calls
     run(tool, args)
-kl.tools({"open_door": {"door": "north"}})   # the game's tools: characters name them
-seen = kl.create("what the screen shows", {"danger": [0.0, 1.0]}, image=png_bytes)   # it looks at it
+kl.tools({"open_door": {"door": "north"}})  # the game's tools: characters name them
+seen = kl.create("what the screen shows", {"danger": [0.0, 1.0]}, image=png_bytes)  # it looks at it
 kl.character("VEGA", "a short, excited announcer", lines={"built": ["{who} built a {what}!"]}, events={"built": ["who", "what"]})
-line = kl.say("VEGA", "built", {"who": "Ana", "what": "bridge"})   # instant, only your facts in it
-reply = kl.chat("MIRA", typed_text, {"gold": 3}, speaker="Ana")   # a free answer in character, ~1 s (not per frame)
-kl.steer("MIRA", "admit the sword")   # the game decides her next reply
-for tool, args in reply.do: run(tool, args)   # with tools: what she decided in this reply
-audio = kl.speak("MIRA", reply)   # her voice: audio.path (WAV) or None
-said = kl.listen(wav_bytes)       # speech -> text
-kl.event("the player stole bread", by="PLAYER", seen_by=["BAKER"], tag="theft")   # only witnesses know
-kl.meet("BAKER", "GUARD")   # they share it: kl.knows("GUARD", "theft"), kl.opinion("GUARD", "PLAYER")
+line = kl.say("VEGA", "built", {"who": "Ana", "what": "bridge"})  # instant, only your facts in it
+reply = kl.chat("MIRA", typed_text, {"gold": 3}, speaker="Ana")  # a free answer in character, ~1 s (not per frame)
+kl.steer("MIRA", "admit the sword")  # the game decides her next reply
+for tool, args in reply.do: run(tool, args)  # with tools: what she decided in this reply
+audio = kl.speak("MIRA", reply)  # her voice: audio.path (WAV) or None
+said = kl.listen(wav_bytes)  # speech -> text
+kl.event("the player stole bread", by="PLAYER", seen_by=["BAKER"], tag="theft")  # only witnesses know
+kl.meet("BAKER", "GUARD")  # they share it: kl.knows("GUARD", "theft"), kl.opinion("GUARD", "PLAYER")
 kl.mind("RAIDER", "a cautious raider", senses={"hp": [0.0, 1.0], "allies": [0, 20]}, actions={"flee": {}, "flank": {}},
-        rules={"flee": ["hp low"], "flank": ["allies above 2"]})   # once
-a = kl.think("RAIDER", {"hp": 0.3, "allies": 5}, who="raider-7")   # every frame, no model call: a["action"]
-picks = kl.suggest("MIRA", ["Ask about the sword", "Leave"], speaker="Ana")   # one choice per example
-talk = kl.converse("MIRA", "BAKER", about="the smoke")   # they talk: [{"who", "text"}]
-slot = kl.save(); kl.load(slot)   # in the game's save file
-seen_by_ai = kl.inspect()   # a debug overlay
+        rules={"flee": ["hp low"], "flank": ["allies above 2"]})  # once
+a = kl.think("RAIDER", {"hp": 0.3, "allies": 5}, who="raider-7")  # every frame, no model call: a["action"]
+picks = kl.suggest("MIRA", ["Ask about the sword", "Leave"], speaker="Ana")  # one choice per example
+talk = kl.converse("MIRA", "BAKER", about="the smoke")  # they talk: [{"who", "text"}]
+slot = kl.save(); kl.load(slot)  # in the game's save file
+seen_by_ai = kl.inspect()  # a debug overlay
 # A ready-made talk box: kinloom.talk.PygameTalkBox (pygame) or Talk (any engine).
 
 ## gdscript
 # Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
 var sky = Kinloom.decide("WEATHER", {"season": "winter", "day": 12}, {"sky": ["sun", "snow"], "wind": [0.0, 1.0]})
 #   -> {"sky": "snow", "wind": 0.7}: instant every frame, refreshed in the background
-var item = await Kinloom.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50], "story": "Found under a cold stone."}, {"depth": 3})
+var item = await Kinloom.create("an item found in a cave", {"name": "Glowcap", "value": [1, 50]}, {"depth": 3})
 #   -> one Dictionary like the example (~1-2 s); create(what, example, {}, 5) -> an Array of 5
 var plan = await Kinloom.create("a hut", {"x": [0, 40]}, {}, 0, false, null, func(p): return "" if p.x < 30 else "off the plot", {"x": 3})
 #   check: your rules ("" accepts; else why: fixed once), offline: yours; chat, decide, act, suggest take a check too
-await Kinloom.create("a town's parts", [{"kind": ["house", "well"]}], {}, 0, false, null, null, null, func(p): print(p))   # each, as written
-var shout: String = await Kinloom.remark("a lighthouse went up", "a fisherman")   # a passer-by's line, no character
+await Kinloom.create("a town's parts", [{"kind": ["house", "well"]}], {}, 0, false, null, null, null, func(p): print(p))  # each, as written
+var shout: String = await Kinloom.remark("a lighthouse went up", "a fisherman")  # a passer-by's line, no character
 Kinloom.character("ROVER", "the player's dog", {"tools": {"sit": {}, "fetch": {"item": "stick"}}})
-for a in Kinloom.act("ROVER", {"order": typed_text}):        # instant: validated calls, a.tool and a.args
+for a in Kinloom.act("ROVER", {"order": typed_text}):  # instant: validated calls, a.tool and a.args
 	run(a.tool, a.args)
-Kinloom.tools({"open_door": {"door": "north"}})    # the game's tools, once: characters name them, {"tools": ["open_door"]}
+Kinloom.tools({"open_door": {"door": "north"}})  # the game's tools, once: characters name them, {"tools": ["open_door"]}
 var seen = await Kinloom.create("what the screen shows", {"danger": [0.0, 1.0]}, {}, 0, false, get_viewport().get_texture().get_image())
-await Kinloom.prepare(10.0)                         # a loading screen: what Kinloom writes ahead is ready
+await Kinloom.prepare(10.0)  # a loading screen: lines written ahead are ready
 Kinloom.character("VEGA", "a short, excited announcer", {"lines": {"built": ["{who} built a {what}!"]}, "events": {"built": ["who", "what"]}})
-var line: String = await Kinloom.say("VEGA", "built", {"who": "Ana", "what": "bridge"})      # instant
-var reply: String = await Kinloom.chat("MIRA", typed_text, {"gold": 3}, "Ana")                # free answer, ~1 s
-Kinloom.steer("MIRA", "admit you sold the king's sword")   # the game decides her next reply (even a secret)
-Kinloom.speak_aloud("MIRA", reply)          # her voice (or the system's); speak() gives the AudioStreamWAV
-var said: String = await Kinloom.listen(wav_bytes)                                            # microphone -> text
-Kinloom.event("the player stole bread", [], {"by": "PLAYER", "seen_by": ["BAKER"]})          # then knows / opinion / reputation
+var line: String = await Kinloom.say("VEGA", "built", {"who": "Ana", "what": "bridge"})  # instant
+var reply: String = await Kinloom.chat("MIRA", typed_text, {"gold": 3}, "Ana")  # free answer, ~1 s
+Kinloom.steer("MIRA", "admit you sold the king's sword")  # the game decides her next reply
+Kinloom.speak_aloud("MIRA", reply)  # her voice; speak() gives the AudioStreamWAV
+var said: String = await Kinloom.listen(wav_bytes)  # microphone -> text
+Kinloom.event("the player stole bread", [], {"by": "PLAYER", "seen_by": ["BAKER"]})  # then knows / opinion / reputation
 Kinloom.mind("RAIDER", "a cautious raider", {"senses": {"hp": [0.0, 1.0], "allies": [0, 20]},
-	"actions": {"flee": {}, "flank": {}}, "rules": {"flee": ["hp low"], "flank": ["allies above 2"]}})   # once (or an AIMind node)
-var t := Kinloom.think("RAIDER", {"hp": 0.3, "allies": 5}, "raider-7")    # every frame, no model call: t.action
-var picks: Array = await Kinloom.suggest("MIRA", ["Ask about the sword", "Leave"], "Ana")   # choices for gamepads: one per example
-for turn in await Kinloom.converse("MIRA", "BAKER", "the smoke"): print(turn.who, ": ", turn.text)   # they talk together
-var slot: String = await Kinloom.save_state()      # the AI's whole state as one string in your save file; load_state(slot)
-var seen_by_ai = await Kinloom.inspect()           # a debug overlay: moods, feelings, last words, waiting actions
-# People talking to a character, ready-made: an AIDialogue node (character_name, soul, tools, voice; open()).
+	"actions": {"flee": {}, "flank": {}}, "rules": {"flee": ["hp low"], "flank": ["allies above 2"]}})  # once (or an AIMind node)
+var t := Kinloom.think("RAIDER", {"hp": 0.3, "allies": 5}, "raider-7")  # every frame, no model call: t.action
+var picks: Array = await Kinloom.suggest("MIRA", ["Ask about the sword", "Leave"], "Ana")  # one choice per example
+for turn in await Kinloom.converse("MIRA", "BAKER", "the smoke"): print(turn.who, ": ", turn.text)  # they talk together
+var slot: String = await Kinloom.save_state()  # the AI's state as one string, for your save file; load_state(slot)
+var seen_by_ai = await Kinloom.inspect()  # a debug overlay (moods, feelings, last words)
+# A ready dialogue box: an AIDialogue node (character_name, soul, tools, voice; open()).
 
 ## csharp
 // Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
-var sky = kl.Decide("WEATHER", new Dictionary<string, object> { ["season"] = "winter" },
-    new Dictionary<string, object> { ["sky"] = new List<object> { "sun", "snow" }, ["wind"] = new List<object> { 0.0, 1.0 } });
-//   -> instant every frame, refreshed in the background: sky["sky"], sky["wind"]
-var item = await kl.Create("an item found in a cave", new Dictionary<string, object> { ["name"] = "Glowcap",
-    ["value"] = new List<object> { 1, 50 } }, new Dictionary<string, object> { ["depth"] = 3 });   // ~1-2 s; count: 5 -> a list
-var plan = await kl.Create("a hut", new Dictionary<string, object> { ["x"] = new List<object> { 0, 40 } },
-    check: p => Convert.ToInt32(((IDictionary<string, object>)p!)["x"]) < 30 ? "" : "off the plot",
-    offline: new Dictionary<string, object> { ["x"] = 3 });   // your rules: fixed once; then yours (Chat, Decide, Act, Suggest too)
-await kl.Create("a town's parts", new List<object> { new Dictionary<string, object> { ["kind"] = new List<object> { "house", "well" } } },
-    each: part => Show("part", part!));      // each part as soon as it is written
-string shout = await kl.Remark("a lighthouse went up", "a fisherman");   // a passer-by's line, no character to declare
-kl.Character("ROVER", "the player's dog", new Dictionary<string, object> { ["tools"] = new Dictionary<string, object> {
-    ["sit"] = new Dictionary<string, object>(), ["fetch"] = new Dictionary<string, object> { ["item"] = "stick" } } });
-foreach (var a in kl.Act("ROVER", new Dictionary<string, object> { ["order"] = typedText })) Run(a.Tool, a.Args);  // instant
-await kl.Tools(new Dictionary<string, object> { ["open_door"] = new Dictionary<string, object> { ["door"] = "north" } });
-//   the game's tools, once: characters name them, ["tools"] = new List<object> { "open_door" }
-var seen = await kl.Create("what the screen shows", new Dictionary<string, object> { ["danger"] = new List<object> { 0.0, 1.0 } },
-    null, 0, false, pngBytes);                // image: PNG/JPEG bytes (Unity: texture.EncodeToPNG())
-await kl.Prepare(10);                         // a loading screen: what Kinloom writes ahead is ready
-string line = await kl.Say("VEGA", "built", new Dictionary<string, object> { ["who"] = "Ana" });   // instant (lines declared once)
-string reply = await kl.Chat("MIRA", typedText, null, "Ana");                                        // free answer, ~1 s
-await kl.Steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
-byte[]? wav = await kl.Speak("MIRA", reply);    // WAV or null; KinloomClient.WavSamples(wav, ...) -> AudioClip
-string said = await kl.Listen(wavBytes);        // microphone -> text (KinloomClient.Wav(samples, ch, hz) makes the WAV)
-await kl.Event("the player stole bread", by: "PLAYER", seenBy: new[] { "BAKER" });                  // who knows it
-kl.Mind("RAIDER", "a cautious raider", new Dictionary<string, object> { ["hp"] = new List<object> { 0.0, 1.0 } },
-    new Dictionary<string, object> { ["flee"] = new Dictionary<string, object>(), ["hold"] = new Dictionary<string, object>() },
-    new Dictionary<string, object> { ["flee"] = new List<object> { "hp low" } });                    // once: senses, actions, rules
-var t = kl.Think("RAIDER", new Dictionary<string, object> { ["hp"] = 0.3 }, "raider-7");         // every frame, no model call: t.Action
-var picks = await kl.Suggest("MIRA", new[] { "Ask about the sword", "Leave" }, "Ana");          // choices for gamepads: one per example
-foreach (var turn in await kl.Converse("MIRA", "BAKER", "the smoke")) Show(turn["who"], turn["text"]);   // they talk together
-string slot = await kl.Save(); await kl.Load(slot);   // the AI's whole state as one string in your save file
-var seenByAi = await kl.Inspect();                    // a debug overlay: moods, feelings, last words, waiting actions
-// People talking to a character in Unity, ready-made: the KinloomDialogue component (name, soul, reply choices, events).
+var sky = kl.Decide("WEATHER", new Obj { ["season"] = "winter" },
+    new Obj { ["sky"] = new Arr { "sun", "snow" }, ["wind"] = new Arr { 0.0, 1.0 } });
+//   -> sky["sky"], sky["wind"]: instant every frame, refreshed in the background
+var item = await kl.Create("an item found in a cave", new Obj { ["name"] = "Glowcap", ["value"] = new Arr { 1, 50 } },
+    new Obj { ["depth"] = 3 });  // ~1-2 s; count: 5 -> a list
+var plan = await kl.Create("a hut", new Obj { ["x"] = new Arr { 0, 40 } },
+    check: p => Convert.ToInt32(((Obj)p!)["x"]) < 30 ? "" : "off the plot",
+    offline: new Obj { ["x"] = 3 });  // your rules: fixed once; then yours (Chat, Decide, Act, Suggest too)
+await kl.Create("a town's parts", new Arr { new Obj { ["kind"] = new Arr { "house", "well" } } },
+    each: part => Show("part", part!));  // each part as it is written
+string shout = await kl.Remark("a lighthouse went up", "a fisherman");  // a passer-by's line, no character
+kl.Character("ROVER", "the player's dog", new Obj { ["tools"] = new Obj {
+    ["sit"] = new Obj(), ["fetch"] = new Obj { ["item"] = "stick" } } });
+foreach (var a in kl.Act("ROVER", new Obj { ["order"] = typedText })) Run(a.Tool, a.Args);  // instant
+await kl.Tools(new Obj { ["open_door"] = new Obj { ["door"] = "north" } });
+//   once; characters name them: ["tools"] = new Arr { "open_door" }
+var seen = await kl.Create("what the screen shows", new Obj { ["danger"] = new Arr { 0.0, 1.0 } },
+    image: pngBytes);  // Unity: texture.EncodeToPNG()
+await kl.Prepare(10);  // a loading screen: lines written ahead are ready
+string line = await kl.Say("VEGA", "built", new Obj { ["who"] = "Ana" });  // instant (lines declared once)
+string reply = await kl.Chat("MIRA", typedText, null, "Ana");  // free answer, ~1 s
+await kl.Steer("MIRA", "admit you sold the king's sword");  // the game decides her next reply
+byte[]? wav = await kl.Speak("MIRA", reply);  // WAV or null; KinloomClient.WavSamples -> AudioClip
+string said = await kl.Listen(wavBytes);  // microphone -> text (KinloomClient.Wav makes the WAV)
+await kl.Event("the player stole bread", by: "PLAYER", seenBy: new[] { "BAKER" });  // who knows it
+kl.Mind("RAIDER", "a cautious raider", new Obj { ["hp"] = new Arr { 0.0, 1.0 } },
+    new Obj { ["flee"] = new Obj(), ["hold"] = new Obj() },
+    new Obj { ["flee"] = new Arr { "hp low" } });  // once: senses, actions, rules
+var t = kl.Think("RAIDER", new Obj { ["hp"] = 0.3 }, "raider-7");  // every frame, no model call: t.Action
+var picks = await kl.Suggest("MIRA", new[] { "Ask about the sword", "Leave" }, "Ana");  // one choice per example
+foreach (var turn in await kl.Converse("MIRA", "BAKER", "the smoke")) Show(turn["who"], turn["text"]);  // they talk
+string slot = await kl.Save(); await kl.Load(slot);  // the AI's state as one string, for your save file
+var seenByAi = await kl.Inspect();  // a debug overlay (moods, feelings, last words)
 
 ## js
 // Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
 const sky = kl.decide("WEATHER", { season: "winter", day: 12 }, { sky: ["sun", "snow"], wind: [0.0, 1.0] });
 //   -> { sky: "snow", wind: 0.7 }: instant every frame, refreshed in the background
-const item = await kl.create("an item found in a cave", { name: "Glowcap", value: [1, 50], story: "Found under a cold stone." }, { context: { depth: 3 } });
+const item = await kl.create("an item found in a cave", { name: "Glowcap", value: [1, 50] }, { context: { depth: 3 } });
 //   -> one object like the example (~1-2 s); { count: 5 } -> an array of 5; { instant: true } -> from a pool
 const plan = await kl.create("a hut", { x: [0, 40] }, { check: (p) => (p.x < 30 ? "" : "off the plot"), offline: { x: 3 } });
 //   check: your rules ("" accepts; else why: fixed once), offline: yours; chat, decide, act, suggest take { check } too
-await kl.create("a town's parts", [{ kind: ["house", "well"] }], { each: (p) => show("part", p) });   // each part as written
-const shout = await kl.remark("a lighthouse went up", { who: "a fisherman" });   // a passer-by's line, no character
+await kl.create("a town's parts", [{ kind: ["house", "well"] }], { each: (p) => show("part", p) });  // each part as written
+const shout = await kl.remark("a lighthouse went up", { who: "a fisherman" });  // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", { tools: { sit: {}, fetch: { item: "stick" } } });
-for (const a of kl.act("ROVER", { order: typedText })) run(a.tool, a.args);   // instant: validated calls
-await kl.tools({ open_door: { door: "north" } });   // the game's tools, once: characters name them, { tools: ["open_door"] }
+for (const a of kl.act("ROVER", { order: typedText })) run(a.tool, a.args);  // instant: validated calls
+await kl.tools({ open_door: { door: "north" } });  // the game's tools, once: characters name them, { tools: ["open_door"] }
 const seen = await kl.create("what the screen shows", { danger: [0.0, 1.0] }, { image: canvas.toDataURL() });
-await kl.prepare(10);                                // a loading screen: what Kinloom writes ahead is ready
+await kl.prepare(10);  // a loading screen: lines written ahead are ready
 kl.character("VEGA", "a short, excited announcer", { lines: { built: ["{who} built a {what}!"] }, events: { built: ["who", "what"] } });
-const line = await kl.say("VEGA", "built", { who: "Ana", what: "bridge" });   // instant
-const reply = await kl.chat("MIRA", typedText, { gold: 3 }, "Ana");           // free answer, ~1 s (onPiece to stream)
-await kl.steer("MIRA", "admit you sold the king's sword");    // the game decides her next reply (even a secret)
-const voice = await kl.speak("MIRA", reply); if (voice) new Audio(voice.url).play();   // null: show the text only
-const said = await kl.listen(recordedBlob);                                    // microphone (MediaRecorder) -> text
+const line = await kl.say("VEGA", "built", { who: "Ana", what: "bridge" });  // instant
+const reply = await kl.chat("MIRA", typedText, { gold: 3 }, "Ana");  // free answer, ~1 s (onPiece to stream)
+await kl.steer("MIRA", "admit you sold the king's sword");  // the game decides her next reply
+const voice = await kl.speak("MIRA", reply); if (voice) new Audio(voice.url).play();  // null: show the text only
+const said = await kl.listen(recordedBlob);  // microphone (MediaRecorder) -> text
 kl.event("the player stole bread", [], { by: "PLAYER", seenBy: ["BAKER"] });  // then knows / opinion / reputation
 kl.mind("RAIDER", "a cautious raider", { senses: { hp: [0, 100], allies: [0, 20] }, actions: { flee: {}, flank: {} },
-  rules: { flee: ["hp low"], flank: ["allies above 2"] } });                  // once: rules are the offline mind
-const t = kl.think("RAIDER", { hp: 30, allies: 5 }, "raider-7");              // every frame, no model call: t.action
-const picks = await kl.suggest("MIRA", ["Ask about the sword", "Leave"], "Ana");   // choices for gamepads: one per example
-for (const turn of await kl.converse("MIRA", "BAKER", "the smoke")) show(turn.who, turn.text);   // they talk together
-const slot = await kl.save(); await kl.load(slot);   // the AI's whole state as one string in your save file
-const seenByAi = await kl.inspect();                  // a debug overlay: moods, feelings, last words, waiting actions
-// People talking to a character, ready-made: talkBox(kl, "MIRA", { speaker: "Ana", voice: true }).open() from
-// kinloom-talk.js (next to the client): replies said aloud, a hold-to-talk microphone button.
+  rules: { flee: ["hp low"], flank: ["allies above 2"] } });  // once: rules are the offline mind
+const t = kl.think("RAIDER", { hp: 30, allies: 5 }, "raider-7");  // every frame, no model call: t.action
+const picks = await kl.suggest("MIRA", ["Ask about the sword", "Leave"], "Ana");  // one choice per example
+for (const turn of await kl.converse("MIRA", "BAKER", "the smoke")) show(turn.who, turn.text);  // they talk together
+const slot = await kl.save(); await kl.load(slot);  // the AI's state as one string, for your save file
+const seenByAi = await kl.inspect();  // a debug overlay (moods, feelings, last words)
+// A ready dialogue box: talkBox(kl, "MIRA", { speaker: "Ana", voice: true }).open() from kinloom-talk.js.
 
 ## lua
 -- Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
@@ -141,27 +139,27 @@ local sky = kl:decide("WEATHER", { season = "winter", day = 12 }, { sky = { "sun
 kl:create("an item found in a cave", { name = "Glowcap", value = { 1, 50 } }, { context = { depth = 3 } }, function(item) found = item end)
 --   { count = 5 } -> a list of 5; the answer arrives in the callback (~1-2 s)
 kl:create("a hut", { x = { 0, 40 } }, { check = function(p) return p.x < 30 and "" or "off the plot" end,
-  offline = { x = 3 } }, function(plan) hut = plan end)   -- your rules: fixed once; then yours (chat, decide, act, suggest too)
-kl:create("a town's parts", { { kind = { "house", "well" } } }, { each = function(p) place(p) end })   -- each part as written
-kl:remark("a lighthouse went up", { who = "a fisherman" }, function(text) shout = text end)   -- a passer-by, no character
+  offline = { x = 3 } }, function(plan) hut = plan end)  -- your rules: fixed once; then yours (chat, decide, act, suggest too)
+kl:create("a town's parts", { { kind = { "house", "well" } } }, { each = function(p) place(p) end })  -- each part as written
+kl:remark("a lighthouse went up", { who = "a fisherman" }, function(text) shout = text end)  -- a passer-by, no character
 kl:character("ROVER", "the player's dog", { tools = { sit = {}, fetch = { item = "stick" } } })
-for _, a in ipairs(kl:act("ROVER", { order = typed_text })) do run(a.tool, a.args) end   -- instant: validated calls
-kl:tools({ open_door = { door = "north" } })   -- the game's tools, once: characters name them, tools = { "open_door" }
+for _, a in ipairs(kl:act("ROVER", { order = typed_text })) do run(a.tool, a.args) end  -- instant: validated calls
+kl:tools({ open_door = { door = "north" } })  -- the game's tools, once: characters name them, tools = { "open_door" }
 kl:create("what the screen shows", { danger = { 0, Kinloom.real(1) } }, { image = png_bytes }, function(seen) danger = seen end)
-kl:prepare(10, function(ready) loading_done = ready.ready end)   -- a loading screen: what Kinloom writes ahead is ready
-kl:say("VEGA", "built", { who = "Ana", what = "bridge" }, function(text) caption = text end)   -- lines declared once
-kl:chat("MIRA", typed_text, { gold = 3 }, function(reply) dialogue = reply end, "Ana")      -- free answer, ~1 s
-kl:steer("MIRA", "admit you sold the king's sword")   -- the game decides her next reply (even a secret)
-kl:speak("MIRA", "Halt!", function(wav) if wav then play(wav) end end)   -- WAV bytes (a string), nil: text only
-kl:listen(wav_bytes, nil, function(said) heard = said end)               -- microphone -> text
-kl:event("the player stole bread", nil, { by = "PLAYER", seen_by = { "BAKER" } })           -- who knows it
+kl:prepare(10, function(ready) loading_done = ready.ready end)  -- a loading screen: lines written ahead are ready
+kl:say("VEGA", "built", { who = "Ana", what = "bridge" }, function(text) caption = text end)  -- lines declared once
+kl:chat("MIRA", typed_text, { gold = 3 }, function(reply) dialogue = reply end, "Ana")  -- free answer, ~1 s
+kl:steer("MIRA", "admit you sold the king's sword")  -- the game decides her next reply
+kl:speak("MIRA", "Halt!", function(wav) if wav then play(wav) end end)  -- WAV bytes (a string), nil: text only
+kl:listen(wav_bytes, nil, function(said) heard = said end)  -- microphone -> text
+kl:event("the player stole bread", nil, { by = "PLAYER", seen_by = { "BAKER" } })  -- who knows it
 kl:mind("RAIDER", "a cautious raider", { senses = { hp = { 0, 100 }, allies = { 0, 20 } }, actions = { flee = {}, flank = {} },
-  order = { "flee", "flank" }, rules = { flee = { "hp low" }, flank = { "allies above 2" } } })   -- once
-local t = kl:think("RAIDER", { hp = 30, allies = 5 }, "raider-7")               -- every frame, no model call: t.action
-kl:suggest("MIRA", { "Ask about the sword", "Leave" }, "Ana", nil, function(picks) choices = picks end)   -- one per example
-kl:converse("MIRA", "BAKER", "the smoke", 4, function(lines) overheard = lines end)   -- they talk together: { {who, text}, ... }
-kl:save(function(slot) save_file.ai = slot end)   -- the AI's whole state as one string; kl:load(slot) puts it back
-kl:inspect(function(seen) debug_view = seen end)  -- a debug overlay: moods, feelings, last words, waiting actions
+  order = { "flee", "flank" }, rules = { flee = { "hp low" }, flank = { "allies above 2" } } })  -- once
+local t = kl:think("RAIDER", { hp = 30, allies = 5 }, "raider-7")  -- every frame, no model call: t.action
+kl:suggest("MIRA", { "Ask about the sword", "Leave" }, "Ana", nil, function(picks) choices = picks end)  -- one per example
+kl:converse("MIRA", "BAKER", "the smoke", 4, function(lines) overheard = lines end)  -- they talk together: { {who, text}, ... }
+kl:save(function(slot) save_file.ai = slot end)  -- the AI's whole state as one string; kl:load(slot) puts it back
+kl:inspect(function(seen) debug_view = seen end)  -- a debug overlay (moods, feelings, last words)
 
 ## rust
 // Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
@@ -173,55 +171,55 @@ let plan = kl.create_checked("a hut", obj! { "x" => vec![0, 40] }, obj! {},
     |p: &Json| if p.get("x").as_f64() < 30.0 { String::new() } else { "off the plot".into() }, obj! { "x" => 3 });
 //   your rules ("" accepts; else why: fixed once), then yours; also chat_checked, decide_checked, act_checked
 kl.create_each("a town's parts", Json::Arr(vec![obj! { "kind" => vec!["house", "well"] }]), obj! {}, |p: &Json| show("part", &p.to_json()));
-let shout = kl.remark("a lighthouse went up", "a fisherman", Json::Null, &[], 0);   // a passer-by's line, no character
+let shout = kl.remark("a lighthouse went up", "a fisherman", Json::Null, &[], 0);  // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", obj! { "tools" => obj! { "sit" => obj! {}, "fetch" => obj! { "item" => "stick" } } });
-for a in kl.act("ROVER", obj! { "order" => typed_text.as_str() }) { run(&a.tool, &a.args); }   // instant: validated calls
-kl.tools(obj! { "open_door" => obj! { "door" => "north" } });   // the game's tools, once: characters name them
+for a in kl.act("ROVER", obj! { "order" => typed_text.as_str() }) { run(&a.tool, &a.args); }  // instant: validated calls
+kl.tools(obj! { "open_door" => obj! { "door" => "north" } });  // the game's tools, once: characters name them
 let seen = kl.create_image("what the screen shows", obj! { "danger" => vec![0.0, 1.0] }, obj! {}, 0, false, &png_bytes);
-kl.prepare(10.0);                                                // a loading screen: what Kinloom writes ahead is ready
-let line = kl.say("VEGA", "built", obj! { "who" => "Ana" });                 // fast (lines declared once)
-let reply = kl.chat_as("MIRA", &typed_text, obj! { "gold" => 3 }, "Ana");     // free answer, ~1 s: on a thread
-kl.steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
-let wav = kl.speak("MIRA", &reply);           // WAV bytes; empty: show the text only
-let said = kl.listen(&wav_bytes, "");         // microphone -> text
+kl.prepare(10.0);  // a loading screen: lines written ahead are ready
+let line = kl.say("VEGA", "built", obj! { "who" => "Ana" });  // fast (lines declared once)
+let reply = kl.chat_as("MIRA", &typed_text, obj! { "gold" => 3 }, "Ana");  // free answer, ~1 s: on a thread
+kl.steer("MIRA", "admit you sold the king's sword");  // the game decides her next reply
+let wav = kl.speak("MIRA", &reply);  // WAV bytes; empty: show the text only
+let said = kl.listen(&wav_bytes, "");  // microphone -> text
 kl.event_with("the player stole bread", obj! { "by" => "PLAYER", "seen_by" => vec!["BAKER"] });
 kl.mind("RAIDER", "a cautious raider", obj! { "hp" => vec![0.0, 1.0] }, obj! { "flee" => obj! {}, "hold" => obj! {} },
-        obj! { "flee" => vec!["hp low"] }, 3, 30.0);                                   // once: senses, actions, rules
-let t = kl.think("RAIDER", &obj! { "hp" => 0.3 }, "raider-7");                        // every frame, no model call: t.action
-let picks = kl.suggest("MIRA", &["Ask about the sword", "Leave"], "Ana", Json::Null);   // choices for gamepads: one per example
+        obj! { "flee" => vec!["hp low"] }, 3, 30.0);  // once: senses, actions, rules
+let t = kl.think("RAIDER", &obj! { "hp" => 0.3 }, "raider-7");  // every frame, no model call: t.action
+let picks = kl.suggest("MIRA", &["Ask about the sword", "Leave"], "Ana", Json::Null);  // one choice per example
 for turn in kl.converse("MIRA", "BAKER", "the smoke", 4) { show(turn.get("who").as_str(), turn.get("text").as_str()); }
-let slot = kl.save(); kl.load(&slot);   // the AI's whole state as one string in your save file
-let seen_by_ai = kl.inspect();          // a debug overlay (Option<Json>): moods, feelings, last words, waiting actions
+let slot = kl.save(); kl.load(&slot);  // the AI's state as one string, for your save file
+let seen_by_ai = kl.inspect();  // a debug overlay (Option<Json>): moods, feelings, last words, waiting actions
 
 ## java
 // Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
 Map<String, Object> sky = kl.decide("WEATHER", map("season", "winter"), map("sky", list("sun", "snow"), "wind", list(0.0, 1.0)));
 //   -> instant every frame, refreshed in the background
 kl.createAsync("an item found in a cave", map("name", "Glowcap", "value", list(1, 50)), map("depth", 3), 0)
-  .thenAccept(item -> found = (Map<String, Object>) item);                    // ~1-2 s; count 5 -> a list of 5
+  .thenAccept(item -> found = (Map<String, Object>) item);  // ~1-2 s; count 5 -> a list of 5
 Object plan = kl.create("a hut", map("x", list(0, 40)), null,
-    p -> ((Number) ((Map<?, ?>) p).get("x")).intValue() < 30 ? "" : "off the plot", map("x", 3));   // your rules, fixed once
+    p -> ((Number) ((Map<?, ?>) p).get("x")).intValue() < 30 ? "" : "off the plot", map("x", 3));  // your rules, fixed once
 //   chat, decide, act, suggest take a check too
 kl.create("a town's parts", list(map("kind", list("house", "well"))), null, 0, false, null, null, null, p -> show("part", p));
-String shout = kl.remark("a lighthouse went up", "a fisherman", null, null, 0);   // a passer-by's line, no character
+String shout = kl.remark("a lighthouse went up", "a fisherman", null, null, 0);  // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", map("tools", map("sit", map(), "fetch", map("item", "stick"))));
-for (Kinloom.Action a : kl.act("ROVER", map("order", typedText))) run(a.tool, a.args);   // instant: validated calls
-kl.tools(map("open_door", map("door", "north")));   // the game's tools, once: characters name them, "tools", list("open_door")
-Object seen = kl.create("what the screen shows", map("danger", list(0.0, 1.0)), null, 0, false, pngBytes);   // image bytes
-kl.prepare(10);                                      // a loading screen: what Kinloom writes ahead is ready
-String line = kl.say("VEGA", "built", map("who", "Ana"));                     // fast (lines declared once)
-String reply = kl.chat("MIRA", typedText, map("gold", 3), "Ana");             // free answer, ~1 s: chatAsync off the game thread
-kl.steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
-byte[] wav = kl.speak("MIRA", reply);           // WAV bytes; null: show the text only (speakAsync off the game thread)
-String said = kl.listen(wavBytes);              // microphone -> text
+for (Kinloom.Action a : kl.act("ROVER", map("order", typedText))) run(a.tool, a.args);  // instant: validated calls
+kl.tools(map("open_door", map("door", "north")));  // the game's tools, once: characters name them, "tools", list("open_door")
+Object seen = kl.create("what the screen shows", map("danger", list(0.0, 1.0)), null, 0, false, pngBytes);  // image bytes
+kl.prepare(10);  // a loading screen: lines written ahead are ready
+String line = kl.say("VEGA", "built", map("who", "Ana"));  // fast (lines declared once)
+String reply = kl.chat("MIRA", typedText, map("gold", 3), "Ana");  // free answer, ~1 s: chatAsync off the game thread
+kl.steer("MIRA", "admit you sold the king's sword");  // the game decides her next reply
+byte[] wav = kl.speak("MIRA", reply);  // WAV bytes; null: show the text only (speakAsync off the game thread)
+String said = kl.listen(wavBytes);  // microphone -> text
 kl.event("the player stole bread", map("by", "PLAYER", "seen_by", list("BAKER")));
 kl.mind("RAIDER", "a cautious raider", map("hp", list(0.0, 1.0)), map("flee", map(), "hold", map()),
-        map("flee", list("hp low")), 3, 30);                                           // once: senses, actions, rules
-Kinloom.Thought t = kl.think("RAIDER", map("hp", 0.3), "raider-7");                   // every frame, no model call: t.action
-List<String> picks = kl.suggest("MIRA", Arrays.asList("Ask about the sword", "Leave"), "Ana");   // choices: one per example
+        map("flee", list("hp low")), 3, 30);  // once: senses, actions, rules
+Kinloom.Thought t = kl.think("RAIDER", map("hp", 0.3), "raider-7");  // every frame, no model call: t.action
+List<String> picks = kl.suggest("MIRA", Arrays.asList("Ask about the sword", "Leave"), "Ana");  // choices: one per example
 for (Map<String, Object> turn : kl.converse("MIRA", "BAKER", "the smoke")) show(turn.get("who"), turn.get("text"));
-String slot = kl.save(); kl.load(slot);   // the AI's whole state as one string in your save file
-Map<String, Object> seenByAi = kl.inspect();   // a debug overlay: moods, feelings, last words, waiting actions
+String slot = kl.save(); kl.load(slot);  // the AI's state as one string, for your save file
+Map<String, Object> seenByAi = kl.inspect();  // a debug overlay (moods, feelings, last words)
 
 ## cpp
 // Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.
@@ -233,26 +231,26 @@ auto plan = kl.create_checked("a hut", obj({{"x", arr({0, 40})}}), obj({}),
     [](const kinloom::Json& p) { return p["x"].num() < 30 ? std::string() : std::string("off the plot"); }, obj({{"x", 3}}));
 //   your rules ("" accepts; else why: fixed once), then yours; also chat_checked, decide_checked, act_checked
 kl.create("a town's parts", arr({obj({{"kind", arr({"house", "well"})}})}), obj({}), 0, false, {}, nullptr, kinloom::Json(),
-          [](const kinloom::Json& p) { show("part", p.dump()); });   // each part as soon as it is written
-std::string shout = kl.remark("a lighthouse went up", "a fisherman");   // a passer-by's line, no character
+          [](const kinloom::Json& p) { show("part", p.dump()); });  // each part as it is written
+std::string shout = kl.remark("a lighthouse went up", "a fisherman");  // a passer-by's line, no character
 kl.character("ROVER", "the player's dog", obj({{"tools", obj({{"sit", obj({})}, {"fetch", obj({{"item", "stick"}})}})}}));
-for (auto& a : kl.act("ROVER", obj({{"order", typed_text}}))) run(a.tool, a.args);   // instant: validated calls
-kl.tools(obj({{"open_door", obj({{"door", "north"}})}}));   // the game's tools, once: characters name them
+for (auto& a : kl.act("ROVER", obj({{"order", typed_text}}))) run(a.tool, a.args);  // instant: validated calls
+kl.tools(obj({{"open_door", obj({{"door", "north"}})}}));  // the game's tools, once: characters name them
 auto seen = kl.create("what the screen shows", obj({{"danger", arr({0.0, 1.0})}}), obj({}), 0, false, png_bytes);
-kl.prepare(10);                                              // a loading screen: what Kinloom writes ahead is ready
-std::string line = kl.say("VEGA", "built", obj({{"who", "Ana"}}));            // fast (lines declared once)
-std::string reply = kl.chat("MIRA", typed_text, obj({{"gold", 3}}), "Ana");   // free answer, ~1 s: chat_async off the loop
-kl.steer("MIRA", "admit you sold the king's sword");   // the game decides her next reply (even a secret)
-std::vector<unsigned char> wav = kl.speak("MIRA", reply);   // WAV bytes; empty: show the text only
-std::string said = kl.listen(wav_bytes);                     // microphone -> text
+kl.prepare(10);  // a loading screen: lines written ahead are ready
+std::string line = kl.say("VEGA", "built", obj({{"who", "Ana"}}));  // fast (lines declared once)
+std::string reply = kl.chat("MIRA", typed_text, obj({{"gold", 3}}), "Ana");  // free answer, ~1 s: chat_async off the loop
+kl.steer("MIRA", "admit you sold the king's sword");  // the game decides her next reply
+std::vector<unsigned char> wav = kl.speak("MIRA", reply);  // WAV bytes; empty: show the text only
+std::string said = kl.listen(wav_bytes);  // microphone -> text
 kl.event_with("the player stole bread", obj({{"by", "PLAYER"}, {"seen_by", arr({"BAKER"})}}));
 kl.mind("RAIDER", "a cautious raider", obj({{"hp", arr({0.0, 1.0})}}), obj({{"flee", obj({})}, {"hold", obj({})}}),
-        obj({{"flee", arr({"hp low"})}}));                                              // once: senses, actions, rules
-kinloom::Thought t = kl.think("RAIDER", obj({{"hp", 0.3}}), "raider-7");              // every frame, no model call: t.action
-std::vector<std::string> picks = kl.suggest("MIRA", {"Ask about the sword", "Leave"}, "Ana");   // one per example
-for (auto& turn : kl.converse("MIRA", "BAKER", "the smoke")) show(turn["who"].str(), turn["text"].str());   // they talk together
-std::string slot = kl.save(); kl.load(slot);   // the AI's whole state as one string in your save file
-kinloom::Json seen_by_ai = kl.inspect();       // a debug overlay: moods, feelings, last words, waiting actions
+        obj({{"flee", arr({"hp low"})}}));  // once: senses, actions, rules
+kinloom::Thought t = kl.think("RAIDER", obj({{"hp", 0.3}}), "raider-7");  // every frame, no model call: t.action
+std::vector<std::string> picks = kl.suggest("MIRA", {"Ask about the sword", "Leave"}, "Ana");  // one per example
+for (auto& turn : kl.converse("MIRA", "BAKER", "the smoke")) show(turn["who"].str(), turn["text"].str());  // they talk together
+std::string slot = kl.save(); kl.load(slot);  // the AI's state as one string, for your save file
+kinloom::Json seen_by_ai = kl.inspect();  // a debug overlay (moods, feelings, last words)
 
 ## http
 Any name: a character, a system ("WEATHER"), a group. The example is the shape of the answer AND the offline answer.

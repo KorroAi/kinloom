@@ -111,6 +111,19 @@ by `deepseek/deepseek-v4.1-flash` (which also wrote both sides).
   These scenes barely test what souls add (memories days later, feelings per player, secrets kept, actions), but on
   "does it read like a real person", a model sees no gain. The human blind test is still the one that counts.
 
+Again on 2026-10-10, on run 5 (the replies `blind.html` now shows), `deepseek/deepseek-v4.1-flash` only, 24 calls,
+$0.0007 measured on the key (0.6571026 -> 0.6578097); `judge-openrouter-deepseek_deepseek-v4.1-flash.json` (run 4's is
+kept as `...-run4.json`):
+- **Pairs**: souls 4, naive 2, but the second transcript won 5 times of 6: still mostly position. The one scene where
+  the order did not decide, B (Orrin, the forgotten lamp oil), went to Kinloom's soul both ways.
+- **Scored alone** (three times each): Kinloom 8.11 / naive 7.89: one point apart over 9 scores, noise. The prompt
+  rework (v5) closed the gap run 4 had; it shows no clear gain either. Still not a verdict.
+- **More scores** (`judge_scores.py 15`: each transcript rated 15 times, 90 calls, $0.00088 measured;
+  `judge-scores-run5.json`): Kinloom 8.09 / naive 8.13 over 45 scores each, no difference. By scene it cuts both ways:
+  Orrin (B) 8.8 / 7.87 for Kinloom's soul (the lamp oil remembered, his habits), Mira (A) 7.53 / 8.33 and Juno (D)
+  7.93 / 8.2 for the naive prompt. A model judge sees no overall gain on these short scenes; what souls add over days
+  (memories, feelings per player, secrets, actions) is not in them. The human blind test is still open.
+
 ## Quality: a stand-in judge used to improve the prompt (`quality.py`, 2026-09-29)
 
 Six scenes (the three of the blind test, plus a player coming back the next day, kindness to a shy character, and

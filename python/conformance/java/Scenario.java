@@ -30,6 +30,7 @@ public class Scenario {
             o.config = map("calls_per_minute", 600L);
             kl = new Kinloom(o);
         } else kl = new Kinloom("http://127.0.0.1:" + args[0], "default", "");
+        kl.sayWaitMs = 2000;   // a busy machine: the relay's prepared line, not the 30 ms offline fallback
         kl.character("VEGA", "commentator", map("lines", map("*", list("What a race, {who}!")), "events", map("overtake", list("who", "whom"))));
         kl.character("THEO", "engineer", map("offline", "Copy."));
         kl.character("BLAZE", "rival", map("tools", map("boost", map("seconds", list(0.5, 2.5)))));
@@ -68,6 +69,12 @@ public class Scenario {
         System.out.println("offline chat: " + offline.chat("THEO", "gap?", map("position", 3)));
         System.out.println("offline decide: " + Kinloom.toJson(offline.decide("BLAZE", map("lap", 1), choices)));
         System.out.println("offline create: " + Kinloom.toJson(offline.create("race", map("challenge", "Win clean", "sky", "#ff7a45"))));
+        // An example with no shape fails at once, with count too (as in Python), never a list of empty answers.
+        for (Object bad : Arrays.asList(map(), new ArrayList<Object>())) {
+            boolean threw = false;
+            try { offline.create("an item", bad, null, 2, false); } catch (IllegalArgumentException e) { threw = true; }
+            if (!threw) throw new IllegalStateException("an example with no shape was accepted with count");
+        }
 
         // Minds and the world (the depth layer).
         Map<String, Object> senses = map("hp", list(0, 1), "dist", list(0, 40), "armed", true, "enemy", list("idle", "alert"));

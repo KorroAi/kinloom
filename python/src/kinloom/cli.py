@@ -868,6 +868,13 @@ def main(argv=None):
         return cmd_home(args)
     try:
         return args.fn(args) or 0
+    except BrokenPipeError:   # `kinloom ... | head`: the reader left; no traceback (the Python docs' recipe)
+        try:
+            devnull = os.open(os.devnull, os.O_WRONLY)
+            os.dup2(devnull, sys.stdout.fileno())
+        except (OSError, ValueError):
+            pass
+        return 1
     except Exception as e:  # a friendly message instead of a traceback for configuration problems
         from .config import ConfigError
         if isinstance(e, (ConfigError, json.JSONDecodeError)):

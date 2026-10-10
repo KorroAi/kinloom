@@ -56,6 +56,12 @@ console.log("offline say: " + (await offline.say("VEGA", "overtake", facts)));
 console.log("offline chat: " + (await offline.chat("THEO", "gap?", { position: 3 })));
 console.log("offline decide: " + j(offline.decide("BLAZE", { lap: 1 }, choices)));
 console.log("offline create: " + j(await offline.create("race", { challenge: "Win clean", sky: "#ff7a45" })));
+// An example with no shape fails at once, with count too (as in Python), never a list of empty answers.
+for (const bad of [{}, []]) {
+  let threw = false;
+  try { await offline.create("an item", bad, { count: 2 }); } catch { threw = true; }
+  if (!threw) throw new Error("an example with no shape was accepted with count");
+}
 
 // ---------------- minds and the world (the depth layer) ----------------
 const RAIDER = {

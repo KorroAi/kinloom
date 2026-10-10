@@ -186,8 +186,11 @@ Real runs, with their method, cost and misses, are in [`proof/`](proof):
 - **Every SDK with a real model**: Python, JavaScript, TypeScript, C#, Java, Rust, C++, Lua and Godot each ran the
   conformance scenario natively against `deepseek/deepseek-v4.1-flash`: 205 requests, 205 answered, $0.0094 in all.
   [proof/sdks](proof/sdks/README.md)
-- **Real engines**: Godot 4.7 (every conformance run) and LÖVE 11.5 (offline, relay and native through its own
-  `love.thread` transport). Unity, Defold, Bevy and Unreal have not been run. [proof/engines](proof/engines/README.md)
+- **Real engines**: Godot 4.7 (every conformance run), LÖVE 11.5 (offline, relay and native through its own
+  `love.thread` transport) and the Unity 6000.3 and 6000.6 editors (the conformance scenario in relay and native mode,
+  `KinloomDialogue` in play mode, a Windows IL2CPP player). Defold, Bevy and Unreal have not been run, nor Unity's
+  mobile, console or WebGL builds.
+  [proof/engines](proof/engines/README.md)
 - **End to end**: aider (DeepSeek) and Claude Code (haiku) each built a working dialogue with reply choices in an
   existing game. [proof/v1](proof/v1/README.md)
 - **Learning units**: with a real model, 85 % wins against 65 % for the offline rules alone (hand-written rules: 87 %).
@@ -196,10 +199,11 @@ Real runs, with their method, cost and misses, are in [`proof/`](proof):
 Not measured yet: whether players find these characters more human than a plain prompt (the blind test in
 `proof/souls/blind.html` has not been judged), and how much time a coding agent saves overall.
 
-Tests: the Python suite (run on 3.9 and 3.12 on Windows, 3.14 on Linux), the conformance scenario in every client
+Tests: the Python suite (run on 3.9 and 3.12 on Windows and Linux), the conformance scenario in every client
 against a real server, every SDK's own brain against a fake model, and every language's calls from `calls.md` compiled
 against its SDK (`python/conformance/calls.py`). CI is configured (`.github/workflows/ci.yml`) to run them on Linux,
-macOS and Windows; it has not run yet, as the repository has not been pushed with it. Tests never call a real model.
+macOS and Windows; it has not run on GitHub yet, as the repository has not been pushed with it. Its Windows and
+Linux steps pass when run locally; macOS has not been run. Tests never call a real model.
 
 ## Documentation
 

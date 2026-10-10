@@ -675,9 +675,10 @@ public final class Kinloom {
     public Object create(String what, Object example, Map<String, Object> context, int count, boolean instant, byte[] image,
                          java.util.function.Function<Object, String> check, Object offline, java.util.function.Consumer<Object> each) {
         if (count > 0 && example instanceof List && ((List<?>) example).size() == 1) example = ((List<?>) example).get(0);
+        Shape shape = Shape.of(example);   // an example with no shape fails here, with count too
         Object fallback = defaultOf(example);
         if (offline != null) {
-            Object[] c = Shape.of(example).check(offline);
+            Object[] c = shape.check(offline);
             if (!(Boolean) c[0]) throw new IllegalArgumentException("create: offline must be shaped like the example: " + c[2]);
             fallback = c[1];
         }
@@ -686,7 +687,7 @@ public final class Kinloom {
         if (image != null && image.length > 0) body.put("image", java.util.Base64.getEncoder().encodeToString(image));
         if (count > 0) body.put("count", count);
         if (offline != null) body.put("offline", fallback);
-        boolean listed = count > 0 || Shape.of(example).kind.equals("list");
+        boolean listed = count > 0 || shape.kind.equals("list");
         return created(body, count, instant, check, fallback, true, each, listed);
     }
 
@@ -4146,12 +4147,14 @@ public final class Kinloom {
                 if (!q.isEmpty()) { int both = 0; for (String w : words((String) n.get("text"))) if (q.contains(w)) both++; overlap = (double) both / q.size(); }
                 scored.add(new Object[] {n, 0.45 * Py.d(n.get("importance")) + 0.35 * recency + 0.2 * overlap, i});
             }
-            scored.sort((a, b) -> { int c = Double.compare((Double) b[1], (Double) a[1]); return c != 0 ? c : Integer.compare((Integer) a[2], (Integer) b[2]); });
-            List<Map<String, Object>> best = new ArrayList<>();
-            for (Object[] s : scored.subList(0, Math.min(k, scored.size()))) best.add(Py.asMap(s[0]));
-            best.sort((a, b) -> Double.compare(Py.d(a.get("t")), Py.d(b.get("t"))));
+            scored.sort((a, b) -> { int c = Double.compare((Double) b[1], (Double) a[1]); return c != 0 ? c : Integer.compare((Integer) b[2], (Integer) a[2]); });   // ties: the newest first
+            List<Object[]> best = new ArrayList<>(scored.subList(0, Math.min(k, scored.size())));
+            best.sort((a, b) -> {   // in time order; equal instants as they were written
+                int c = Double.compare(Py.d(Py.asMap(a[0]).get("t")), Py.d(Py.asMap(b[0]).get("t")));
+                return c != 0 ? c : Integer.compare((Integer) a[2], (Integer) b[2]);
+            });
             List<String> out = new ArrayList<>();
-            for (Map<String, Object> n : best) out.add((String) n.get("text"));
+            for (Object[] s : best) out.add((String) Py.asMap(s[0]).get("text"));
             return out;
         }
 

@@ -1,13 +1,13 @@
 {
  "judge": "openrouter (deepseek/deepseek-v4.1-flash)",
  "votes": {
-  "souls": 3,
-  "naive": 3,
+  "souls": 4,
+  "naive": 2,
   "unclear": 0
  },
  "mean_scores": {
-  "souls": 8.0,
-  "naive": 8.33
+  "souls": 8.11,
+  "naive": 7.89
  },
  "rows": [
   {
@@ -17,7 +17,7 @@
     "naive"
    ],
    "pick": "naive",
-   "why": "Y\n\nY's Mira has a specific, guarded inner life\u2014she deflects with a personal wound (her husband), sets a hard boundary about the wall, and makes a concrete, characterful deal\u2014whereas X's Mira mostly trades in generic tough-smith banter."
+   "why": "Y"
   },
   {
    "scene": "A",
@@ -26,7 +26,7 @@
     "souls"
    ],
    "pick": "souls",
-   "why": "Y\n\nY's Mira has a specific past (Erik, the river), a distinct idiom, and reacts to the mockery with a remembered grudge rather than generic gruffness."
+   "why": "Y\n\nY's Mira has a consistent, textured voice (\"slag and no steel,\" \"cheap nail\u2014bends first strike\"), deflects the king's-sword question with a specific lie, and reacts to the payment plea with a hard, personal rule rather than just asking follow-up questions."
   },
   {
    "scene": "B",
@@ -34,8 +34,8 @@
     "souls",
     "naive"
    ],
-   "pick": "naive",
-   "why": "Y\n\nY's Orrin remembers the broken promise, holds a grudge, and reveals a specific inner life (the ledger, the personified light) rather than offering generic sea-flavored aphorisms."
+   "pick": "souls",
+   "why": "X\n\nX gives Orrin a distinct voice and memory\u2014he recalls the earlier promise, the half-wick night, and ties it to his own philosophy about rivers and people, making him feel like a specific person with an inner life."
   },
   {
    "scene": "B",
@@ -44,7 +44,7 @@
     "souls"
    ],
    "pick": "souls",
-   "why": "Y\n\nY's Orrin has a specific, textured voice and inner life\u2014the soft third step, talking to the lighthouse, counting silent ships\u2014while X leans on generic aphorisms and a melodramatic ledger conceit."
+   "why": "Y\n\nY's Orrin has a specific history and habits (forty years, tapping the glass, the widow sea, the river's memory), and his replies track what Ana actually said rather than generic aphorisms."
   },
   {
    "scene": "D",
@@ -53,7 +53,7 @@
     "naive"
    ],
    "pick": "naive",
-   "why": "Y\n\nY's Juno has a sharper, more personal voice\u2014she references the player as \"le nouveau,\" mocks his parking, and frames the rematch as a lesson, showing memory and attitude rather than generic banter."
+   "why": "Y\n\nY feels more like a specific person because Juno remembers Sam's name and the exact race result (\"trois dixi\u00e8mes derri\u00e8re\"), reacting with a personal, grounded edge rather than generic taunts."
   },
   {
    "scene": "D",
@@ -62,12 +62,7 @@
     "souls"
    ],
    "pick": "souls",
-   "why": " **Y**\n\nBecause Juno in Y responds directly to Sam's words (\"c'est toujours \u00e7a quand on gagne,\" \"t'as pas tra\u00een\u00e9\") while also revealing her own perspective\u2014her engine did the work, she won't let him win twice\u2014whereas X mostly delivers pre-written-sounding taunts that don't build as tightly on his "
-  },
-  {
-   "scene": "A",
-   "scored": "souls",
-   "score": 9
+   "why": "Y\n\nY's Juno has a specific voice and inner life\u2014she references concrete details (the mill turn, the water at dawn, the double knock on the hull) and reacts with a distinct, lived-in personality rather than generic trash talk."
   },
   {
    "scene": "A",
@@ -81,53 +76,58 @@
   },
   {
    "scene": "A",
-   "scored": "naive",
-   "score": 8
-  },
-  {
-   "scene": "A",
-   "scored": "naive",
-   "score": 9
-  },
-  {
-   "scene": "A",
-   "scored": "naive",
-   "score": 8
-  },
-  {
-   "scene": "B",
-   "scored": "souls",
-   "score": 8
-  },
-  {
-   "scene": "B",
-   "scored": "souls",
-   "score": 8
-  },
-  {
-   "scene": "B",
-   "scored": "souls",
-   "score": 8
-  },
-  {
-   "scene": "B",
-   "scored": "naive",
-   "score": 8
-  },
-  {
-   "scene": "B",
-   "scored": "naive",
-   "score": 9
-  },
-  {
-   "scene": "B",
-   "scored": "naive",
-   "score": 9
-  },
-  {
-   "scene": "D",
    "scored": "souls",
    "score": 7
+  },
+  {
+   "scene": "A",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "A",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "souls",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "souls",
+   "score": 9
+  },
+  {
+   "scene": "B",
+   "scored": "souls",
+   "score": 9
+  },
+  {
+   "scene": "B",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "naive",
+   "score": 8
+  },
+  {
+   "scene": "B",
+   "scored": "naive",
+   "score": 7
+  },
+  {
+   "scene": "D",
+   "scored": "souls",
+   "score": 8
   },
   {
    "scene": "D",

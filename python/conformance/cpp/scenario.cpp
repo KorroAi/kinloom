@@ -186,6 +186,7 @@ int main(int argc, char** argv) {
     native.voice_name = "custom";
     native.config = obj({{"calls_per_minute", 600}});
     kinloom::Kinloom kl = native_url().empty() ? kinloom::Kinloom(std::string("http://127.0.0.1:") + argv[1]) : kinloom::Kinloom(native);
+    kl.say_wait_ms = 2000;   // a busy machine: the relay's prepared line, not the 30 ms offline fallback
     kl.character("VEGA", "commentator", obj({{"lines", obj({{"*", arr({"What a race, {who}!"})}})}, {"events", obj({{"overtake", arr({"who", "whom"})}})}}));
     kl.character("THEO", "engineer", obj({{"offline", "Copy."}}));
     kl.character("BLAZE", "rival", obj({{"tools", obj({{"boost", obj({{"seconds", arr({0.5, 2.5})}})}})}}));

@@ -41,6 +41,7 @@ fn main() {
         }),
         None => Kinloom::with(&format!("http://127.0.0.1:{}", port), "default", ""),
     };
+    kl.set_say_wait_ms(2000); // a busy machine: the relay's prepared line, not the 30 ms offline fallback
     kl.character("VEGA", "commentator", obj! { "lines" => obj! { "*" => vec!["What a race, {who}!"] }, "events" => obj! { "overtake" => vec!["who", "whom"] } });
     kl.character("THEO", "engineer", obj! { "offline" => "Copy." });
     kl.character("BLAZE", "rival", obj! { "tools" => obj! { "boost" => obj! { "seconds" => vec![0.5, 2.5] } } });

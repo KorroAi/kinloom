@@ -2,6 +2,47 @@
 
 ## Unreleased
 
+Found by a release review (2026-10-10):
+
+- C#: an anonymous object as `Create`'s example or offline answer (`new { name = "Glowcap", value = new[] { 1, 50 } }`)
+  threw "unsupported example", and with `count` it silently became its text (`["{ name = Glowcap, value =
+  System.Int32[] }", ...]`). It is now the object it reads as, everywhere a value becomes JSON. A Unity IL2CPP build
+  with managed stripping "High" removes what only reflection reads: there an anonymous object fails with a clear error
+  (write a `Dictionary<string, object>`) instead of going out empty. The docs show dictionaries (`Obj`), which work
+  in every build.
+- C#, Java, TypeScript/JavaScript: `create` with `count` never checked its example, so an example with no shape (`{}`,
+  `[]`, an object of an unsupported type) gave a list of copies of it instead of the error it gives without `count`
+  (and in Python). It now fails at once in both cases.
+- Rust: `set_say_wait_ms(ms)`, how long a relay `say()` waits for the server before answering from the game's own
+  lines (30 ms by default), as C++ (`say_wait_ms`) and Java (`sayWaitMs`) already had. The conformance scenarios give
+  it 2 s. The C++ relay run once failed on `say source` on a busy machine: a line fetched ahead in the background
+  timed out (2 s), so the next `say` found nothing ready and answered offline after 30 ms. Reproduced with a proxy
+  that holds that one answer 2.5 s and later ones 100 ms: `say source: offline` with 30 ms, the whole scenario passes
+  with 2 s (CPU load alone did not trigger it in 8 runs).
+- Lua relay clients wrote JSON without the SDK's markers: `Kinloom.null` was sent as `{}`, `Kinloom.ordered` lost its
+  order (keys went alphabetical) and an empty list could not be sent at all. They now send `null`, keep the order, and
+  `Kinloom.array()` (new) is a list even when empty, in both modes (native mode already honored the first two).
+- C#: numbers past a double (`1e400`) are read as Python and .NET Core read them (an infinity, or zero when too
+  small). Unity's Mono refused them: a model answer holding one was unreadable, and a mind rule with one gave another
+  error than in every other SDK. Found by running the SDK in the Unity editor (`proof/engines/unity`); four new shared
+  vectors (544) check it in every SDK.
+- Unity: the C# SDK now runs in the Unity 6000.3 and 6000.6 editors in every check (`proof/engines/unity/run.py`):
+  the conformance scenario through a relay and in native mode, `KinloomDialogue` in play mode, and a Windows player
+  built with IL2CPP (managed stripping "Low" and "High") running the scenario in both modes.
+- Memory recall, in Python and every SDK: among notes of equal score the newest are kept now, in the order they were
+  written. Notes of the same instant are common (Python's clock on Windows before 3.13 ticks every 15.6 ms): a burst of
+  eight lines recalled the oldest six and forgot the two latest. It was also the LuaJIT conformance run that failed
+  about once in 30: which notes shared an instant changed from run to run, so the chat prompt's memory differed from
+  Python's (caught by the failure log below). Three new shared vectors (547) check notes of one instant.
+- Conformance: every failure report of `run.py` and `native.py` is also appended to
+  `<temp>/kinloom-conformance-failures.log`, so a flaky run leaves its reason even when the output was filtered.
+- `kinloom ... | head` no longer ends in a `BrokenPipeError` traceback when the reader leaves early (exit 1, quietly).
+- Every engine's brief (the instructions agents read each session) is now under 6250 characters, so `AGENTS.md` stays
+  under 6300 in every engine (Unity's was 8198, Godot's 7572): C# examples use two aliases (`Obj` for
+  `Dictionary<string, object>`, `Arr` for `List<object>`), comments are no longer aligned with spaces, and engine
+  notes needed now and then (WebGL, bundles, node options) moved to `KINLOOM.md`. Every call is still shown once in
+  every language.
+
 Learned from the demo games (The Plot, the Isaac mod), in Python and every SDK:
 
 - `create(..., check=, offline=)`: the game's rules in the loop. `check(answer)` returns nothing to accept the answer

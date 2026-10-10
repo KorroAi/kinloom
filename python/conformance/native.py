@@ -162,7 +162,7 @@ def main(argv):
     reference = _get(base + "/log")
     if got != expected:
         ok = False
-        print("reference (python): FAIL\n--- expected\n%s\n--- got\n%s\n%s" % ("\n".join(expected), "\n".join(got), r.stderr[-3000:]))
+        print(relay.keep_failure("reference (python): FAIL\n--- expected\n%s\n--- got\n%s\n%s" % ("\n".join(expected), "\n".join(got), r.stderr[-3000:])))
     else:
         print("reference (python): PASS (%d requests, %d tasks)" % (len(reference), len(by_task(reference))))
     if show:
@@ -176,7 +176,7 @@ def main(argv):
     deep_reference = _get(dbase + "/log")
     if got != deep_expected:
         ok = False
-        print("deep reference (python): FAIL\n--- expected\n%s\n--- got\n%s\n%s" % ("\n".join(deep_expected), "\n".join(got), r.stderr[-3000:]))
+        print(relay.keep_failure("deep reference (python): FAIL\n--- expected\n%s\n--- got\n%s\n%s" % ("\n".join(deep_expected), "\n".join(got), r.stderr[-3000:])))
     else:
         print("deep reference (python): PASS (%d requests, %d tasks)" % (len(deep_reference), len(by_task(deep_reference))))
 
@@ -189,7 +189,7 @@ def main(argv):
             cmd = make()
         except Exception as e:  # a toolchain that cannot build: reported, the others still run
             ok = False
-            print("%s: FAIL (build) %s" % (name, e))
+            print(relay.keep_failure("%s: FAIL (build) %s" % (name, e)))
             continue
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=300,
                            env=dict(env, KINLOOM_NATIVE=base + "/v1", KINLOOM_VOICE="off"))
@@ -215,7 +215,7 @@ def main(argv):
             problems += ["deep " + p for p in compare(deep_reference, _get(dbase + "/log"))]
         if problems:
             ok = False
-            print("%s: FAIL\n%s\n--- output (tail)\n%s" % (name, "\n".join(problems), (r.stderr + out)[-3000:]))
+            print(relay.keep_failure("%s: FAIL\n%s\n--- output (tail)\n%s" % (name, "\n".join(problems), (r.stderr + out)[-3000:])))
         else:
             print("%s: PASS%s" % (name, " (with the deep scenario)" if name in DEEP_RUNS else ""))
     fake.shutdown()

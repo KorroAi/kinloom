@@ -4476,12 +4476,16 @@ public:
             }
             scored.push_back({i, 0.45 * all[i]["importance"].num() + 0.35 * recency + 0.2 * overlap});
         }
-        std::stable_sort(scored.begin(), scored.end(), [](const std::pair<size_t, double>& a, const std::pair<size_t, double>& b) { return a.second > b.second; });
-        std::vector<Json> best;
-        for (size_t i = 0; i < scored.size() && i < k; i++) best.push_back(all[scored[i].first]);
-        std::stable_sort(best.begin(), best.end(), [](const Json& a, const Json& b) { return a["t"].num() < b["t"].num(); });
+        std::stable_sort(scored.begin(), scored.end(), [](const std::pair<size_t, double>& a, const std::pair<size_t, double>& b) {
+            return a.second > b.second || (a.second == b.second && a.first > b.first);   // ties: the newest first
+        });
+        std::vector<size_t> best;
+        for (size_t i = 0; i < scored.size() && i < k; i++) best.push_back(scored[i].first);
+        std::stable_sort(best.begin(), best.end(), [&all](size_t a, size_t b) {   // in time order; equal instants as written
+            return all[a]["t"].num() < all[b]["t"].num() || (all[a]["t"].num() == all[b]["t"].num() && a < b);
+        });
         std::vector<std::string> out;
-        for (auto& n : best) out.push_back(n["text"].str());
+        for (size_t i : best) out.push_back(all[i]["text"].str());
         return out;
     }
 

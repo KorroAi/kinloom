@@ -580,9 +580,10 @@ export class Kinloom {
       { context?: Facts; count?: number; instant?: boolean; image?: Picture | null; check?: Check | null; offline?: unknown;
         each?: ((item: any) => void) | null } = {}): Promise<any> {
     const item: any = count > 0 && Array.isArray(example) && example.length === 1 ? example[0] : example; // [item] + count: count items
+    const shape = Shape.of(item);   // an example with no shape fails here, with count too
     let fallback = defaultOf(item);
     if (offline !== null && offline !== undefined) {
-      const [ok, v, err] = Shape.of(item).check(offline);
+      const [ok, v, err] = shape.check(offline);
       if (!ok) throw new Error("create: offline must be shaped like the example: " + err);
       fallback = v;
     }
@@ -592,7 +593,7 @@ export class Kinloom {
     if (image) body.image = await toBase64(image);
     if (count > 0) body.count = count;
     if (offline !== null && offline !== undefined) body.offline = fallback;
-    const listed = count > 0 || Shape.of(item).kind === "list";
+    const listed = count > 0 || shape.kind === "list";
     const value = await this.created(body, count, instant, check, fallback, true, each, listed);
     return value;
   }
@@ -3036,8 +3037,8 @@ export class Memory {
       if (q.size) { let both = 0; for (const w of memWords(n.text)) if (q.has(w)) both++; overlap = both / q.size; }
       return 0.45 * n.importance + 0.35 * recency + 0.2 * overlap;
     };
-    const best = notes.map((n, i) => ({ n, s: score(n), i })).sort((a, b) => b.s - a.s || a.i - b.i).slice(0, k).map((x) => x.n);
-    return best.sort((a, b) => a.t - b.t).map((n) => n.text);
+    const best = notes.map((n, i) => ({ n, s: score(n), i })).sort((a, b) => b.s - a.s || b.i - a.i).slice(0, k);   // ties: the newest first
+    return best.sort((a, b) => a.n.t - b.n.t || a.i - b.i).map((x) => x.n.text);
   }
 
   private changed(): void {

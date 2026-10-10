@@ -58,6 +58,21 @@ results[#results + 1] = "requests: " .. REQUESTS
 return table.concat(results, "\n")
 """
 
+# What a relay client sends: Kinloom.null is null, Kinloom.ordered keeps its order, Kinloom.array() is an empty list
+# (the relay's JSON writer ignored all three: {"a": {}, "inventory": {}} in alphabetical order).
+MARKERS = r"""
+local sent
+local kl = Kinloom.new({ url = "http://relay.test", transport = function(url, body, timeout, headers, done)
+  if url:find("/v1/create", 1, true) then sent = body end
+  done(200, '{"value": {"name": "x"}, "source": "model"}')
+end })
+local ctx = Kinloom.ordered({ a = Kinloom.null, inventory = Kinloom.array(), tags = Kinloom.array({ "x" }) },
+                            { "inventory", "a" })
+kl:create("an item", { name = "Glowcap" }, { context = ctx }, function() end)
+kl:update()
+return sent
+"""
+
 
 def main(runtime="luajit21"):
     lua = importlib.import_module("lupa." + runtime).LuaRuntime(unpack_returned_tuples=True)
@@ -75,6 +90,8 @@ def main(runtime="luajit21"):
     assert connects[0] == "127.0.0.1:7717@0.3" and connects.count("127.0.0.1:7717@0.3") == 1, connects   # once while up
     assert all(c == "127.0.0.1:9@0.3" for c in connects[1:]) and len(connects) >= 3, connects
     assert got[6] == "requests: 2", got[6]
+    sent = lua.execute(MARKERS)
+    assert '"context":{"inventory":[],"a":null,"tags":["x"]}' in sent, sent
     print("lua transports (%s): PASS" % runtime)
 
 

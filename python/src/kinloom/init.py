@@ -246,11 +246,19 @@ def _engine_doc(engine, client_path, folder="."):
     return language, setup, code.strip()
 
 
+BRIEF_ENDS = "\n<!-- brief ends -->\n"   # in an engine's setup: what follows is in KINLOOM.md, not in the brief
+
+
+def _setup(setup, in_brief):
+    head, _, rest = setup.partition(BRIEF_ENDS)
+    return head.strip() if in_brief else (head.rstrip() + "\n" + rest.lstrip()).strip()
+
+
 def guide(engine="python", client_path=None, folder="."):
     """The short instructions every coding agent gets (also served by `kinloom mcp` and `kinloom guide`)."""
     language, setup, code = _engine_doc(engine, client_path, folder)
     text = _read(os.path.join(KIT, "guide.md")).replace("\r\n", "\n")
-    return text.replace("{setup}", setup).replace("{language}", language).replace("{code}", code).strip() + "\n"
+    return text.replace("{setup}", _setup(setup, False)).replace("{language}", language).replace("{code}", code).strip() + "\n"
 
 
 def calls(lang):
@@ -276,7 +284,7 @@ def brief(engine="python", client_path=None, folder="."):
         if head:
             snippet = head + "\n\n" + snippet
     text = _read(os.path.join(KIT, "brief.md")).replace("\r\n", "\n")
-    return text.replace("{setup}", setup).replace("{language}", language).replace("{snippet}", snippet).replace("{fence}", "text" if lang == "http" else lang).strip() + "\n"
+    return text.replace("{setup}", _setup(setup, True)).replace("{language}", language).replace("{snippet}", snippet).replace("{fence}", "text" if lang == "http" else lang).strip() + "\n"
 
 
 def cookbook():

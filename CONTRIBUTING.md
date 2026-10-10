@@ -18,11 +18,17 @@
 cd python && python -m pytest                       # the package
 python python/conformance/run.py                    # every client against a real `kinloom serve`
 python python/conformance/native.py                 # every SDK's own brain against a fake model
+python python/conformance/calls.py                  # every language's calls in kit/calls.md compile
+python python/conformance/godot_ui.py               # the Godot dialogue box, played with real key events
 ```
 
 C++ needs a compiler in `CXX` (for example `CXX="uvx --from ziglang python -m ziglang c++"`); Lua needs a Python
-with `lupa` in `LUA_PYTHON`. A change to one SDK goes into every SDK, with a vector or a conformance line that proves
+with `lupa` in `LUA_PYTHON`. Failure reports are also kept in `kinloom-conformance-failures.log` in the
+system's temp folder. A change to one SDK goes into every SDK, with a vector or a conformance line that proves
 they agree.
+
+`clients/web/kinloom.js` and `kinloom.d.ts` are built from `kinloom.ts`: edit the `.ts`, then run
+`npx -p typescript@5.9.3 tsc -p tsconfig.json` in `python/src/kinloom/clients/web`.
 
 The legacy C# runtime builds from `legacy/`: `dotnet build -warnaserror --no-incremental` and `dotnet test`.
 

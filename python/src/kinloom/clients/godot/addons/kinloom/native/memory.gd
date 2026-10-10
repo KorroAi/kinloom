@@ -201,9 +201,9 @@ class Memory:
 					if q.has(w):
 						both += 1
 				overlap = float(both) / q.size()
-			scored.append([0.45 * Py.num(n.importance) + 0.35 * recency + 0.2 * overlap, n])
-		var best := Py.stable_sort(scored, func(a, b): return a[0] > b[0]).slice(0, k)
-		best = Py.stable_sort(best, func(a, b): return Py.num(a[1].t) < Py.num(b[1].t))
+			scored.append([0.45 * Py.num(n.importance) + 0.35 * recency + 0.2 * overlap, n, scored.size()])
+		var best := Py.stable_sort(scored, func(a, b): return a[0] > b[0] or (a[0] == b[0] and a[2] > b[2])).slice(0, k)   # ties: the newest first
+		best = Py.stable_sort(best, func(a, b): return Py.num(a[1].t) < Py.num(b[1].t) or (Py.num(a[1].t) == Py.num(b[1].t) and a[2] < b[2]))
 		var out := []
 		for x in best:
 			out.append(x[1].text)

@@ -172,8 +172,9 @@ class Memory:
             overlap = len(q & _words(n["text"])) / len(q) if q else 0.0
             return 0.45 * n["importance"] + 0.35 * recency + 0.2 * overlap
 
-        best = sorted(notes, key=score, reverse=True)[:k]
-        return [n["text"] for n in sorted(best, key=lambda n: n["t"])]
+        # equal scores (notes of the same instant): the newest first, never the oldest
+        best = sorted(range(len(notes)), key=lambda i: (score(notes[i]), i), reverse=True)[:k]
+        return [notes[i]["text"] for i in sorted(best, key=lambda i: (notes[i]["t"], i))]
 
     # ---------- saving ----------
 

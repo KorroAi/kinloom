@@ -1804,6 +1804,78 @@ true,
 }
 },
 {
+"fn": "parse",
+"args": [
+{
+"n": [
+0,
+10
+],
+"name": "x"
+},
+"{\"n\": 1e400, \"name\": \"a\"}"
+],
+"out": {
+"ok": false,
+"value": null,
+"error": "n must be a number from 0 to 10"
+}
+},
+{
+"fn": "parse",
+"args": [
+{
+"n": [
+0,
+10
+]
+},
+"{\"n\": -1e400}"
+],
+"out": {
+"ok": false,
+"value": null,
+"error": "n must be a number from 0 to 10"
+}
+},
+{
+"fn": "parse",
+"args": [
+{
+"n": [
+0,
+10
+],
+"name": "x"
+},
+"{\"n\": 1e-400, \"name\": \"a\"}"
+],
+"out": {
+"ok": true,
+"value": {
+"n": 0,
+"name": "a"
+},
+"error": null
+}
+},
+{
+"fn": "parse",
+"args": [
+{
+"name": "x"
+},
+"{\"name\": \"a\", \"junk\": 1e400}"
+],
+"out": {
+"ok": true,
+"value": {
+"name": "a"
+},
+"error": null
+}
+},
+{
 "fn": "clean_text",
 "args": [
 "  hello   world "
@@ -4763,6 +4835,188 @@ false
 true
 ],
 "out": [
+"the king died"
+]
+},
+{
+"fn": "recall",
+"args": [
+[
+{
+"t": 5.0,
+"text": "player said: Hello 0",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 1",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 2",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 3",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 4",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 5",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 6",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 7",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "the king died",
+"importance": 0.9
+}
+],
+"Hello",
+6,
+true
+],
+"out": [
+"player said: Hello 2",
+"player said: Hello 3",
+"player said: Hello 4",
+"player said: Hello 5",
+"player said: Hello 6",
+"player said: Hello 7"
+]
+},
+{
+"fn": "recall",
+"args": [
+[
+{
+"t": 5.0,
+"text": "player said: Hello 0",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 1",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 2",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 3",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 4",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 5",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 6",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 7",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "the king died",
+"importance": 0.9
+}
+],
+"",
+3,
+true
+],
+"out": [
+"player said: Hello 6",
+"player said: Hello 7",
+"the king died"
+]
+},
+{
+"fn": "recall",
+"args": [
+[
+{
+"t": 5.0,
+"text": "player said: Hello 0",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 1",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 2",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 3",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 4",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 5",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 6",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "player said: Hello 7",
+"importance": 0.5
+},
+{
+"t": 5.0,
+"text": "the king died",
+"importance": 0.9
+}
+],
+"king",
+2,
+true
+],
+"out": [
+"player said: Hello 7",
 "the king died"
 ]
 },

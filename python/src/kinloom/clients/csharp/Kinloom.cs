@@ -565,11 +565,14 @@ namespace Kinloom
         public async Task<object?> Create(string what, object example, Dictionary<string, object>? context = null, int count = 0, bool instant = false,
                                           byte[]? image = null, Func<object?, string?>? check = null, object? offline = null, Action<object?>? each = null)
         {
+            example = Json.Plain(example)!;       // new { ... }, arrays, any dictionary: the JSON it reads as
+            offline = Json.Plain(offline);
             if (count > 0 && example is System.Collections.IList one && one.Count == 1 && one[0] != null) example = one[0]!;   // [item] + count
+            var shape = Shape.Of(example);   // an example with no shape fails here, with count too
             object? fallback = DefaultOf(example);
             if (offline != null)
             {
-                var (ok, v, err) = Shape.Of(example).Check(offline);
+                var (ok, v, err) = shape.Check(offline);
                 if (!ok) throw new ArgumentException("create: offline must be shaped like the example: " + err);
                 fallback = v;
             }
@@ -577,7 +580,7 @@ namespace Kinloom
             if (image != null && image.Length > 0) body["image"] = Convert.ToBase64String(image);
             if (count > 0) body["count"] = count;
             if (offline != null) body["offline"] = fallback!;
-            bool listed = count > 0 || Shape.Of(example).Kind == "list";
+            bool listed = count > 0 || shape.Kind == "list";
             return await Created(body, count, instant, check, fallback, true, each, listed).ConfigureAwait(false);
         }
 
@@ -1250,7 +1253,7 @@ namespace Kinloom
             }
             double lo = (double)kind[1], hi = (double)kind[2];
             if (op == "high" || op == "low") return rest == "" ? new Rule { Sense = sense, Op = op, P1 = lo, P2 = hi } : null;
-            if (op == "is" || !double.TryParse(rest, NumberStyles.Float, CultureInfo.InvariantCulture, out double v) || double.IsNaN(v) || double.IsInfinity(v)) return null;
+            if (op == "is" || !Py.TryDouble(rest, out double v) || double.IsNaN(v) || double.IsInfinity(v)) return null;
             v = Math.Round(Math.Min(Math.Max(v, lo), hi) * 1000, MidpointRounding.AwayFromZero) / 1000;
             return new Rule { Sense = sense, Op = op, P1 = v, P2 = (hi - lo) * (op == "around" ? 0.15 : 0.05) };
         }
@@ -1490,7 +1493,11 @@ namespace Kinloom
                     sb.Append(']');
                     break;
                 }
-                default: WriteString(sb, v.ToString() ?? ""); break;
+                default:
+                    var anonymous = Anonymous(v);
+                    if (anonymous != null) WriteTo(sb, anonymous);
+                    else WriteString(sb, v.ToString() ?? "");
+                    break;
             }
         }
 
@@ -1549,8 +1556,30 @@ namespace Kinloom
                     foreach (var item in list) out3.Add(Plain(item, depth + 1)!);
                     return out3;
                 }
-                default: return v;
+                default:
+                    var anonymous = Anonymous(v);
+                    return anonymous != null ? Plain(anonymous, depth) : v;
             }
+        }
+
+        /// <summary>An anonymous object (<c>new { sky = new[] { "sun", "snow" } }</c>) as the object it reads as, its
+        /// properties in the order written; null for any other type (those stay as they are, or their text in JSON).</summary>
+        internal static Dictionary<string, object>? Anonymous(object v)
+        {
+            var type = v.GetType();
+            if (!type.IsClass || !type.Name.Contains("AnonymousType") ||
+                !Attribute.IsDefined(type, typeof(System.Runtime.CompilerServices.CompilerGeneratedAttribute), false)) return null;
+            var fields = new Dictionary<string, object>();
+            try
+            {
+                foreach (var p in type.GetProperties()) fields[p.Name] = p.GetValue(v)!;
+            }
+            catch (Exception) { fields.Clear(); }
+            // IL2CPP with managed stripping "High" removes what only reflection reads: the object would go out empty
+            if (fields.Count == 0)
+                throw new ArgumentException("this build cannot read the anonymous object " + v + " (its properties were stripped: " +
+                                            "IL2CPP managed stripping); write it as a Dictionary<string, object> instead");
+            return fields;
         }
 
         public static object? Read(string json)
@@ -1631,7 +1660,7 @@ namespace Kinloom
             while (i < s.Length && "+-0123456789.eE".IndexOf(s[i]) >= 0) i++;
             string num = s.Substring(start, i - start);
             if (num.IndexOfAny(new[] { '.', 'e', 'E' }) < 0 && long.TryParse(num, NumberStyles.Integer, CultureInfo.InvariantCulture, out long l)) return l;
-            return double.Parse(num, NumberStyles.Float, CultureInfo.InvariantCulture);
+            return Py.ParseDouble(num);
         }
     }
 
@@ -1731,12 +1760,36 @@ namespace Kinloom
         private static readonly Regex SpecialText = new Regex("^[+-]?(inf|infinity|nan)$", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
 
         /// <summary>Python's float(text), or null.</summary>
+        private static readonly Regex DoubleText = new Regex(@"^([+-]?)(\d*)(?:\.(\d*))?(?:[eE]([+-]?\d+))?$");
+
+        /// <summary>A number from its text as Python and .NET Core read it: too large is an infinity, too small zero.
+        /// (Unity's Mono refuses both: "1e400" from a model made a whole JSON answer unreadable.)</summary>
+        public static bool TryDouble(string text, out double v)
+        {
+            if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out v)) return true;
+            var m = DoubleText.Match(text.Trim());
+            string whole = m.Groups[2].Value, frac = m.Groups[3].Value;
+            if (!m.Success || whole.Length + frac.Length == 0) return false;
+            bool minus = m.Groups[1].Value == "-";
+            string digits = (whole + frac).TrimStart('0');
+            long exp = 0;
+            if (m.Groups[4].Success && !long.TryParse(m.Groups[4].Value, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out exp))
+                exp = m.Groups[4].Value.StartsWith("-") ? long.MinValue / 2 : long.MaxValue / 2;
+            // where the first significant digit stands: above 0 the number overflowed, else it underflowed
+            long magnitude = digits.Length == 0 ? long.MinValue / 2 : exp + whole.Length - ((whole + frac).Length - digits.Length);
+            v = magnitude > 0 ? (minus ? double.NegativeInfinity : double.PositiveInfinity) : (minus ? -0.0 : 0.0);
+            return true;
+        }
+
+        public static double ParseDouble(string text) =>
+            TryDouble(text, out var v) ? v : throw new FormatException("not a number: " + text);
+
         public static double? FloatOf(string s)
         {
             var t = Strip(s);
             if (SpecialText.IsMatch(t)) return t.ToLowerInvariant().Contains("nan") ? double.NaN : t.StartsWith("-") ? double.NegativeInfinity : double.PositiveInfinity;
             if (!FloatText.IsMatch(t)) return null;
-            return double.TryParse(t.Replace("_", ""), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : (double?)null;
+            return TryDouble(t.Replace("_", ""), out var d) ? d : (double?)null;
         }
 
         /// <summary>A finite number from a number or numeric text (shapes' _number).</summary>
@@ -2044,9 +2097,9 @@ namespace Kinloom
                     if (!m.Success || m.Index != i) throw new FormatException("value");
                     i += m.Length;
                     if (m.Groups[1].Success || m.Groups[2].Success)
-                        return double.Parse(m.Value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                        return Py.ParseDouble(m.Value);
                     if (long.TryParse(m.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out long l)) return l;
-                    return double.Parse(m.Value, NumberStyles.Float, CultureInfo.InvariantCulture);
+                    return Py.ParseDouble(m.Value);
                 }
                 finally { depth--; }
             }
@@ -4078,8 +4131,8 @@ namespace Kinloom
                 double overlap = q.Count > 0 ? (double)Words((string)n["text"]).Count(q.Contains) / q.Count : 0.0;
                 return 0.45 * Py.D(n["importance"]) + 0.35 * recency + 0.2 * overlap;
             }
-            return notes.Select((n, i) => (n, s: Score(n), i)).OrderByDescending(x => x.s).ThenBy(x => x.i).Take(k)
-                        .Select(x => x.n).OrderBy(n => Py.D(n["t"])).Select(n => (string)n["text"]).ToList();
+            return notes.Select((n, i) => (n, s: Score(n), i)).OrderByDescending(x => x.s).ThenByDescending(x => x.i).Take(k)
+                        .OrderBy(x => Py.D(x.n["t"])).ThenBy(x => x.i).Select(x => (string)x.n["text"]).ToList();
         }
 
         private static bool Prompts_Truthy(object? v) => v != null && !(v is string s && s.Length == 0) && !(v is bool b && !b);
@@ -4189,7 +4242,7 @@ namespace Kinloom
                     case bool: return;
                     case string s:
                         foreach (Match m in NumberRe.Matches(s))
-                            if (double.TryParse(m.Value.Replace(",", "."), NumberStyles.Float, CultureInfo.InvariantCulture, out var f)) found.Add(f);
+                            if (Py.TryDouble(m.Value.Replace(",", "."), out var f)) found.Add(f);
                         return;
                     case IDictionary<string, object> d: foreach (var v in d.Values) Walk(v); return;
                     case IList l: foreach (var v in l) Walk(v); return;
@@ -4202,7 +4255,7 @@ namespace Kinloom
 
         public static bool NumberOk(string textNumber, List<double> allowed)
         {
-            if (!double.TryParse(textNumber.Replace(",", "."), NumberStyles.Float, CultureInfo.InvariantCulture, out var n)) return true;
+            if (!Py.TryDouble(textNumber.Replace(",", "."), out var n)) return true;
             int decimals = textNumber.Contains(".") ? textNumber.Split('.')[1].Length : textNumber.Contains(",") ? textNumber.Split(',')[1].Length : 0;
             return allowed.Any(a => Math.Abs(a - n) < 1e-9 || Py.Round(a, decimals) == n || Py.Round(Math.Abs(a), decimals) == Math.Abs(n));
         }

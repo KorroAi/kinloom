@@ -373,12 +373,13 @@ Tests and CI: `KINLOOM_SCRIPT=answers.json` replays scripted answers; `KINLOOM_R
 
 ## Patterns
 
-`kinloom guide` prints 34 tested patterns: characters with a soul (talk, consequences, bonds, characters talking to each other), narrator, commentator, companion, rival, enemy tactics, boss phases,
+`kinloom guide` prints 39 tested patterns: characters with a soul (talk, consequences, bonds, characters talking to each other), narrator, commentator, companion, rival, enemy tactics, boss phases,
 shopkeeper, quest giver, hint coach, radio/dispatcher, director (difficulty, pacing, weather), economy balancer,
 generators, dialogue options, NPC schedules, player commands, tutorial guide, post-match recap, crowd minds, enemies
 that learn, witnesses and rumors, reputation and factions, a continuous director, grounded conversation, voices,
 a narrator reading aloud, a bridge for games Kinloom cannot run in, answers about a picture, the game's tools declared
-once, the AI checked like code.
+once, the AI checked like code, the game's rules on what the model makes and what characters say and do,
+challenges the game can check, items shown as they are written, and bystanders who react.
 
 ## License
 

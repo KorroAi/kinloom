@@ -69,6 +69,7 @@ def check_csharp(body, work):
                 '</PropertyGroup></Project>')
     with open(os.path.join(work, "Calls.cs"), "w", encoding="utf-8") as f:
         f.write("using System; using System.Collections.Generic; using System.Threading.Tasks; using Kinloom;\n"
+                "using Obj = System.Collections.Generic.Dictionary<string, object>; using Arr = System.Collections.Generic.List<object>;\n"
                 "static class Calls {\n  static void Run(string t, Dictionary<string, object> a) {}\n  static void Show(object a, object b) {}\n"
                 "  static async Task M(KinloomClient kl, string typedText, byte[] pngBytes, byte[] wavBytes) {\n" + _indent(body, "    ") + "\n  }\n}\n")
     code, out = _run([dotnet, "build", "-nologo", "-v", "q"], cwd=work)

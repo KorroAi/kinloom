@@ -112,6 +112,18 @@ def test_init_writes_every_agent_format_and_keeps_existing_text(tmp_path):
     assert "## 22. A summary of what happened" in full and "kl.say(" in full
 
 
+def test_every_engine_brief_stays_short():
+    # read in every session, in every engine: AGENTS.md under 6300 with its markers (44 characters). On 2026-10-10 Unity's
+    # was 8198 and Godot's 7572: C# got the Obj/Arr aliases, comments lost their alignment, and engine notes an agent
+    # needs only now and then (WebGL, bundles, node options) moved to KINLOOM.md, after "<!-- brief ends -->"
+    for engine in init.ENGINES:
+        b = init.brief(engine, "src/kinloom/kinloom.js" if engine == "web" else None)
+        assert len(b) < 6250 and "brief ends" not in b, (engine, len(b))
+    for engine, moved in (("godot", "kinloom-server/"), ("unity", "UnityWebRequest"), ("web", "localStorage")):
+        assert moved not in init.brief(engine) and moved in init.guide(engine), engine
+        assert "brief ends" not in init.guide(engine)
+
+
 def test_init_minimal_writes_fewer_files(tmp_path):
     (tmp_path / "main.py").write_text("")
     init.setup(str(tmp_path), agents="minimal")
@@ -613,3 +625,18 @@ def test_check_reads_the_game_not_the_kinloom_package_it_ships_with(tmp_path):
     engine, results = check(str(tmp_path), url="http://127.0.0.1:9")
     text = "\n".join("%s %s" % r for r in results)
     assert "kinloom/" not in text.replace("\\", "/") and "unknown keys" not in text, text
+
+
+def test_cli_output_cut_by_its_reader_is_no_traceback(tmp_path, monkeypatch):
+    # `kinloom guide | head`: the reader leaves early; the command ends quietly (exit 1) instead of a traceback
+    spare = open(tmp_path / "out", "w")
+
+    class Gone(io.StringIO):
+        def write(self, text):
+            raise BrokenPipeError(32, "Broken pipe")
+
+        def fileno(self):
+            return spare.fileno()
+    monkeypatch.setattr("sys.stdout", Gone())
+    assert main(["guide", "python"]) == 1
+    spare.close()

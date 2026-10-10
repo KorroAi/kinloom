@@ -673,6 +673,7 @@ struct Inner {
     session: String,
     token: String,
     chat_timeout: Duration,
+    say_wait_ms: std::sync::atomic::AtomicU64, // how long a relay say() waits for the server
     state: Mutex<State>,
 }
 
@@ -710,6 +711,7 @@ impl Kinloom {
                 session: session.to_string(),
                 token: token.to_string(),
                 chat_timeout: Duration::from_secs(12),
+                say_wait_ms: std::sync::atomic::AtomicU64::new(30),
                 state: Mutex::new(State {
                     chars: HashMap::new(),
                     declaring: HashMap::new(),
@@ -6360,10 +6362,11 @@ impl Memory {
                 (i, 0.45 * py::num(n.get("importance").unwrap_or(&Json::Null)) + 0.35 * recency + 0.2 * overlap)
             })
             .collect();
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(a.0.cmp(&b.0)));
-        let mut best: Vec<&Map> = scored.iter().take(k).map(|(i, _)| &all[*i]).collect();
-        best.sort_by(|a, b| t(a).partial_cmp(&t(b)).unwrap_or(std::cmp::Ordering::Equal));
-        best.iter().map(|n| n.get("text").map_or(String::new(), |x| x.as_str().to_string())).collect()
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal).then(b.0.cmp(&a.0)));   // ties: the newest first
+        let mut best: Vec<usize> = scored.iter().take(k).map(|(i, _)| *i).collect();
+        // in time order; equal instants as they were written
+        best.sort_by(|a, b| t(&all[*a]).partial_cmp(&t(&all[*b])).unwrap_or(std::cmp::Ordering::Equal).then(a.cmp(b)));
+        best.iter().map(|i| all[*i].get("text").map_or(String::new(), |x| x.as_str().to_string())).collect()
     }
 
     fn schedule(self: &Arc<Self>) {
@@ -14240,7 +14243,13 @@ impl Kinloom {
         }
     }
 
-    /// Relay say() never holds the game thread: a line asked earlier is used at once, else the server gets 30 ms, else your
+    /// Milliseconds a relay say() waits for the server before answering from your own lines (default 30: a local server
+    /// answers well within it; the game thread is held that long at most).
+    pub fn set_say_wait_ms(&self, ms: u64) {
+        self.inner.say_wait_ms.store(ms, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Relay say() never holds the game thread: a line asked earlier is used at once, else the server gets say_wait_ms, else your
     /// own lines answer now; a late answer is kept for the next say() of the same line and facts.
     fn say_ahead(&self, name: &str, event: &str, facts: &Json, body: Json) -> String {
         let key = format!("{}\u{0}{}\u{0}{}\u{0}{}", name, event, facts.to_json(), body.get("max_chars").to_json());
@@ -14283,7 +14292,7 @@ impl Kinloom {
             });
         }
         if got.is_none() {
-            let until = Instant::now() + Duration::from_millis(30);
+            let until = Instant::now() + Duration::from_millis(self.inner.say_wait_ms.load(std::sync::atomic::Ordering::Relaxed));
             let mut answer = fetch.answer.lock().unwrap_or_else(|e| e.into_inner());
             while answer.is_none() {
                 let left = until.saturating_duration_since(Instant::now());

@@ -92,7 +92,10 @@ for example, text in [({"say": "Done.", "actions": [{"op": "build"}]}, '{"say": 
                       # JSON mode: a list wrapped once in an object, or one item alone; two lists stay an error
                       ([{"n": 1}], '{"list": [{"n": 2}, {"n": 3}]}'), ([{"n": 1}], '{"stalls": [{"n": 4}], "note": "x"}'),
                       ([{"n": 1}], '{"n": 5}'), ([{"n": 1}], '{"a": [{"n": 1}], "b": [{"n": 2}]}'), (["x"], '{"tags": ["a", "b"]}'),
-                      (["x"], '{"tag": "a"}'), ([{"n": 1}], '{"other": 1}')]:
+                      (["x"], '{"tag": "a"}'), ([{"n": 1}], '{"other": 1}'),
+                      # numbers past a double: infinity or zero, as Python reads them (Unity's Mono refused the whole JSON)
+                      ({"n": [0, 10], "name": "x"}, '{"n": 1e400, "name": "a"}'), ({"n": [0, 10]}, '{"n": -1e400}'),
+                      ({"n": [0, 10], "name": "x"}, '{"n": 1e-400, "name": "a"}'), ({"name": "x"}, '{"name": "a", "junk": 1e400}')]:
     ok, value, error = Shape.of(example).parse(text)
     add("parse", [example, text], {"ok": ok, "value": value, "error": error})
 
@@ -269,6 +272,15 @@ for t, text, imp, about in [(0, "the player stole bread", 0.8, None), (10, "Ana 
 notes = m.notes("s", "MIRA")
 for query, k, personal in [("", 6, True), ("ships", 3, True), ("bread player", 4, False), ("king", 1, True)]:
     add("recall", [notes, query, k, personal], m.recall("s", ["MIRA"], query, k, personal))
+# notes of the same instant (a clock that ticks every 15.6 ms, as Python's on Windows before 3.13): the newest are kept,
+# in the order they were written (the oldest used to win: a burst of lines forgot its latest ones)
+m = Memory(None, clock=lambda: 5.0)
+for i in range(8):
+    m.add("s", "MIRA", "player said: Hello %d" % i, 0.5)
+m.add("s", "MIRA", "the king died", 0.9)
+notes = m.notes("s", "MIRA")
+for query, k in [("Hello", 6), ("", 3), ("king", 2)]:
+    add("recall", [notes, query, k, True], m.recall("s", ["MIRA"], query, k, True))
 
 # ---------------- prompts ----------------
 

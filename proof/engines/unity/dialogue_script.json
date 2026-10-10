@@ -1,0 +1,6 @@
+{
+  "chat": [
+    "Hmph. What do you want?\n~~~\n{\"mood\": \"wary\", \"intensity\": 0.6, \"gesture\": \"crosses her arms\", \"do\": [{\"tool\": \"give\", \"args\": {\"item\": \"sword\"}}]}",
+    "Then go.\n~~~\n{\"mood\": \"calm\", \"do\": []}"
+  ]
+}

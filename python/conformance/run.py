@@ -19,6 +19,19 @@ GODOT = os.environ.get("GODOT") or (WINGET if os.path.exists(WINGET) else shutil
 EXTRA = {"godot": ["aichar talks: BLAZE passes NOVA!", "aichar steers: block 0.9", "aimind moves: retreat, charge 2.5"]}
 
 
+FAILURES = os.path.join(tempfile.gettempdir(), "kinloom-conformance-failures.log")
+
+
+def keep_failure(text):
+    """A failure's report, also appended to FAILURES: when a run's output is filtered or lost, the reason stays."""
+    try:
+        with open(FAILURES, "a", encoding="utf-8") as f:
+            f.write("==== %s %s\n%s\n" % (time.strftime("%Y-%m-%d %H:%M:%S"), " ".join(sys.argv), text))
+    except OSError:
+        pass
+    return text + "\n(kept in %s)" % FAILURES
+
+
 def free_port():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -124,8 +137,8 @@ def main(only=()):
             print("%s: PASS" % name)
         else:
             ok = False
-            print("%s: FAIL\n--- expected\n%s\n--- got\n%s\n--- output (tail)\n%s"
-                  % (name, "\n".join(want), "\n".join(got), (r.stderr + r.stdout)[-3000:]))
+            print(keep_failure("%s: FAIL\n--- expected\n%s\n--- got\n%s\n--- output (tail)\n%s"
+                               % (name, "\n".join(want), "\n".join(got), (r.stderr + r.stdout)[-3000:])))
     return 0 if ok else 1
 
 

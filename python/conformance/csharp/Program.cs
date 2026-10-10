@@ -76,6 +76,29 @@ static class Program
         Console.WriteLine("offline chat: " + await offline.Chat("THEO", "gap?", D(("position", 3))));
         Console.WriteLine("offline decide: " + J(offline.Decide("BLAZE", D(("lap", 1)), choices)));
         Console.WriteLine("offline create: " + J(await offline.Create("race", D(("challenge", "Win clean"), ("sky", "#ff7a45")))));
+        // An anonymous object is the object it reads as (it was sent as its text before), arrays are lists. A Unity
+        // IL2CPP build with managed stripping "High" removes its properties: then a clear error, never an empty object.
+        var anonymous = new { name = "Glowcap", value = new[] { 1, 50 }, mood = new[] { "calm", "angry" }, at = new { x = 0.5 } };
+        string? written = null;
+        try { written = Json.Write(anonymous); }
+        catch (ArgumentException e) when (e.Message.Contains("stripped")) { }   // stripped (even one nested object): told
+        if (written != null)
+        {
+            if (Json.Write(anonymous) != "{\"name\":\"Glowcap\",\"value\":[1,50],\"mood\":[\"calm\",\"angry\"],\"at\":{\"x\":0.5}}")
+                throw new Exception("anonymous object written as " + Json.Write(anonymous));
+            var made = J(await offline.Create("an item", anonymous, count: 2));
+            if (made != "[{\"at\":{\"x\":0.5},\"mood\":\"calm\",\"name\":\"Glowcap\",\"value\":26},{\"at\":{\"x\":0.5},\"mood\":\"calm\",\"name\":\"Glowcap\",\"value\":26}]")
+                throw new Exception("anonymous example made " + made);
+            if (J(await offline.Create("a hut", new { x = new[] { 0, 40 } }, offline: new { x = 3 })) != "{\"x\":3}")
+                throw new Exception("anonymous offline answer");
+        }
+        // An example with no shape fails at once, with count too (as in Python), never a list of empty answers.
+        foreach (var bad in new object[] { D(), L(), new object() })
+        {
+            bool threw = false;
+            try { await offline.Create("an item", bad, count: 2); } catch (ArgumentException) { threw = true; }
+            if (!threw) throw new Exception("an example with no shape was accepted with count");
+        }
 
         // Minds and the world (the depth layer).
         var senses = D(("hp", L(0, 1)), ("dist", L(0, 40)), ("armed", true), ("enemy", L("idle", "alert")));

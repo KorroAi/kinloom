@@ -18,6 +18,8 @@
 --   kl:reward("raider-17", 1)                                            -- rewarded minds learn
 --
 -- LuaJIT (LÖVE) has no integers: {0, 10} is a whole-number range; write Kinloom.real(10) for decimals.
+-- A nil value removes its key (Lua tables cannot hold one): write Kinloom.null for JSON's null. An empty {} is an
+-- object: write Kinloom.array() for an empty list.
 -- Lua tables have no key order: the model reads an object's keys alphabetically unless you give them in order with
 -- Kinloom.ordered(t, {"strategy", "aggression"}).
 local Kinloom = {}
@@ -25,9 +27,19 @@ Kinloom.__index = Kinloom
 
 local unpack = table.unpack or unpack
 local REAL = {}
+local NULL = setmetatable({}, { __tostring = function() return "null" end })
+local ORDER = setmetatable({}, { __mode = "k" })    -- object -> its keys, in order
+local ARRAYS = setmetatable({}, { __mode = "k" })   -- tables that are JSON arrays even when empty
 
 --- A number that stays a decimal in JSON (5.0, not 5).
 function Kinloom.real(x) return setmetatable({ value = x }, REAL) end
+
+--- A table that is a JSON list even when empty (a plain {} is an object): Kinloom.array() or Kinloom.array({ ... }).
+function Kinloom.array(t)
+  t = t or {}
+  ARRAYS[t] = true
+  return t
+end
 
 local function is_integer(x)
   if getmetatable(x) == REAL then return false end
@@ -43,7 +55,8 @@ end
 local function is_number(x) return type(x) == "number" or getmetatable(x) == REAL end
 
 local function is_array(t)
-  if getmetatable(t) == REAL then return false end
+  if getmetatable(t) == REAL or t == NULL or ORDER[t] then return false end
+  if ARRAYS[t] then return true end
   local n = #t
   if n == 0 then return false end
   local count = 0
@@ -63,7 +76,7 @@ end
 
 local function encode(v)
   local t = type(v)
-  if v == nil then return "null" end
+  if v == nil or v == NULL then return "null" end
   if t == "boolean" then return v and "true" or "false" end
   if t == "string" then return encode_string(v) end
   if t == "number" or getmetatable(v) == REAL then
@@ -81,9 +94,13 @@ local function encode(v)
       for i = 1, #v do out[i] = encode(v[i]) end
       return "[" .. table.concat(out, ",") .. "]"
     end
-    local keys = {}
-    for k in pairs(v) do keys[#keys + 1] = tostring(k) end
-    table.sort(keys)
+    local keys, seen, rest = {}, {}, {}
+    for _, k in ipairs(ORDER[v] or {}) do        -- Kinloom.ordered: its keys first, in that order
+      if rawget(v, k) ~= nil and not seen[k] then keys[#keys + 1] = tostring(k); seen[k] = true end
+    end
+    for k in pairs(v) do if not seen[k] then rest[#rest + 1] = tostring(k) end end
+    table.sort(rest)
+    for _, k in ipairs(rest) do keys[#keys + 1] = k end
     local out = {}
     for i, k in ipairs(keys) do
       local val = v[k]
@@ -560,9 +577,6 @@ U.lower = {
 local Py, Rx = {}, {}
 local byte, char, sub, format, rep, concat = string.byte, string.char, string.sub, string.format, string.rep, table.concat
 local floor, huge = math.floor, math.huge
-local NULL = setmetatable({}, { __tostring = function() return "null" end })
-local ORDER = setmetatable({}, { __mode = "k" })    -- object -> its keys, in order
-local ARRAYS = setmetatable({}, { __mode = "k" })   -- tables that are JSON arrays even when empty
 Py.null = NULL
 Kinloom.null = NULL
 
@@ -4190,10 +4204,13 @@ function Memory:recall(session, scopes, query, k, personal)
       for w in pairs((mem_words(n.text))) do if q[w] then both = both + 1 end end
       overlap = both / nq
     end
-    scored[i] = { 0.45 * Py.num(n.importance) + 0.35 * recency + 0.2 * overlap, n }
+    scored[i] = { 0.45 * Py.num(n.importance) + 0.35 * recency + 0.2 * overlap, n, i }
   end
-  local best = Py.slice(Py.stable_sort(scored, function(a, b) return a[1] > b[1] end), 1, k)
-  best = Py.stable_sort(best, function(a, b) return Py.num(a[2].t) < Py.num(b[2].t) end)
+  local best = Py.slice(Py.stable_sort(scored, function(a, b) return a[1] > b[1] or (a[1] == b[1] and a[3] > b[3]) end), 1, k)  -- ties: newest first
+  best = Py.stable_sort(best, function(a, b)
+    local ta, tb = Py.num(a[2].t), Py.num(b[2].t)
+    return ta < tb or (ta == tb and a[3] < b[3])
+  end)
   local out = Py.arr({})
   for i, x in ipairs(best) do out[i] = x[2].text end
   return out
