@@ -7947,10 +7947,10 @@ private:
             if (a.second.type() != Json::Object) continue;
             OrderedMap<std::array<double, 3>> row;
             for (auto& b : a.second.fields()) {
-                double last, first;
+                double last = 0, first = 0;
                 if (!py::finite(b.second["last"], last)) continue;
                 // each value checked: a hand-edited file or a loaded save never breaks chat() later
-                double talks;
+                double talks = 0;   // set by finite(); initialized for gcc's maybe-uninitialized
                 if (!py::finite(b.second["talks"], talks) || talks == 0) talks = 1;
                 talks = std::max(1.0, std::trunc(std::min(1e9, talks)));
                 if (!py::finite(b.second["first"], first) || first == 0) first = last;
