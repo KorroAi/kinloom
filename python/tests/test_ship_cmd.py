@@ -111,6 +111,21 @@ def test_the_command_writes_the_draft_and_fails_on_errors(tmp_path, capsys):
     assert "Fix the errors" in capsys.readouterr().out
 
 
+def test_the_command_works_with_the_game_on_another_drive(tmp_path, capsys, monkeypatch):
+    # Windows: a path cannot be made relative to a folder on another drive (found by CI: the repo on D:, temp on C:)
+    real = os.path.relpath
+
+    def other_drive(path, start=None):
+        if start is None:
+            raise ValueError("path is on mount 'C:', start on mount 'D:'")
+        return real(path, start)
+    folder = game(tmp_path, {"main.py": "kl.chat('Mira', t, speaker='Ana')\n"}, READY)
+    monkeypatch.setattr(os.path, "relpath", other_drive)
+    assert cli.main(["ship", folder]) == 0
+    out = capsys.readouterr().out
+    assert os.path.abspath(os.path.join(folder, "kinloom-ai-disclosure.md")) in out and "Ready to ship." in out
+
+
 def test_mcp_ship(tmp_path):
     folder = game(tmp_path, {"main.py": "kl.chat('Mira', t, speaker='Ana')\n"}, READY)
     assert any(t["name"] == "kinloom_ship" for t in mcp.TOOLS)

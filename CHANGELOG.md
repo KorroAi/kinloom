@@ -34,6 +34,10 @@ Found by a release review (2026-10-10):
   eight lines recalled the oldest six and forgot the two latest. It was also the LuaJIT conformance run that failed
   about once in 30: which notes shared an instant changed from run to run, so the chat prompt's memory differed from
   Python's (caught by the failure log below). Three new shared vectors (547) check notes of one instant.
+- `kinloom ship` failed on Windows when the game is on another drive than the current folder (`ValueError: path is
+  on mount 'C:', start on mount 'D:'`): found by the first CI run, whose checkout is on D:. Paths are shown whole then.
+- Conformance: a client that does not build is reported as a failure with the compiler's own message, and the other
+  clients still run (the C++ build error was hidden).
 - Conformance: every failure report of `run.py` and `native.py` is also appended to
   `<temp>/kinloom-conformance-failures.log`, so a flaky run leaves its reason even when the output was filtered.
 - `kinloom ... | head` no longer ends in a `BrokenPipeError` traceback when the reader leaves early (exit 1, quietly).

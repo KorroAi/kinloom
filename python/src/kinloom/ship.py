@@ -233,6 +233,14 @@ def disclosure(facts):
     return "\n".join(lines)
 
 
+def _shown(path):
+    """A path as the developer reads it: from the current folder, or whole when it is on another drive (Windows)."""
+    try:
+        return os.path.relpath(path)
+    except ValueError:
+        return os.path.abspath(path)
+
+
 def _write_draft(target, text):
     """Writes the draft with a mark of what was written; a file edited since then (or not Kinloom's) is kept and the
     draft goes to target.new. Returns the path written."""
@@ -261,10 +269,10 @@ def run(folder=".", path="kinloom-ai-disclosure.md"):
         target = path if os.path.isabs(path) else os.path.join(folder, path)
         written = _write_draft(target, disclosure(facts))
         if written == target:
-            print("\nAI disclosure draft: %s (review it before you use it)" % os.path.relpath(target))
+            print("\nAI disclosure draft: %s (review it before you use it)" % _shown(target))
         else:
             print("\nAI disclosure: %s was edited since Kinloom wrote it, so it was kept; the new draft is %s (compare "
-                  "them)" % (os.path.relpath(target), os.path.relpath(written)))
+                  "them)" % (_shown(target), _shown(written)))
     print("\n%s" % ("Fix the errors before you ship." if errors else
                     "%d thing(s) to look at before you ship." % warns if warns else "Ready to ship."))
     return 1 if errors else 0

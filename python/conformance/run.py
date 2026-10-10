@@ -83,8 +83,10 @@ def cpp_cmd(port):
     cxx = os.environ.get("CXX", "").split() or [shutil.which("g++") or shutil.which("clang++")]
     exe = os.path.join(tempfile.mkdtemp(), "scenario.exe")
     link = ["-lws2_32"] if os.name == "nt" else ["-pthread"]
-    subprocess.run(cxx + ["-std=c++17", "-Wall", "-Wextra", "-Werror=all", "-O1", os.path.join(HERE, "cpp", "scenario.cpp"), "-o", exe]
-                   + link, check=True, timeout=600, capture_output=True)
+    r = subprocess.run(cxx + ["-std=c++17", "-Wall", "-Wextra", "-Werror=all", "-O1", os.path.join(HERE, "cpp", "scenario.cpp"), "-o", exe]
+                       + link, timeout=600, capture_output=True, text=True)
+    if r.returncode != 0:          # the compiler's own words: what a failing build needs
+        raise RuntimeError("the C++ scenario does not build with %s:\n%s" % (" ".join(cxx), (r.stderr + r.stdout)[-4000:]))
     return [exe, str(port)]
 
 
@@ -127,7 +129,13 @@ def main(only=()):
         port = free_port()                      # a fresh server per client: no state carried from one client to the next
         server = start_server(dict(env, KINLOOM_VOICE="scripted"), port)       # a scripted voice on the server
         try:
-            r = subprocess.run(make(port), capture_output=True, text=True, timeout=240,
+            try:
+                cmd = make(port)
+            except Exception as e:  # a client that cannot build: reported, the others still run
+                ok = False
+                print(keep_failure("%s: FAIL (build) %s" % (name, e)))
+                continue
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=240,
                                env=dict(env, KINLOOM_TEST_PORT=str(port), KINLOOM_VOICE="off"))   # offline: no system voice
         finally:
             server.kill()
