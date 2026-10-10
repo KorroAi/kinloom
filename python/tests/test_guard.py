@@ -78,11 +78,23 @@ def test_a_stall_before_any_complete_sentence_answers_offline():
 
 
 def test_the_deadline_holds_even_when_words_keep_coming():
+    heard = []
+
+    class Clocked(Timed):   # when the model really said each piece
+        def complete(self, *args, on_text=None, **kw):
+            return super().complete(*args, on_text=lambda p: (heard.append(time.monotonic() - start), on_text and on_text(p)), **kw)
     slow = [(0.05, "One. ")] + [(0.2, "more. ")] * 40
-    kl = make(Timed(slow))
+    kl = make(Clocked(slow))
     start = time.monotonic()
     reply = kl.chat("Mira", "hi", timeout=1.0)
-    assert time.monotonic() - start < 1.6 and reply.startswith("One.") and reply.endswith(".")
+    took = time.monotonic() - start
+    assert took < 1.6, took                       # the deadline holds, whatever the machine
+    # what was said in time is kept, cut at a sentence. A machine too slow to hear even the first word before the
+    # deadline (a macOS CI runner did, once) has nothing to keep: the reply is then the offline one ("" here)
+    if heard and heard[0] < 0.9:
+        assert reply.startswith("One.") and reply.endswith("."), (reply, heard[:3])
+    else:
+        assert reply == "", (reply, heard[:3])
 
 
 def test_the_inner_part_is_kept_when_the_stall_comes_after_it():
