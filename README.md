@@ -202,8 +202,8 @@ Not measured yet: whether players find these characters more human than a plain 
 Tests: the Python suite (run on 3.9 and 3.12 on Windows and Linux), the conformance scenario in every client
 against a real server, every SDK's own brain against a fake model, and every language's calls from `calls.md` compiled
 against its SDK (`python/conformance/calls.py`). CI is configured (`.github/workflows/ci.yml`) to run them on Linux,
-macOS and Windows; it has not run on GitHub yet, as the repository has not been pushed with it. Its Windows and
-Linux steps pass when run locally; macOS has not been run. Tests never call a real model.
+macOS and Windows: Python 3.9 and 3.12 on each, every SDK and the release package all pass (2026-10-11).
+Tests never call a real model.
 
 ## Documentation
 
