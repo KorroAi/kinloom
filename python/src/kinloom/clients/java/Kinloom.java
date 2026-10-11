@@ -1149,18 +1149,22 @@ public final class Kinloom {
     }
 
     private Map<String, Object> post(String verb, Map<String, Object> body, int timeoutMs) {
-        if (brain == null && !verb.equals("character") && !verb.equals("tools")) ready(body);
+        if (brain == null && !verb.equals("character") && !verb.equals("tools")) ready(verb, body);
         return request("POST", verb, body, timeoutMs);
     }
 
-    /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
-     *  without their soul and tools. */
-    private void ready(Map<String, Object> body) {
+    /** Relay: waits (5 s at most) for the declarations of the characters a call names (all of them for prepare, save
+     *  and inspect, which are about every character), so the server never answers it without their soul and tools. */
+    private void ready(String verb, Map<String, Object> body) {
         long until = System.currentTimeMillis() + 5000;
-        for (String field : new String[] {"name", "a", "b"}) {
+        List<java.util.concurrent.Future<?>> waits = new ArrayList<>();
+        if (verb.equals("prepare") || verb.equals("save") || verb.equals("inspect")) waits.addAll(declaring.values());
+        else for (String field : new String[] {"name", "a", "b"}) {
             Object who = body == null ? null : body.get(field);
             java.util.concurrent.Future<?> f = who instanceof String ? declaring.get(who) : null;
-            if (f == null) continue;
+            if (f != null) waits.add(f);
+        }
+        for (java.util.concurrent.Future<?> f : waits) {
             try { f.get(Math.max(1, until - System.currentTimeMillis()), java.util.concurrent.TimeUnit.MILLISECONDS); }
             catch (Exception ignored) { /* not declared in time: the call goes on, the server flags it */ }
         }
@@ -1213,7 +1217,7 @@ public final class Kinloom {
             try { return brain.chatStream(session, body, onPiece); }
             catch (KinloomException e) { System.err.println("[kinloom] chat: " + e.getMessage()); return null; }
         }
-        ready(body);                                  // the character's declaration first, as for every other call
+        ready("chat", body);                          // the character's declaration first, as for every other call
         long nowMs = System.currentTimeMillis();
         if (nowMs < downUntil || nowMs < busyUntil) return null;
         HttpURLConnection c = null;

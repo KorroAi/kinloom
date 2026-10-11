@@ -343,8 +343,8 @@ export declare class Kinloom {
     private redeclare;
     private fire;
     private post;
-    /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
-     * without their soul and tools. */
+    /** Relay: waits (5 s at most) for the declarations of the characters a call names (all of them for prepare, save and
+     * inspect, which are about every character), so the server never answers it without their soul and tools. */
     private ready;
     private request;
     /** A relay that said no: told once per verb and status; HTTP 429 (this player is over the relay's rate limit) keeps

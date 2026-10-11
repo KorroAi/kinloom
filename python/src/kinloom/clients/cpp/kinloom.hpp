@@ -12098,7 +12098,7 @@ private:
 
     /// true with `out` set when the server answered 200 with JSON; false otherwise (the caller answers offline).
     static bool post(const std::shared_ptr<Inner>& in, const std::string& verb, const Json& body, int timeout_ms, Json& out) {
-        if (!in->brain && verb != "character" && verb != "tools") ready(in, body);
+        if (!in->brain && verb != "character" && verb != "tools") ready(in, verb, body);
         return request(in, "POST", verb, &body, timeout_ms, out);
     }
 
@@ -12114,19 +12114,25 @@ private:
         in->declaring[name] = sent;
     }
 
-    /// Waits (5 s at most) for the declarations of the characters a call names.
-    static void ready(const std::shared_ptr<Inner>& in, const Json& body) {
+    /// Waits (5 s at most in all) for the declarations of the characters a call names (all of them for prepare, save
+    /// and inspect, which are about every character).
+    static void ready(const std::shared_ptr<Inner>& in, const std::string& verb, const Json& body) {
         std::vector<std::shared_future<bool>> waits;
         {
             std::lock_guard<std::mutex> lock(in->mu);
-            for (const char* field : {"name", "a", "b"}) {
-                const Json& v = body[field];
-                if (v.type() != Json::String) continue;
-                auto it = in->declaring.find(v.str());
-                if (it != in->declaring.end()) waits.push_back(it->second);
+            if (verb == "prepare" || verb == "save" || verb == "inspect") {
+                for (auto& kv : in->declaring) waits.push_back(kv.second);
+            } else {
+                for (const char* field : {"name", "a", "b"}) {
+                    const Json& v = body[field];
+                    if (v.type() != Json::String) continue;
+                    auto it = in->declaring.find(v.str());
+                    if (it != in->declaring.end()) waits.push_back(it->second);
+                }
             }
         }
-        for (auto& w : waits) w.wait_for(std::chrono::seconds(5));
+        auto until = std::chrono::steady_clock::now() + std::chrono::seconds(5);
+        for (auto& w : waits) w.wait_until(until);
     }
 
     static std::string env_or(const char* name, const char* fallback) {
@@ -12184,7 +12190,7 @@ private:
             std::fprintf(stderr, "[kinloom] chat: %s\n", error.c_str());
             return false;
         }
-        ready(in_, body);   // the character's declaration first, as for every other call
+        ready(in_, "chat", body);   // the character's declaration first, as for every other call
         {
             std::lock_guard<std::mutex> lock(in_->mu);
             if (paused(*in_)) return false;

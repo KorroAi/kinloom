@@ -336,6 +336,7 @@ int main(int argc, char** argv) {
     std::cout << "chat image: " << kl.chat("LOOK", "What is this?", obj({}), "player", png) << "\n";
     Json race_image = obj({{"challenge", "Win clean"}, {"sky", "#ff7a45"}});
     std::cout << "create image: " << kl.create("race", race_image, obj({}), 0, false, png).dump() << "\n";
+    kl.character("LAMP", "a lamplighter", obj({}));   // declared just before: prepare must wait for it
     Json ready = kl.prepare(10);
     std::cout << "prepare: " << (ready["ready"].boolean() ? "ready" : "waiting") << " " << (ready["online"].boolean() ? "online" : "offline") << "\n";
     std::cout << "offline tools: " << join(offline.tools(obj({{"open_door", obj({{"door", "north"}})}}))) << "\n";

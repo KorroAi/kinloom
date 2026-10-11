@@ -1,0 +1,15 @@
+{
+  "lines": {
+    "lines": [
+      "Evening. Mind the lamps. *a lantern flickers*"
+    ]
+  },
+  "chat": "Curfew, and his cut of my oil. Don't tell him I said so.\n~~~\n{\"mood\": \"wary\", \"intensity\": 0.6, \"feel\": 0.1}",
+  "soul": {
+    "card": "Marlo sells lamp oil on Lantern Row and keeps a ledger of every bribe the night guard takes.",
+    "secret": "He pays the guard to look away from his back door.",
+    "habits": [
+      "taps the oil jar when he lies"
+    ]
+  }
+}

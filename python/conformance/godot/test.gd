@@ -266,6 +266,7 @@ func _ready() -> void:
 	out("chat image: " + await kl.chat("LOOK", "What is this?", {}, "player", png))
 	var race := {"challenge": "Win clean", "sky": "#ff7a45"}
 	out("create image: " + JSON.stringify(await kl.create("race", race, {}, 0, false, png), "", true))
+	kl.character("LAMP", "a lamplighter")   # declared just before: prepare must wait for it
 	var ready: Dictionary = await kl.prepare(10.0)
 	out("prepare: %s %s" % ["ready" if ready["ready"] else "waiting", "online" if ready["online"] else "offline"])
 	go_dead(kl)

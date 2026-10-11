@@ -40,6 +40,6 @@ game still works with no key, no network or a slow model.
   `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY` + `KINLOOM_MODEL`; never in the game) or their agent's plan (`kinloom use`).
   kinloom.json `"rating": "everyone"|"teen"|"mature"`, `"models": {"background": "a-cheaper-model"}`. Before a release:
   `kinloom ship`. Players: `kinloom deploy`, `kinloom bundle` (no Python). `kinloom recipe`, `kinloom add NAME "..."`, `kinloom run --
-  <game>`, `kinloom test` (kinloom.tests.json), `kinloom probe NAME`. 39 patterns: `KINLOOM.md`.
+  <game>`, `kinloom test` (kinloom.tests.json), `kinloom probe NAME`, `kinloom hooks` (mods). 39 patterns: `KINLOOM.md`.
 - **Minds**: senses, actions, readable `rules` ("hp low"); `think(name, senses, who)` local and instant; `reward` makes
   them learn. **World**: `event(text, by=, seen_by=[...], tag=, impact=)`, `meet`, `knows`, `opinion`, `reputation`; `remark(about, who=)`: a passer-by's line.

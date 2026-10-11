@@ -183,6 +183,7 @@ public class Scenario {
         Thread.sleep(100);
         System.out.println("chat image: " + kl.chat("LOOK", "What is this?", map(), "player", png));
         System.out.println("create image: " + Kinloom.toJson(kl.create("race", map("challenge", "Win clean", "sky", "#ff7a45"), null, 0, false, png)));
+        kl.character("LAMP", "a lamplighter", map());   // declared just before: prepare must wait for it
         Map<String, Object> ready = kl.prepare(10);
         System.out.println("prepare: " + (Boolean.TRUE.equals(ready.get("ready")) ? "ready" : "waiting") + " " + (Boolean.TRUE.equals(ready.get("online")) ? "online" : "offline"));
         System.out.println("offline tools: " + String.join(", ", offline.tools(map("open_door", map("door", "north")))));

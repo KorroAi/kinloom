@@ -312,7 +312,7 @@ namespace Kinloom
                 }
                 catch (KinloomException e) { Warn("[kinloom] chat: " + e.Message); return null; }
             }
-            await Ready(body).ConfigureAwait(false);
+            await Ready("chat", body).ConfigureAwait(false);
             lock (_gate) if (DateTime.UtcNow < _downUntil || Limited("chat")) return null;
             if (!await Reachable(Url).ConfigureAwait(false)) { Down(); return null; }
             using var cts = new CancellationTokenSource(ChatTimeout);   // the whole reply, the stream included
@@ -989,7 +989,7 @@ namespace Kinloom
 
         private async Task<Dictionary<string, object>?> Post(string verb, Dictionary<string, object> body, TimeSpan timeout)
         {
-            if (_brain == null && verb != "character" && verb != "tools") await Ready(body).ConfigureAwait(false);
+            if (_brain == null && verb != "character" && verb != "tools") await Ready(verb, body).ConfigureAwait(false);
             return await Send(HttpMethod.Post, verb, body, timeout).ConfigureAwait(false);
         }
 
@@ -1034,13 +1034,15 @@ namespace Kinloom
             return h;
         }
 
-        /// <summary>Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never
-        /// answers it without their soul and tools.</summary>
-        private async Task Ready(Dictionary<string, object> body)
+        /// <summary>Relay: waits (5 s at most) for the declarations of the characters a call names (all of them for
+        /// prepare, save and inspect, which are about every character), so the server never answers it without their
+        /// soul and tools.</summary>
+        private async Task Ready(string verb, Dictionary<string, object> body)
         {
             var waits = new List<Task>();
             lock (_gate)
-                foreach (var field in new[] { "name", "a", "b" })
+                if (verb == "prepare" || verb == "save" || verb == "inspect") waits.AddRange(_declaring.Values.Where(t => !t.IsCompleted));
+                else foreach (var field in new[] { "name", "a", "b" })
                     if (body.TryGetValue(field, out var v) && v is string who && _declaring.TryGetValue(who, out var t) && !t.IsCompleted) waits.Add(t);
             if (waits.Count == 0) return;
             await Task.WhenAny(Task.WhenAll(waits), Task.Delay(5000)).ConfigureAwait(false);

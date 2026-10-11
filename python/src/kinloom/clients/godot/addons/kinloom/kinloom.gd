@@ -978,7 +978,7 @@ func _post(verb: String, body: Dictionary, seconds: float) -> Variant:
 	if _brain != null:
 		return await _native(verb, _plain(body))
 	if verb != "character" and verb != "tools":
-		await _wait_declared(body)
+		await _wait_declared(verb, body)
 	return await _request(verb, HTTPClient.METHOD_POST, JSON.stringify(body), seconds)
 
 
@@ -994,9 +994,14 @@ func _declare(name: String, d: Dictionary, with_tools: bool) -> void:
 		_declaring.erase(name)
 
 
-## Waits (5 s at most) for the declarations of the characters a call names.
-func _wait_declared(body: Dictionary) -> void:
+## Waits (5 s at most) for the declarations of the characters a call names (all of them for prepare, save and
+## inspect, which are about every character).
+func _wait_declared(verb: String, body: Dictionary) -> void:
 	var until := Time.get_ticks_msec() + 5000
+	if verb in ["prepare", "save", "inspect"]:
+		while not _declaring.is_empty() and Time.get_ticks_msec() < until and is_inside_tree():
+			await get_tree().process_frame
+		return
 	for field in ["name", "a", "b"]:
 		var who = body.get(field)
 		while who is String and _declaring.has(who) and Time.get_ticks_msec() < until and is_inside_tree():

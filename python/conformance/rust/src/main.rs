@@ -211,6 +211,7 @@ fn main() {
     println!("chat image: {}", kl.chat_image("LOOK", "What is this?", obj! {}, "player", &png));
     let example = || obj! { "challenge" => "Win clean", "sky" => "#ff7a45" };
     println!("create image: {}", kl.create_image("race", example(), obj! {}, 0, false, &png).to_json());
+    kl.character("LAMP", "a lamplighter", obj! {});   // declared just before: prepare must wait for it
     let ready = kl.prepare(10.0);
     println!("prepare: {} {}", if ready.get("ready").as_bool() { "ready" } else { "waiting" }, if ready.get("online").as_bool() { "online" } else { "offline" });
     println!("offline tools: {}", offline.tools(obj! { "open_door" => obj! { "door" => "north" } }).join(", "));

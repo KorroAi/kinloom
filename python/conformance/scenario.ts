@@ -162,6 +162,7 @@ live.character("LOOK", "a painter", { offline: "Blind." });
 await sleep(100);
 console.log("chat image: " + (await live.chat("LOOK", "What is this?", {}, "player", null, PNG)));
 console.log("create image: " + j(await live.create("race", { challenge: "Win clean", sky: "#ff7a45" }, { image: PNG })));
+live.character("LAMP", "a lamplighter");   // declared just before: prepare must wait for it
 let ready = await live.prepare(10);
 console.log(`prepare: ${ready.ready ? "ready" : "waiting"} ${ready.online ? "online" : "offline"}`);
 console.log("offline tools: " + (await dead.tools({ open_door: { door: "north" } })).join(", "));

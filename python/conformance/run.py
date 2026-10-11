@@ -9,6 +9,8 @@ import sys
 import tempfile
 import time
 
+from slowproxy import SlowProxy
+
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 CLIENTS = os.path.join(ROOT, "src", "kinloom", "clients")
@@ -128,21 +130,26 @@ def main(only=()):
             continue
         port = free_port()                      # a fresh server per client: no state carried from one client to the next
         server = start_server(dict(env, KINLOOM_VOICE="scripted"), port)       # a scripted voice on the server
+        proxy = SlowProxy(port)                 # declarations arrive late, as on a slow network: calls must wait for them
         try:
             try:
-                cmd = make(port)
+                cmd = make(proxy.port)
             except Exception as e:  # a client that cannot build: reported, the others still run
                 ok = False
                 print(keep_failure("%s: FAIL (build) %s" % (name, e)))
                 continue
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=240,
-                               env=dict(env, KINLOOM_TEST_PORT=str(port), KINLOOM_VOICE="off"))   # offline: no system voice
+                               env=dict(env, KINLOOM_TEST_PORT=str(proxy.port), KINLOOM_VOICE="off"))   # offline: no system voice
         finally:
             server.kill()
+            proxy.close()
         got = parse(r.stdout.replace("\r\n", "\n"))
         want = expected[:6] + EXTRA.get(name, []) + expected[6:]
-        if got == want:
+        if got == want and not proxy.problems:
             print("%s: PASS" % name)
+        elif got == want:
+            ok = False
+            print(keep_failure("%s: FAIL (order) %s" % (name, "; ".join(proxy.problems))))
         else:
             ok = False
             print(keep_failure("%s: FAIL\n--- expected\n%s\n--- got\n%s\n--- output (tail)\n%s"

@@ -9482,6 +9482,12 @@ function Kinloom:_post(verb, body, timeout, callback)
   callback = callback or function() end
   if self.brain then return self:_native(verb, body, callback) end
   if verb ~= "character" and verb ~= "tools" and self._declaring and type(body) == "table" then
+    if verb == "prepare" or verb == "save" or verb == "inspect" then   -- about every character: after all of them
+      for _, waiting in pairs(self._declaring) do
+        waiting[#waiting + 1] = function() self:_post(verb, body, timeout, callback) end
+        return
+      end
+    end
     for _, field in ipairs({ "name", "a", "b" }) do
       local waiting = type(body[field]) == "string" and self._declaring[body[field]]
       if waiting then

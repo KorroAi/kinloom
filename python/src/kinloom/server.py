@@ -42,6 +42,7 @@ import hmac
 import json
 import os
 import queue
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -923,5 +924,11 @@ def make_server(brain, host="127.0.0.1", port=7717, token=None, public=False, al
                 ThreadingHTTPServer.process_request_thread(self, request, client_address)
             finally:
                 self._slots.release()
+
+        def handle_error(self, request, client_address):
+            # a game that quits (or is killed) with connections open resets them: normal, not worth a traceback
+            if isinstance(sys.exc_info()[1], (ConnectionResetError, ConnectionAbortedError, BrokenPipeError)):
+                return
+            ThreadingHTTPServer.handle_error(self, request, client_address)
 
     return Server((host, port), Handler)

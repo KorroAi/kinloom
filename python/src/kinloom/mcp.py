@@ -22,6 +22,14 @@ TOOLS = [
      "inputSchema": {"type": "object", "required": ["request"], "properties": {
          "request": {"type": "string", "description": "the feature, in the developer's own words"},
          "engine": {"type": "string", "description": "default: detected"}}}},
+    {"name": "kinloom_hooks",
+     "description": "A mod: Kinloom in a game whose source you do not have. With `game` (a .NET game folder or .dll: Unity "
+                    "Mono, MonoGame, FNA), reads its code with REA (never runs it) and lists the methods that make a line, "
+                    "a reply, a choice or content, with the Kinloom call and a Harmony patch. Without `game`: the mod "
+                    "guide (mod APIs, IL2CPP, native and web games).",
+     "inputSchema": {"type": "object", "properties": {
+         "game": {"type": "string", "description": "the game folder, or its .dll / .exe"},
+         "top": {"type": "integer", "description": "how many methods (default 8)"}}}},
     {"name": "kinloom_add",
      "description": "Add a character the player can talk to: writes it into kinloom.json (no declaration code in the game, "
                     "edits apply while it runs) and returns the lines to call it in this game's language. Also adds world "
@@ -123,8 +131,17 @@ def call(folder, name, args):
     try:
         if name == "kinloom_guide":
             engine = args.get("engine") or _init.detect(folder)
+            from .recipe import patterns
             return _text(_init.guide(engine, _client_path(folder, engine), folder) +
-                         "\nPatterns: kinloom_recipe finds the ones for a request (all 34 are in KINLOOM.md).")
+                         "\nPatterns: kinloom_recipe finds the ones for a request (all %d are in KINLOOM.md)." % len(patterns()))
+        if name == "kinloom_hooks":
+            from . import mod
+            if not args.get("game"):
+                return _text(mod.guide())
+            try:
+                return _text(mod.text(mod.report(os.path.join(folder, str(args["game"])), int(args.get("top") or 8))))
+            except mod.HookError as e:
+                return _text(str(e), error=True)
         if name == "kinloom_recipe":
             from .recipe import recipe
             return _text(recipe(str(args.get("request") or ""), args.get("engine") or _init.detect(folder)))

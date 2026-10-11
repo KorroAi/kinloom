@@ -134,6 +134,22 @@ def test_behind_a_proxy_each_player_has_their_own_address(serve):
 
 # ---------------- slow and many clients ----------------
 
+@pytest.mark.filterwarnings("error::pytest.PytestUnhandledThreadExceptionWarning")
+def test_a_game_that_quits_mid_connection_prints_no_traceback(serve, capsys):
+    # found by proof/mod: a .NET game exiting with its keep-alive connections open made `kinloom serve` print a
+    # ConnectionResetError traceback per connection
+    import struct
+    _, url, _ = serve(model(chat="Hm."))
+    host, port = url[7:].split(":")
+    for _ in range(3):
+        s = socket.create_connection((host, int(port)), timeout=5)
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))   # close = reset, as a killed process
+        s.close()
+    time.sleep(0.5)
+    assert call(url, "/healthz")[0] == 200
+    err = capsys.readouterr().err
+    assert "Traceback" not in err and "ConnectionResetError" not in err, err
+
 def test_a_slow_client_is_dropped_and_connections_are_capped(serve):
     _, url, srv = serve(None, timeout=0.5, max_connections=3)
     before = threading.active_count()

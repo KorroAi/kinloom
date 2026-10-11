@@ -41,6 +41,32 @@ def test_the_same_game_code_talks_through_an_online_server():
         brain.close()
 
 
+def test_prepare_save_and_inspect_wait_for_declarations_on_their_way(monkeypatch):
+    # found by proof/mod: character() then prepare() reached the server first on a slow network, which answered
+    # "ready" before knowing the characters, so nothing was written ahead
+    from kinloom import remote
+    sent, real = [], remote.RemoteBrain._request
+
+    def slow(self, session, verb, body, timeout, *a, **kw):
+        if verb == "character":
+            time.sleep(0.3)
+        sent.append(verb)
+        return real(self, session, verb, body, timeout, *a, **kw)
+    monkeypatch.setattr(remote.RemoteBrain, "_request", slow)
+    brain, srv, url = online(model(lines={"lines": ["Lamps lit."]}))
+    try:
+        kl = Kinloom(url=url, token="play-123", session="p1")
+        for verb, call in (("prepare", lambda: kl.prepare(5)), ("inspect", kl.inspect), ("save", kl.save)):
+            sent.clear()
+            kl.character("LAMP%s" % verb, "a lamplighter", lines={"dusk": ["Lamps lit."]})
+            call()
+            assert "character" in sent and sent.index("character") < sent.index(verb), sent
+        assert kl.say("LAMPprepare", "dusk") == "Lamps lit."
+    finally:
+        srv.shutdown()
+        brain.close()
+
+
 def test_a_wrong_token_or_no_server_gives_the_offline_answers():
     brain, srv, url = online(model(chat="Hi.\n~~~\n{}"))
     try:

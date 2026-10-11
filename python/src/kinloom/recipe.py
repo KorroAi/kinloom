@@ -76,12 +76,20 @@ ROUTES = [
      "hallucination invent inventing made-up",
      "World facts every character treats as true: `kinloom add --lore \"...\"` or lore([...]); invent=false stops a "
      "character making up names or places."),
+    ("mod", "kinloom hooks + a patch", "mod mods modding modder modded retail closed closed-source no-source "
+     "decompile decompiled decompiler reverse reverse-engineer reverse-engineering hook hooks hooking patch patching "
+     "harmony bepinex melonloader inject injection il2cpp assembly-csharp dll someone-else",
+     "A game whose source you do not have: use its mod API when it has one (Lua, Java, a script hook: that language's "
+     "client, as for any game). No mod API, a .NET game (Unity Mono, MonoGame, FNA): `kinloom hooks <game folder>` reads "
+     "its code with REA (optional; never runs the game) and lists where it makes a line, a reply, a choice or content, "
+     "with the call and a Harmony patch; the game's own value stays the offline answer. IL2CPP, native and web games: "
+     "`kinloom hooks --guide`."),
 ]
 # the cookbook patterns that belong to each route (numbers in kit/cookbook.md), most general first
 ROUTE_PATTERNS = {"talk": [1, 2, 3, 4, 7, 11, 18, 14, 28], "line": [6, 5, 8], "choice": [9, 10, 15, 16, 8, 19, 27],
                   "action": [20, 33, 2], "content": [17, 12, 13, 21, 22], "crowd": [23, 24, 9],
                   "world": [25, 26, 3], "facts": [1, 28], "voice": [29, 30], "sight": [32, 17], "check": [34],
-                  "rules": [35, 39, 36, 17], "stream": [37, 35], "bystander": [38, 6]}
+                  "rules": [35, 39, 36, 17], "stream": [37, 35], "bystander": [38, 6], "mod": []}
 _STOP = {"a", "an", "the", "to", "of", "and", "with", "that", "for", "my", "in", "on", "as", "by", "go", "it", "is", "be",
          "make", "add", "want", "should", "can", "i", "we", "our", "their", "them", "they", "he", "she", "his", "her",
          "more", "some", "each", "every", "when", "so", "this", "from", "at", "into", "like", "game", "player", "players"}

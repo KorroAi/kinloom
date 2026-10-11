@@ -114,6 +114,15 @@ What each platform needs:
   neither: give native mode your own transport, or use a relay reached by your engine's HTTP.
 - **Consoles** in general: no SDK here has been run on one; plan for your platform's own HTTP layer.
 
+### A game you did not make (mods)
+
+A mod calls the same verbs. With a mod API (Lua, Java, a script hook), use that language's client. With none, for a
+.NET game (Unity Mono, MonoGame, FNA), `kinloom hooks <game folder>` reads the game's code with
+[REA](https://github.com/morluto/rea) (optional; the game is never run) and lists the methods that make a line, a reply,
+a choice or content, each with the call that fits and a Harmony patch; the game's own text stays the offline answer.
+`kinloom hooks --guide` covers IL2CPP, native and web games. Mods are for your own use unless the game's terms say
+otherwise.
+
 ## Quick start
 
 ```bash
@@ -195,6 +204,9 @@ Real runs, with their method, cost and misses, are in [`proof/`](proof):
   existing game. [proof/v1](proof/v1/README.md)
 - **Learning units**: with a real model, 85 % wins against 65 % for the offline rules alone (hand-written rules: 87 %).
   [proof/depth](proof/depth/README.md)
+- **A mod of a game with no source**: `kinloom hooks` found the 3 methods of a small .NET game that make its lines
+  (and nothing else); a Harmony mod built from its patches ran the game offline (every line the game's own), with a
+  scripted model and with `deepseek/deepseek-v4.1-flash`. [proof/mod](proof/mod/README.md)
 
 Not measured yet: whether players find these characters more human than a plain prompt (the blind test in
 `proof/souls/blind.html` has not been judged), and how much time a coding agent saves overall.

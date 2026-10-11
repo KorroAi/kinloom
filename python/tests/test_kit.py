@@ -413,7 +413,8 @@ def test_mcp_handshake_tools_and_errors(tmp_path):
     assert {t["name"] for t in replies[1]["result"]["tools"]} == {"kinloom_guide", "kinloom_init", "kinloom_try",
                                                                  "kinloom_mind", "kinloom_check", "kinloom_status",
                                                                  "kinloom_recipe", "kinloom_add", "kinloom_log",
-                                                                 "kinloom_test", "kinloom_probe", "kinloom_use", "kinloom_ship"}
+                                                                 "kinloom_test", "kinloom_probe", "kinloom_use", "kinloom_ship",
+                                                                 "kinloom_hooks"}
     assert replies[2]["error"]["code"] == -32700
     assert replies[3]["error"]["code"] == -32601
     assert replies[4]["result"]["isError"] is True

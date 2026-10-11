@@ -3,6 +3,7 @@
     kinloom                    what Kinloom found here and what to ask your coding agent
     kinloom add NAME "who they are" [--tools "give(item)" --trust give=0.3]   a character, written into kinloom.json
     kinloom recipe "any request"      the call and the patterns for one feature, in this game's language
+    kinloom hooks <game folder|.dll>  a mod: where Kinloom plugs into a .NET game you have no source of (reads it with REA)
     kinloom run -- <game command>     runs the game with Kinloom, then says what the AI did (calls, errors, refusals)
     kinloom log [-n 40] [--follow]    what the running server did, as text
     kinloom talk NAME "who they are"   talk to a character in the terminal (--web: in the browser)
@@ -504,6 +505,10 @@ def cmd_doctor(args):
             print("found %s (%s)" % (var, "set, not shown" if "KEY" in var else os.environ[var]))
     agents = found()
     print("coding agents installed: %s" % (", ".join(agents) if agents else "none found on PATH"))
+    from .mod import rea_command
+    rea = rea_command()
+    print("mods (kinloom hooks): %s" % ("REA found (%s)" % " ".join(rea) if rea else
+                                         "REA not found (optional: only to read a .NET game you have no source of)"))
     brain, _ = _brain(args)
     print("model: " + _describe(brain))
     print("voice: " + _voice_line(brain))
@@ -523,6 +528,14 @@ def cmd_doctor(args):
         ok = r.ok
     brain.close()
     return 0 if ok else 1
+
+
+def cmd_hooks(args):
+    from . import mod
+    if args.guide or not args.game:
+        print(mod.guide())
+        return 0 if args.guide else 2
+    return mod.run(args.game, args.json, args.top)
 
 
 def cmd_use(args):
@@ -748,6 +761,14 @@ def main_parser():
     rc.add_argument("--engine")
     rc.set_defaults(fn=lambda a: print(__import__("kinloom.recipe", fromlist=["recipe"]).recipe(
         " ".join(a.request), a.engine or __import__("kinloom.init", fromlist=["detect"]).detect(a.dir))) or 0)
+
+    hk = sub.add_parser("hooks", help="a mod: where Kinloom plugs into a .NET game you have no source of (reads it "
+                                      "with REA, never runs it); --guide: mods of every kind")
+    hk.add_argument("game", nargs="?", help="the game folder, or its .dll / .exe")
+    hk.add_argument("--top", type=int, default=8)
+    hk.add_argument("--json", action="store_true")
+    hk.add_argument("--guide", action="store_true", help="print the mod guide (mod APIs, .NET, IL2CPP, native, web)")
+    hk.set_defaults(fn=cmd_hooks)
 
     rn = sub.add_parser("run", help="run the game with Kinloom, then see what the AI did: kinloom run -- <game command>")
     rn.add_argument("command", nargs=argparse.REMAINDER)

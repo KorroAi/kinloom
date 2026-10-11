@@ -172,6 +172,7 @@ kl:character("LOOK", "a painter", { offline = "Blind." })
 SLEEP(0.1)
 out("chat image: " .. kl:chat("LOOK", "What is this?", {}, nil, "player", png))
 out("create image: " .. Kinloom.encode(kl:create("race", { challenge = "Win clean", sky = "#ff7a45" }, { image = png })))
+kl:character("LAMP", "a lamplighter")   -- declared just before: prepare must wait for it
 local ready = kl:prepare(10)
 out("prepare: " .. (ready.ready and "ready" or "waiting") .. " " .. (ready.online and "online" or "offline"))
 out("offline tools: " .. table.concat(offline:tools({ open_door = { door = "north" } }), ", "))

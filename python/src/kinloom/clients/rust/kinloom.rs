@@ -1604,14 +1604,19 @@ impl Kinloom {
         });
     }
 
-    /// Waits (5 s at most) for the declarations of the characters a call names.
-    fn ready(&self, body: &Json) {
+    /// Waits (5 s at most) for the declarations of the characters a call names (all of them for prepare, save and
+    /// inspect, which are about every character).
+    fn ready(&self, verb: &str, body: &Json) {
         let waits: Vec<Declared> = {
             let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
-            ["name", "a", "b"].iter().filter_map(|f| match body.get(f) {
-                Json::Str(who) => st.declaring.get(who).cloned(),
-                _ => None,
-            }).collect()
+            if matches!(verb, "prepare" | "save" | "inspect") {
+                st.declaring.values().cloned().collect()
+            } else {
+                ["name", "a", "b"].iter().filter_map(|f| match body.get(f) {
+                    Json::Str(who) => st.declaring.get(who).cloned(),
+                    _ => None,
+                }).collect()
+            }
         };
         let until = Instant::now() + Duration::from_secs(5);
         for w in waits {
@@ -1631,7 +1636,7 @@ impl Kinloom {
             return self.local(b, "POST", verb, Some(body));
         }
         if verb != "character" && verb != "tools" {
-            self.ready(body);
+            self.ready(verb, body);
         }
         {
             let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
@@ -14390,7 +14395,7 @@ impl Kinloom {
                 }
             };
         }
-        self.ready(body); // the character's declaration first, as for every other call
+        self.ready("chat", body); // the character's declaration first, as for every other call
         {
             let st = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
             let now = Instant::now();

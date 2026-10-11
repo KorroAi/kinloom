@@ -363,7 +363,7 @@ export class Kinloom {
                 return null;
             }
         }
-        await this.ready(body);
+        await this.ready("chat", body);
         if (Date.now() < this.downUntil || Date.now() < (this.limitedUntil.get("chat") || 0))
             return null;
         const headers = { "Content-Type": "application/json", "X-Kinloom-Session": this.session };
@@ -751,19 +751,22 @@ export class Kinloom {
     fire(verb, body) { void this.post(verb, body, 5000); }
     async post(verb, body, ms) {
         if (!this.brain && verb !== "character" && verb !== "tools")
-            await this.ready(body);
+            await this.ready(verb, body);
         return this.request("POST", verb, body, ms);
     }
-    /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
-     * without their soul and tools. */
-    async ready(body) {
+    /** Relay: waits (5 s at most) for the declarations of the characters a call names (all of them for prepare, save and
+     * inspect, which are about every character), so the server never answers it without their soul and tools. */
+    async ready(verb, body) {
         const waits = [];
-        for (const field of ["name", "a", "b"]) {
-            const v = body[field];
-            const w = typeof v === "string" ? this.declaring.get(v) : undefined;
-            if (w)
-                waits.push(w);
-        }
+        if (verb === "prepare" || verb === "save" || verb === "inspect")
+            waits.push(...this.declaring.values());
+        else
+            for (const field of ["name", "a", "b"]) {
+                const v = body[field];
+                const w = typeof v === "string" ? this.declaring.get(v) : undefined;
+                if (w)
+                    waits.push(w);
+            }
         if (!waits.length)
             return;
         let timer;

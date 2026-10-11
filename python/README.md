@@ -264,6 +264,8 @@ and clamped against the example; one repair; then the example.
 kinloom                      # what Kinloom found here (model, engine, characters, server) and what to ask your agent
 kinloom add NAME "who they are" [--tools "give(item)" --trust give=0.3 --strict --lore "..."]   # into kinloom.json
 kinloom recipe "any request"  # the call and the patterns for one feature, in this game's language
+kinloom hooks <game|.dll>    # a mod: where Kinloom plugs into a .NET game you have no source of (REA reads it);
+                             # --guide: mod APIs, IL2CPP, native and web games
 kinloom run -- <game command> # runs the game with a server, then prints what the AI did
 kinloom log [-n 40] [--follow]  # what a running server did, as text
 kinloom deploy [folder]      # an online server for a shipped game: Dockerfile + guide + tokens (deploys nothing itself)
@@ -284,9 +286,9 @@ kinloom bundle               # Kinloom as a program that needs no Python (kinloo
 kinloom ship                 # before a release: keys inside the game, how players reach a model, offline answers,
                              # caps and prices, the rating; writes a draft of the store's AI disclosure
 kinloom guide [engine]       # the instructions for coding agents
-kinloom doctor               # which model and voice, key present (never printed), latency
-kinloom mcp                  # MCP server for coding agents: recipe, add, log, guide, init, try, mind, check, status,
-                             # test, probe, use, ship
+kinloom doctor               # which model and voice, key present (never printed), latency, REA for mods
+kinloom mcp                  # MCP server for coding agents: recipe, hooks, add, log, guide, init, try, mind, check,
+                             # status, test, probe, use, ship
 GET /v1/openapi.json         # the HTTP API described (also kit/openapi.json): a client for any other engine
 kinloom demo                 # watch a mind learn to win a fight, offline, in seconds
 kinloom think mind.json '{"hp": 0.2}'   # a mind's choice on one moment, with every score

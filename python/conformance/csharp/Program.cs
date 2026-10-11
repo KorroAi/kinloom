@@ -206,6 +206,7 @@ static class Program
         await Task.Delay(100);
         Console.WriteLine("chat image: " + await kl.Chat("LOOK", "What is this?", null, "player", png));
         Console.WriteLine("create image: " + J(await kl.Create("race", D(("challenge", "Win clean"), ("sky", "#ff7a45")), null, 0, false, png)));
+        kl.Character("LAMP", "a lamplighter");   // declared just before: Prepare must wait for it
         var ready = await kl.Prepare(10);
         Console.WriteLine("prepare: " + ((bool)ready["ready"] ? "ready" : "waiting") + " " + ((bool)ready["online"] ? "online" : "offline"));
         Console.WriteLine("offline tools: " + string.Join(", ", await offline.Tools(D(("open_door", D(("door", "north")))))));

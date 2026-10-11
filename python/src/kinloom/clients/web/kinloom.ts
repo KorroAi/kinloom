@@ -449,7 +449,7 @@ export class Kinloom {
       try { return await this.brain.chatStream(this.session, body as Record<string, any>, onPiece); }
       catch (e) { console.warn("[kinloom] chat: " + (e instanceof Error ? e.message : e)); return null; }
     }
-    await this.ready(body);
+    await this.ready("chat", body);
     if (Date.now() < this.downUntil || Date.now() < (this.limitedUntil.get("chat") || 0)) return null;
     const headers: Record<string, string> = { "Content-Type": "application/json", "X-Kinloom-Session": this.session };
     if (this.token) headers.Authorization = "Bearer " + this.token;
@@ -806,15 +806,16 @@ export class Kinloom {
   private fire(verb: string, body: Record<string, unknown>): void { void this.post(verb, body, 5000); }
 
   private async post(verb: string, body: Record<string, unknown>, ms: number): Promise<Reply | null> {
-    if (!this.brain && verb !== "character" && verb !== "tools") await this.ready(body);
+    if (!this.brain && verb !== "character" && verb !== "tools") await this.ready(verb, body);
     return this.request("POST", verb, body, ms);
   }
 
-  /** Relay: waits (5 s at most) for the declarations of the characters a call names, so the server never answers it
-   * without their soul and tools. */
-  private async ready(body: Record<string, unknown>): Promise<void> {
+  /** Relay: waits (5 s at most) for the declarations of the characters a call names (all of them for prepare, save and
+   * inspect, which are about every character), so the server never answers it without their soul and tools. */
+  private async ready(verb: string, body: Record<string, unknown>): Promise<void> {
     const waits: Promise<unknown>[] = [];
-    for (const field of ["name", "a", "b"]) {
+    if (verb === "prepare" || verb === "save" || verb === "inspect") waits.push(...this.declaring.values());
+    else for (const field of ["name", "a", "b"]) {
       const v = body[field];
       const w = typeof v === "string" ? this.declaring.get(v) : undefined;
       if (w) waits.push(w);

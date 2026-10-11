@@ -177,6 +177,18 @@ class RemoteBrain:
             with self._lock:
                 self._declared[key] = (body, self._bg.submit(self._request, session, "character", body, 5.0))
 
+    def _ready_all(self, session):
+        """prepare, save and inspect are about every character: they wait (5 s at most in all) for every declaration
+        still on its way, as calls naming one character wait for theirs."""
+        with self._lock:
+            futures = [future for (s, _), (_, future) in self._declared.items() if s == session]
+        until = time.monotonic() + 5.0
+        for future in futures:
+            try:
+                future.result(timeout=max(0.0, until - time.monotonic()))
+            except Exception:  # not declared in time: the call goes on
+                pass
+
     def lore(self, session, lines=None):
         if lines is None:
             r = self._request(session, "lore", {}, 3.0)
@@ -197,6 +209,7 @@ class RemoteBrain:
         return names
 
     def prepare(self, session, timeout=10.0):
+        self._ready_all(session)
         r = self._request(session, "prepare", {"timeout": timeout}, (timeout or 0) + 5.0)
         if isinstance(r, dict) and "ready" in r:
             return {"ready": bool(r["ready"]), "waiting": r.get("waiting", 0), "online": bool(r.get("online"))}
@@ -470,10 +483,12 @@ class RemoteBrain:
         return r["lines"] if isinstance(r, dict) and isinstance(r.get("lines"), list) else []
 
     def inspect(self, session):
+        self._ready_all(session)
         r = self._request(session, "inspect", {}, 3.0)
         return r if isinstance(r, dict) and "characters" in r else self.local.inspect(session)
 
     def save_state(self, session):
+        self._ready_all(session)
         r = self._request(session, "save", {}, 5.0)
         return r["data"] if isinstance(r, dict) and isinstance(r.get("data"), str) else self.local.save_state(session)
 

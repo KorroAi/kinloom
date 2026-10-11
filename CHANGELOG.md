@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+Mods of games with no source (2026-10-11):
+
+- `kinloom hooks <game folder | .dll>`: where Kinloom plugs into a .NET game you do not have the source of (Unity
+  Mono's `Assembly-CSharp.dll`, MonoGame, FNA, any .NET game). It reads the game's code with REA (Reverse Engineer
+  Anything, optional, MIT: `rea` on PATH or `KINLOOM_REA`), never runs the game, and lists the methods that make a line,
+  a reply, a choice or content, best first, with the call that fits (`say`, `chat`, `decide`, `create`) and a Harmony
+  patch that keeps the game's own text when Kinloom has nothing (offline, no line ready). `--json`; Unity IL2CPP and
+  native games get what to do instead. `kinloom hooks --guide` (the new `kit/mod.md`): mod APIs, .NET, IL2CPP, native
+  and web games. Also the MCP tool `kinloom_hooks`, a `mod` route in `kinloom recipe`, and a line in `kinloom doctor`.
+  Kinloom needs REA for nothing else. Proof: `proof/mod` (a small .NET game, a Harmony mod built from the patches,
+  offline, scripted and with a real model).
+
+Found by that proof, in Python and every SDK:
+
+- Through a relay, `character(...)` then `prepare()` could reach the server in the wrong order (a declaration is sent
+  in the background): the server answered "ready" before it knew the characters, so nothing was written ahead and the
+  first lines were the offline ones. Seen with a real model (only the reply came from it). `prepare`, `save` and
+  `inspect`, which are about every character, now wait (5 s at most) for every declaration still on its way, as calls
+  naming one character already waited for theirs (Python `Kinloom(url=)`, JavaScript/TypeScript, C#, Java, Rust, C++,
+  Lua, Godot). C++ waited up to 5 s per declaration instead of 5 s in all. The relay conformance runs every client
+  through `conformance/slowproxy.py`, which holds each declaration 0.3 s and fails a client whose `prepare`, `save`
+  or `inspect` overtakes one: before the fix it failed JavaScript, TypeScript, C#, Java, Rust, C++ and Godot (Lua's
+  test transport answers at once, so the order cannot change there; Python is checked by `tests/test_remote.py`).
+- `kinloom serve` printed a `ConnectionResetError` traceback for each connection a game left open when it quit.
+- The MCP `kinloom_guide` said there were 34 patterns (there are 39): the number is now counted.
+
 Found by a release review (2026-10-10):
 
 - C#: an anonymous object as `Create`'s example or offline answer (`new { name = "Glowcap", value = new[] { 1, 50 } }`)
