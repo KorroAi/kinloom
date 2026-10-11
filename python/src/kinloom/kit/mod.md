@@ -30,7 +30,8 @@ reads the game's code with **REA** (Reverse Engineer Anything, optional, MIT: `n
 `KINLOOM_REA` = the command that runs it) without running the game, and lists the methods that make a line, a reply,
 a choice or content, best first, each with the Kinloom call that fits (`say`, `chat`, `decide`, `create`) and a
 Harmony patch for the first one. `--json` for scripts and agents. Names can mislead (and obfuscated games have none
-worth reading): check a candidate in the game before building on it. ILSpy or dnSpyEx show a method's body.
+worth reading): check a candidate in the game before building on it. ILSpy or dnSpyEx show a method's body. Methods of
+generic types (`Box<T>`) are left out: Harmony patches concrete methods; patch the code that uses them.
 
 **Unity IL2CPP** (a `GameAssembly.dll`, no `Managed` folder): the C# became native code. Cpp2IL or Il2CppDumper recover
 the names; BepInEx 6 (IL2CPP) or MelonLoader patch them; the C# client works the same.

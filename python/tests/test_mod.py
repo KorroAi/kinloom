@@ -117,6 +117,17 @@ def test_candidates_rank_where_the_game_makes_text_and_pick_the_call():
     assert ".ctor" not in names and not any("<" in n for n in names) and "Patrol" not in names
 
 
+def test_nested_types_are_marked_and_open_generics_left_out():
+    # as REA gives them: a nested type by its short name (flags: nested public), a generic type with `1 and var:0
+    found = mod.candidates({"types": [{"token": "0x02000004", "name": "NpcLine", "full_name": "NpcLine", "flags": 1048578}],
+                            "methods": [method("NpcLine", "Say", ["string"], "string", 1),
+                                        method("Town.Box`1", "ShowText", ["var:0"], "string", 2),
+                                        method("Town.Ui", "ShowLine", ["mvar:0"], "string", 3)]})
+    assert [(c["type"], c["method"], c["nested"]) for c in found] == [("NpcLine", "Say", True)]
+    assert "nested: Harmony finds it by its short name" in mod.text({"code": "x", "types": 1, "methods": 3,
+                                                                     "candidates": found, "patch": ""})
+
+
 def test_patches_keep_the_game_s_value_as_the_offline_answer():
     shout, answer, greet = mod.candidates(LANTERN)
     p = mod.patch(greet, "MARLO")

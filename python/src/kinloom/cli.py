@@ -534,7 +534,7 @@ def cmd_hooks(args):
     from . import mod
     if args.guide or not args.game:
         print(mod.guide())
-        return 0 if args.guide else 2
+        return 0
     return mod.run(args.game, args.json, args.top)
 
 

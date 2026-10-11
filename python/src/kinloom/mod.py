@@ -161,7 +161,10 @@ def candidates(found, top=8):
         if SHOWS.match(target):
             shows.setdefault(caller, set()).add(target)
     rows = {}           # TypeDef row -> name, to read "class:8" (a coded index: row 2 of TypeDef) as "LanternRow.Player"
+    nested = set()      # types declared inside another (REA gives their short name; Harmony finds them by it)
     for t in found.get("types") or []:
+        if isinstance(t.get("flags"), int) and t["flags"] & 7 >= 2:
+            nested.add(t.get("full_name") or t.get("name"))
         try:
             rows[int(str(t.get("token")), 16) & 0xFFFFFF] = t.get("full_name") or t.get("name")
         except ValueError:
@@ -182,6 +185,8 @@ def candidates(found, top=8):
         sig = m.get("signature") or {}
         params = [named(str(p)) for p in sig.get("parameter_types") or []]
         returns = named(str(sig.get("return_type") or "void"))
+        if "`" in owner or sig.get("generic_parameter_count") or any(t.startswith(("var:", "mvar:")) for t in params + [returns]):
+            continue    # generic: Harmony patches concrete methods, not an open generic one
         own = words(name[4:] if name.startswith(("get_", "set_")) else name)
         kind = words(owner.split(".")[-1])
         why, score = [], 0
@@ -230,7 +235,7 @@ def candidates(found, top=8):
         else:
             continue
         out.append({"type": owner, "method": name, "params": params, "returns": returns, "call": call,
-                    "static": bool((m.get("flags") or 0) & 0x10), "score": score, "why": why})
+                    "static": bool((m.get("flags") or 0) & 0x10), "nested": owner in nested, "score": score, "why": why})
     out.sort(key=lambda c: (-c["score"], c["type"], c["method"]))
     return out[:top]
 
@@ -304,6 +309,8 @@ def text(r):
     for i, c in enumerate(r["candidates"], 1):
         lines.append("%d. %s.%s(%s) -> %s   [%s]%s" % (i, c["type"], c["method"], ", ".join(c["params"]), c["returns"],
                                                      c["call"], "  static" if c["static"] else ""))
+        if c.get("nested"):
+            lines.append("   nested: Harmony finds it by its short name (two types of that name: the first one)")
         lines.append("   why: %s" % "; ".join(c["why"]))
     lines += ["", "A Harmony patch for #1 (BepInEx and MelonLoader load Harmony patches; a loader of your own can too). "
               "`Mod.Kl` is your one KinloomClient; `Obj` and `Arr` are the shorthands from KINLOOM.md (with `using HarmonyLib;` "

@@ -8,7 +8,8 @@ Mods of games with no source (2026-10-11):
   Mono's `Assembly-CSharp.dll`, MonoGame, FNA, any .NET game). It reads the game's code with REA (Reverse Engineer
   Anything, optional, MIT: `rea` on PATH or `KINLOOM_REA`), never runs the game, and lists the methods that make a line,
   a reply, a choice or content, best first, with the call that fits (`say`, `chat`, `decide`, `create`) and a Harmony
-  patch that keeps the game's own text when Kinloom has nothing (offline, no line ready). `--json`; Unity IL2CPP and
+  patch that keeps the game's own text when Kinloom has nothing (offline, no line ready); nested types are
+  marked, methods of open generic types left out (Harmony patches concrete methods). `--json`; Unity IL2CPP and
   native games get what to do instead. `kinloom hooks --guide` (the new `kit/mod.md`): mod APIs, .NET, IL2CPP, native
   and web games. Also the MCP tool `kinloom_hooks`, a `mod` route in `kinloom recipe`, and a line in `kinloom doctor`.
   Kinloom needs REA for nothing else. Proof: `proof/mod` (a small .NET game, a Harmony mod built from the patches,
