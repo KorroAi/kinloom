@@ -29,6 +29,20 @@ Found by that proof, in Python and every SDK:
 - `kinloom serve` printed a `ConnectionResetError` traceback for each connection a game left open when it quit.
 - The MCP `kinloom_guide` said there were 34 patterns (there are 39): the number is now counted.
 
+Found by a release review (2026-10-13):
+
+- On Windows, a command whose output was cut by its reader (`kinloom init | head`) ended with an
+  `OSError: [Errno 22] Invalid argument` traceback: Windows reports the closed pipe as EINVAL, not as a broken pipe.
+  It now ends quietly (exit 1), as on Linux and macOS.
+- `kinloom think` with a mind file that does not exist ended with a traceback, and a moment that is not a JSON object
+  (`[1, 2]`) was scored as if every sense were missing: both are now a clear error (exit 2).
+- `--port` out of range (`kinloom serve --port 99999`) ended with a bind traceback: argparse now says it is not a port.
+- On Windows, `kinloom init > NUL` started the questions of the wizard that nobody could see (Python calls the NUL
+  device a terminal): the wizard now runs only in a real console.
+- The package's README (its PyPI page) showed `pip install kinloom`, which is not published yet: it now installs from
+  GitHub, and its links are absolute. The Godot addon's install hints say the same. `pyproject.toml` and the clients'
+  manifests (npm, UPM, NuGet, Cargo, LuaRocks) name the repository.
+
 Found by a release review (2026-10-10):
 
 - C#: an anonymous object as `Create`'s example or offline answer (`new { name = "Glowcap", value = new[] { 1, 50 } }`)

@@ -9,13 +9,13 @@ call, learning from play (`mind`/`think`). No prompts to write, and every call k
 slow model, because what you give (the example, the lines, the rules) *is* the offline answer.
 
 ```bash
-pip install kinloom          # or: uv tool install kinloom   (Python 3.9+, no dependencies)
+uv tool install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"   # Python 3.9+, no dependencies
 kinloom init                 # in your game folder: engine client + instructions for your coding agent
 ```
 
-> Not published on PyPI yet. From GitHub: `uv tool install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"`
-> (or `pipx install` with the same URL); from a clone: `uv tool install ./python`. If `kinloom` is not on your PATH
-> after a plain `pip install`, `python -m kinloom` runs the same commands.
+> Not published on PyPI yet: install from GitHub as above (or `pipx install` with the same URL); from a clone:
+> `uv tool install ./python`. Installing from git needs read access to the repository until it is public. If
+> `kinloom` is not on your PATH after a plain `pip install`, `python -m kinloom` runs the same commands.
 
 ## The first minute
 
@@ -199,7 +199,7 @@ with your description as instructions, `gpt-4o-mini-transcribe`), or any OpenAI-
 (Windows, macOS, Linux espeak) and Windows also hears, in the system's language; browsers use their own voices.
 `KINLOOM_VOICE=off|system` forces it. The web talk box, the Talk page and Godot's `AIDialogue` take `voice` too.
 `kinloom speak "hello"` lets you hear it. Hosted voices are written from their API references and tested against
-local copies of those APIs; they were not called live ([proof/voice](../proof/voice/README.md)).
+local copies of those APIs; they were not called live ([proof/voice](https://github.com/KorroAi/kinloom/blob/fresh/proof/voice/README.md)).
 
 ## Minds: AI for crowds that learns from play
 
@@ -385,4 +385,4 @@ challenges the game can check, items shown as they are written, and bystanders w
 
 ## License
 
-MIT: see [LICENSE](LICENSE).
+MIT: see [LICENSE](https://github.com/KorroAi/kinloom/blob/fresh/python/LICENSE).

@@ -378,6 +378,22 @@ def test_think_without_actions_is_a_clear_error(tmp_path, capsys):
     assert "actions" in capsys.readouterr().err
 
 
+def test_think_with_a_missing_file_or_a_moment_not_an_object_is_a_clear_error(tmp_path, capsys):
+    assert cli.main(["think", str(tmp_path / "missing.json"), '{"hp": 0.1}']) == 2
+    assert "cannot read" in capsys.readouterr().err
+    path = tmp_path / "m.json"
+    path.write_text(json.dumps({"senses": {"hp": [0, 1]}, "actions": {"a": {}}, "rules": {"a": ["hp low"]}}))
+    assert cli.main(["think", str(path), "[1, 2]"]) == 2
+    assert "JSON object" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("port", ["99999", "-1", "abc"])
+def test_a_port_out_of_range_is_an_argument_error_not_a_bind_traceback(port, capsys):
+    with pytest.raises(SystemExit) as e:
+        cli.main(["serve", "--port", port])
+    assert e.value.code == 2 and "not a port" in capsys.readouterr().err
+
+
 # ---------------- deploy and ship ----------------
 
 def test_deploy_has_its_own_folder_and_never_writes_the_admin_token(tmp_path, capsys, monkeypatch):

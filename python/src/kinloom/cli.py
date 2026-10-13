@@ -24,6 +24,7 @@
     kinloom think MIND.json '{"hp": 0.2}'   run a mind on a moment: the choice and every action's score
 """
 import argparse
+import errno
 import json
 import os
 import sys
@@ -351,9 +352,24 @@ Set up a new game first: kinloom init. Hear the voice: kinloom speak "hello"."""
     return 0
 
 
+def _terminal(stream):
+    """A person's terminal: not a pipe or a file, nor Windows' NUL (a character device Python calls a tty)."""
+    try:
+        if not stream.isatty():
+            return False
+        if os.name != "nt":
+            return True
+        import ctypes
+        import msvcrt
+        mode = ctypes.c_ulong()
+        return bool(ctypes.windll.kernel32.GetConsoleMode(msvcrt.get_osfhandle(stream.fileno()), ctypes.byref(mode)))
+    except (AttributeError, ImportError, OSError, ValueError):
+        return False
+
+
 def cmd_init(args):
     from . import init as _init
-    if not args.yes and not args.engine and sys.stdin.isatty() and sys.stdout.isatty():
+    if not args.yes and not args.engine and _terminal(sys.stdin) and _terminal(sys.stdout):
         return _init.wizard(args.dir, agents=args.agents)
     return _init.run(args.dir, args.engine, args.agents or "auto")
 
@@ -633,8 +649,12 @@ def cmd_demo(args):
 
 def cmd_think(args):
     from . import minds
-    with open(args.mind, encoding="utf-8-sig") as f:
-        spec = json.load(f)
+    try:
+        with open(args.mind, encoding="utf-8-sig") as f:
+            spec = json.load(f)
+    except OSError as e:
+        print("error: cannot read %s (%s)" % (args.mind, e.strerror or e), file=sys.stderr)
+        return 2
     missing = [k for k in ("senses", "actions") if not isinstance(spec, dict) or not isinstance(spec.get(k), dict)]
     if missing:
         print('error: %s needs %s, e.g. {"senses": {"hp": [0, 1]}, "actions": {"charge": {}, "retreat": {}}, '
@@ -646,6 +666,9 @@ def cmd_think(args):
     for e in decl.rule_errors:
         print("rule error: %s" % e)
     senses = json.loads(args.senses)
+    if not isinstance(senses, dict):
+        print('error: the moment is a JSON object of senses, e.g. \'{"hp": 0.2}\'', file=sys.stderr)
+        return 2
     e = minds.Mind(decl).explain(senses)
     print("choice: %s" % e["action"])
     for action, sc in sorted(e["scores"].items(), key=lambda kv: -kv[1]["score"]):
@@ -679,6 +702,36 @@ def _safe_output():
             pass
 
 
+def _stdout_gone():
+    """True when standard output can no longer be written (its reader left)."""
+    try:
+        sys.stdout.flush()
+    except (OSError, ValueError):
+        return True
+    return False
+
+
+def _reader_left():
+    """The reader of our output left: point stdout at devnull so the exit flush adds no traceback."""
+    try:
+        devnull = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull, sys.stdout.fileno())
+    except (OSError, ValueError):
+        pass
+    return 1
+
+
+def _port_arg(text):
+    """--port: a TCP port number (argparse says what is wrong instead of a bind traceback)."""
+    try:
+        port = int(text)
+    except ValueError:
+        port = -1
+    if not 0 <= port < 65536:
+        raise argparse.ArgumentTypeError("%r is not a port (0-65535; 0: any free one)" % text)
+    return port
+
+
 def main_parser():
     """The `kinloom` command line."""
     ap = argparse.ArgumentParser(prog="kinloom", description="Deep AI in any game, any engine, any model, in minutes.")
@@ -686,7 +739,7 @@ def main_parser():
     sub = ap.add_subparsers(dest="cmd")
 
     s = sub.add_parser("serve", help="the local server every engine talks to, with a live dashboard")
-    s.add_argument("--port", type=int)
+    s.add_argument("--port", type=_port_arg)
     s.add_argument("--host", default="127.0.0.1", help="the address to listen on; beyond this machine it needs --token")
     s.add_argument("--public", action="store_true", help="listen on all interfaces (online server; needs --token)")
     s.add_argument("--token", help="secret the game must send (Authorization: Bearer <token>)")
@@ -772,7 +825,7 @@ def main_parser():
 
     rn = sub.add_parser("run", help="run the game with Kinloom, then see what the AI did: kinloom run -- <game command>")
     rn.add_argument("command", nargs=argparse.REMAINDER)
-    rn.add_argument("--port", type=int)
+    rn.add_argument("--port", type=_port_arg)
     rn.add_argument("--dir", default=".")
     rn.add_argument("--memory")
     rn.set_defaults(fn=cmd_run)
@@ -780,7 +833,7 @@ def main_parser():
     lg = sub.add_parser("log", help="what the running server did, as text")
     lg.add_argument("-n", type=int, default=40)
     lg.add_argument("--follow", action="store_true")
-    lg.add_argument("--port", type=int, help="default: kinloom.json's port, else 7717")
+    lg.add_argument("--port", type=_port_arg, help="default: kinloom.json's port, else 7717")
     lg.add_argument("--dir", default=".")
     lg.set_defaults(fn=cmd_log)
 
@@ -890,12 +943,11 @@ def main(argv=None):
     try:
         return args.fn(args) or 0
     except BrokenPipeError:   # `kinloom ... | head`: the reader left; no traceback (the Python docs' recipe)
-        try:
-            devnull = os.open(os.devnull, os.O_WRONLY)
-            os.dup2(devnull, sys.stdout.fileno())
-        except (OSError, ValueError):
-            pass
-        return 1
+        return _reader_left()
+    except OSError as e:      # Windows: a pipe closed by its reader fails with EINVAL, not EPIPE
+        if e.errno == errno.EINVAL and _stdout_gone():
+            return _reader_left()
+        raise
     except Exception as e:  # a friendly message instead of a traceback for configuration problems
         from .config import ConfigError
         if isinstance(e, (ConfigError, json.JSONDecodeError)):

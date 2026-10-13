@@ -5,6 +5,9 @@
   "description": "Kinloom SDK for Unity: AI that decides, writes, acts and talks in your game, calling the model itself or a relay, and answering offline with your own lines and examples.",
   "unity": "2021.3",
   "license": "MIT",
+  "documentationUrl": "https://github.com/KorroAi/kinloom",
+  "changelogUrl": "https://github.com/KorroAi/kinloom/blob/fresh/CHANGELOG.md",
+  "licensesUrl": "https://github.com/KorroAi/kinloom/blob/fresh/LICENSE",
   "keywords": [
     "ai",
     "llm",
@@ -12,6 +15,7 @@
     "dialogue"
   ],
   "author": {
-    "name": "Kinloom"
+    "name": "Kinloom",
+    "url": "https://github.com/KorroAi/kinloom"
   }
 }

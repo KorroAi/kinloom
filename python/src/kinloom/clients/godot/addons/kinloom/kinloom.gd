@@ -1143,7 +1143,7 @@ func _mark_down() -> void:
 				print("[kinloom] started `kinloom serve` (it keeps running after the game closes)")
 				_down_until = Time.get_ticks_msec() / 1000.0 + 1.0
 				return
-		print("[kinloom] no server at %s: answering offline. Run `kinloom serve` for AI (pip install kinloom)." % url)
+		print("[kinloom] no server at %s: answering offline. Run `kinloom serve` for AI (install: uv tool install git+https://github.com/KorroAi/kinloom.git#subdirectory=python)." % url)
 
 
 func _now() -> float:

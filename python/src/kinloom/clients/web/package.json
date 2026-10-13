@@ -6,6 +6,15 @@
   "main": "kinloom.js",
   "types": "kinloom.d.ts",
   "license": "MIT",
+  "homepage": "https://github.com/KorroAi/kinloom",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KorroAi/kinloom.git",
+    "directory": "python/src/kinloom/clients/web"
+  },
+  "bugs": {
+    "url": "https://github.com/KorroAi/kinloom/issues"
+  },
   "private": true,
   "exports": {
     ".": {

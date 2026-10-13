@@ -609,6 +609,19 @@ def test_init_is_not_interactive_for_agents(tmp_path, monkeypatch):
     assert main(["init", str(tmp_path), "--yes"]) == 0
 
 
+def test_init_into_the_null_device_asks_nothing(tmp_path, monkeypatch):
+    # `kinloom init > NUL < NUL`: Windows' NUL is a character device that Python calls a tty; nobody would see a question
+    (tmp_path / "main.py").write_text("")
+    monkeypatch.setattr("builtins.input", lambda *a: (_ for _ in ()).throw(AssertionError("asked a question")))
+    with open(os.devnull) as stdin, open(os.devnull, "w") as stdout:
+        monkeypatch.setattr("sys.stdin", stdin)
+        monkeypatch.setattr("sys.stdout", stdout)
+        assert main(["init", str(tmp_path)]) == 0
+    from kinloom.cli import _terminal
+    with open(os.devnull, "w") as null:
+        assert not _terminal(null)
+
+
 def test_check_warns_when_a_spoken_line_is_used_without_looking(tmp_path):
     (tmp_path / "main.py").write_text(
         "from kinloom import Kinloom\nkl = Kinloom()\nplay(kl.speak('MIRA', 'Halt!').path)\n"
@@ -641,3 +654,30 @@ def test_cli_output_cut_by_its_reader_is_no_traceback(tmp_path, monkeypatch):
     monkeypatch.setattr("sys.stdout", Gone())
     assert main(["guide", "python"]) == 1
     spare.close()
+
+
+def test_cli_output_cut_by_its_reader_on_windows_is_no_traceback(tmp_path, monkeypatch):
+    # Windows: writing to a pipe whose reader left fails with OSError EINVAL (errno 22), not BrokenPipeError
+    spare = open(tmp_path / "out", "w")
+
+    class Gone(io.StringIO):
+        def write(self, text):
+            raise OSError(22, "Invalid argument")
+
+        def flush(self):
+            raise OSError(22, "Invalid argument")
+
+        def fileno(self):
+            return spare.fileno()
+    monkeypatch.setattr("sys.stdout", Gone())
+    assert main(["guide", "python"]) == 1
+    spare.close()
+
+
+def test_cli_other_einval_errors_still_raise(monkeypatch):
+    # an EINVAL that is not the output's (a bad file name on Windows) is not hidden
+    def bad(args):
+        raise OSError(22, "Invalid argument: 'a?b'")
+    monkeypatch.setattr("kinloom.cli.cmd_guide", bad)
+    with pytest.raises(OSError):
+        main(["guide", "python"])

@@ -10,6 +10,9 @@
     <Version>1.0.0</Version>
     <Authors>Kinloom</Authors>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/KorroAi/kinloom</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/KorroAi/kinloom.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <Description>Kinloom SDK for C# games (Unity, Godot C#, MonoGame, FNA, Stride, any .NET): AI that decides, writes, acts and talks, calling the model itself or a relay, and answering offline with your own lines and examples.</Description>
     <PackageTags>gamedev;ai;llm;npc;unity;godot;monogame</PackageTags>
   </PropertyGroup>

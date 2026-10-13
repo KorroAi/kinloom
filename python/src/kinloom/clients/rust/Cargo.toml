@@ -3,6 +3,8 @@ name = "kinloom"
 version = "1.0.0"
 edition = "2021"
 license = "MIT"
+repository = "https://github.com/KorroAi/kinloom"
+homepage = "https://github.com/KorroAi/kinloom"
 description = "Kinloom SDK for Rust games (Bevy, macroquad, ggez, Fyrox): AI that decides, writes, acts and talks in your game, calling the model itself or a relay, and answering offline with your own lines and examples."
 publish = false
 

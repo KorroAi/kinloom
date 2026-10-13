@@ -36,10 +36,10 @@ func _build_dock() -> Control:
 	var row := HBoxContainer.new()
 	var start := Button.new()
 	start.text = "Start server"
-	start.tooltip_text = "Runs `kinloom serve` (install once with: pip install kinloom)"
+	start.tooltip_text = "Runs `kinloom serve` (install once with: uv tool install git+https://github.com/KorroAi/kinloom.git#subdirectory=python)"
 	start.pressed.connect(func():
 		var pid := OS.create_process("kinloom", ["serve"], true)
-		status.text = "Started kinloom serve." if pid > 0 else "Could not start `kinloom`. Install it: pip install kinloom")
+		status.text = "Started kinloom serve." if pid > 0 else "Could not start `kinloom`. Install it: uv tool install git+https://github.com/KorroAi/kinloom.git#subdirectory=python")
 	row.add_child(start)
 	var dash := Button.new()
 	dash.text = "Dashboard"
