@@ -350,7 +350,7 @@ class Harness(Provider):
             out_file = os.path.join(folder, "%s-answer.txt" % tag)
             made.append(out_file)
             args = self._prefix + ["exec", "--skip-git-repo-check", "--ephemeral", "-s", "read-only", "--color", "never",
-                    "-o", out_file] + model + sum((["-i", x] for x in images), [])
+                    "-o", out_file] + model + ["-"] + sum((["-i", x] for x in images), [])   # -: prompt on stdin
         elif self.kind == "gemini-cli":
             args = self._prefix + ["-p", INSTRUCTION, "-o", "text", "--approval-mode", "plan", "--skip-trust"] + model
         elif self.kind == "opencode":

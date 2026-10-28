@@ -32,7 +32,7 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/KorroAi/kinloom"
 Repository = "https://github.com/KorroAi/kinloom"
-Changelog = "https://github.com/KorroAi/kinloom/blob/fresh/CHANGELOG.md"
+Changelog = "https://github.com/KorroAi/kinloom/blob/main/CHANGELOG.md"
 Issues = "https://github.com/KorroAi/kinloom/issues"
 
 [project.scripts]

@@ -552,6 +552,30 @@ def test_check_knows_the_config_and_the_new_mistakes(tmp_path):
 
 # ---------------- slash commands and the wizard ----------------
 
+def test_init_frontmatter_is_valid_yaml_and_gemini_toml_parses(tmp_path):
+    # An unquoted value holding ": " is not YAML: Claude Code, opencode and Cursor would drop or refuse the file.
+    (tmp_path / "main.py").write_text("")
+    init.setup(str(tmp_path), agents="all")
+    for rel in (".claude/skills/kinloom/SKILL.md", ".claude/commands/kinloom.md", ".opencode/commands/kinloom.md",
+                ".cursor/rules/kinloom.mdc"):
+        text = (tmp_path / rel).read_text(encoding="utf-8")
+        assert text.startswith("---\n"), rel
+        for line in text.split("\n---\n", 1)[0].split("\n")[1:]:
+            key, sep, value = line.partition(": ")
+            assert sep and key.isidentifier() or key.replace("-", "_").isidentifier(), (rel, line)
+            value = value.strip()
+            if value[:1] == '"':
+                assert isinstance(json.loads(value), str), (rel, line)    # a JSON string is a YAML string
+            else:
+                assert ": " not in value and " #" not in value and value[:1] not in "[{&*!|>%@`'", (rel, line)
+    try:
+        import tomllib
+    except ImportError:                                                     # Python < 3.11
+        return
+    data = tomllib.loads((tmp_path / ".gemini" / "commands" / "kinloom.toml").read_text(encoding="utf-8"))
+    assert "{{args}}" in data["prompt"] and data["description"]
+
+
 def test_init_writes_a_kinloom_slash_command_for_each_agent(tmp_path):
     (tmp_path / "main.py").write_text("")
     init.setup(str(tmp_path), agents="all")

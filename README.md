@@ -126,20 +126,19 @@ otherwise.
 ## Quick start
 
 ```bash
-uv tool install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"   # Python 3.9+, no dependencies
+uv tool install kinloom     # Python 3.9+, no dependencies
 cd your-game
 kinloom init        # detects the engine, copies its client, writes your coding agent's instructions
 ```
 
-`pipx install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"` works the same way. With plain `pip`,
-if `kinloom` is not found afterwards (its folder is not on your PATH), run `python -m kinloom init` instead. Installing
-from git needs read access to the repository (it works for everyone once the repository is public).
+`pipx install kinloom` and `pip install kinloom` work the same way. With plain `pip`, if `kinloom` is not found
+afterwards (its folder is not on your PATH), run `python -m kinloom init` instead. The latest code, before a release:
+`uv tool install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"`.
 
 **No Python?** The clients are single files in [`python/src/kinloom/clients`](python/src/kinloom/clients): copy the one
 for your engine (the Godot addon folder, `Kinloom.cs` and `Unity/` for Unity, or the one file for JavaScript/TypeScript,
 C++, Rust, Java or Lua) into your project and call it; everything works offline, and a key or a relay brings the model.
-Release zips (one per engine) are built by `python/release.py` and attached to a GitHub release when a `v*` tag is
-pushed (`.github/workflows/release.yml`); none has been published yet.
+Each [GitHub release](https://github.com/KorroAi/kinloom/releases) also has one zip per engine.
 
 Then ask your coding agent, or type `/kinloom <what you want>` in Claude Code, Cursor or Gemini CLI:
 *"the weather follows how I play"*, *"generate each new level"*, *"a blacksmith I can talk to, who gives items to
@@ -154,7 +153,7 @@ kinloom run -- godot --path .                            # runs the game, then s
 `kinloom add` writes the character into `kinloom.json` (no declaration code; edits apply while the game runs). The
 clients also live in [`python/src/kinloom/clients`](python/src/kinloom/clients).
 
-Not on PyPI, npm, NuGet, crates.io or LuaRocks yet: install from this repository.
+The engine SDKs are not on npm, NuGet, crates.io or LuaRocks yet: copy the client file, or take its zip from a release.
 
 ## Any model
 

@@ -1,6 +1,9 @@
 # Changelog
 
-## Unreleased
+## 1.0.0 (2026-10-28)
+
+First public release: `pip install kinloom`, and one zip per engine on each GitHub release. What changed since
+the 1.0 features were settled (2026-10-03, below):
 
 Mods of games with no source (2026-10-11):
 
@@ -39,8 +42,7 @@ Found by a release review (2026-10-13):
 - `--port` out of range (`kinloom serve --port 99999`) ended with a bind traceback: argparse now says it is not a port.
 - On Windows, `kinloom init > NUL` started the questions of the wizard that nobody could see (Python calls the NUL
   device a terminal): the wizard now runs only in a real console.
-- The package's README (its PyPI page) showed `pip install kinloom`, which is not published yet: it now installs from
-  GitHub, and its links are absolute. The Godot addon's install hints say the same. `pyproject.toml` and the clients'
+- The package's README (its PyPI page) has absolute links. The Godot addon's install hints say the same. `pyproject.toml` and the clients'
   manifests (npm, UPM, NuGet, Cargo, LuaRocks) name the repository.
 
 Found by a release review (2026-10-10):
@@ -213,9 +215,9 @@ Found by a type-to-build demo (long `create` answers) and a ScriptHook game mod 
   without the character's soul and tools (no deeds), fixed only on the call after. Calls naming a character now wait
   for its declaration (5 s at most), as the Python remote client already did.
 
-## 1.0.0 (2026-10-03)
+### The 1.0 features (2026-10-03)
 
-First release, in Python and in every SDK (TypeScript/JavaScript, C#, Java, Rust, C++, GDScript, Lua).
+In Python and in every SDK (TypeScript/JavaScript, C#, Java, Rust, C++, GDScript, Lua).
 
 - `save()` / `load(text)` (Godot: `save_state()` / `load_state()`): everything Kinloom knows about a player in one
   string for the game's own save slot. Saves loaded with a player token are signed: only an unchanged save from the

@@ -53,6 +53,8 @@ if "--input-format" in argv:                                   # claude-code
                           "usage": {"input_tokens": 100, "cache_read_input_tokens": 20, "output_tokens": 7}}) + "\n")
     out.flush()
 elif argv[:1] == ["exec"]:                                     # codex
+    if "-" not in argv:                                        # the documented way to read the prompt from stdin
+        sys.exit("codex: no prompt (pass - to read it from stdin)")
     prompt = sys.stdin.read()
     wait()
     images = [argv[i + 1] for i, a in enumerate(argv) if a == "-i"]

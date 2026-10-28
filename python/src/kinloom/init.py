@@ -8,6 +8,7 @@
 4. says what model it found and what to do next.
 Running it again updates everything in place (between markers) and never touches the rest of your files.
 """
+import json
 import os
 import re
 import shutil
@@ -372,9 +373,10 @@ def write_instructions(folder, engine, client_path, agents="auto"):
         _write_if_changed(os.path.join(folder, rel), text)
         written.append(rel.replace(os.sep, "/"))
     if "claude-code" in names:
-        skill = ("---\nname: kinloom\ndescription: Add AI to this game with Kinloom: anything a model "
-                 "does while the game runs (choices and numbers, generated content of any shape, calls to game functions, lines, "
-                 "conversation, crowds). Use for any request where the game should use AI, whatever it is.\n---\n\n" + core + "\nPatterns: `KINLOOM.md`.\n")
+        skill = ("---\nname: kinloom\ndescription: %s\n---\n\n" % _yaml(
+                 "Add AI to this game with Kinloom: anything a model does while the game runs (choices and numbers, generated "
+                 "content of any shape, calls to game functions, lines, conversation, crowds). Use for any request where the "
+                 "game should use AI, whatever it is.") + core + "\nPatterns: `KINLOOM.md`.\n")
         _write_if_changed(os.path.join(folder, ".claude", "skills", "kinloom", "SKILL.md"), skill)
         written.append(".claude/skills/kinloom/SKILL.md")
     if "aider" in names and not os.path.exists(os.path.join(folder, ".aider.conf.yml")):
@@ -387,6 +389,11 @@ def write_instructions(folder, engine, client_path, agents="auto"):
         _write_if_changed(os.path.join(folder, ".cursor", "rules", "kinloom.mdc"), cursor)
         written.append(".cursor/rules/kinloom.mdc")
     return written, names
+
+
+def _yaml(text):
+    """A frontmatter value: a JSON string is a YAML string, so a ": " inside cannot break the header."""
+    return json.dumps(text, ensure_ascii=False)
 
 
 COMMAND = """Add this to the game with Kinloom: {args}
@@ -409,10 +416,10 @@ def _commands(names):
     out = []
     if "claude-code" in names:
         out.append((os.path.join(".claude", "commands", "kinloom.md"),
-                    "---\ndescription: %s\nargument-hint: <what you want, in plain words>\n---\n\n" % what + COMMAND.format(args="$ARGUMENTS")))
+                    "---\ndescription: %s\nargument-hint: <what you want, in plain words>\n---\n\n" % _yaml(what) + COMMAND.format(args="$ARGUMENTS")))
     if "opencode" in names:
         out.append((os.path.join(".opencode", "commands", "kinloom.md"),
-                    "---\ndescription: %s\n---\n\n" % what + COMMAND.format(args="$ARGUMENTS")))
+                    "---\ndescription: %s\n---\n\n" % _yaml(what) + COMMAND.format(args="$ARGUMENTS")))
     if "cursor" in names:
         out.append((os.path.join(".cursor", "commands", "kinloom.md"),
                     "# Kinloom\n\n" + COMMAND.format(args="<the request written after /kinloom>")))
