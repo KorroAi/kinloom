@@ -6344,13 +6344,17 @@ public final class Kinloom {
                     w = winner[0];
                 }
                 if (w != null) {
-                    if (w.done) return w.reply;
+                    boolean failed;
+                    synchronized (gate) { failed = w.done && !w.reply.ok && w.text.length() > 0; }
+                    if (w.done && !failed) return w.reply;
                     boolean saidAll = w.mark != null && now - w.mark >= grace();
-                    if (saidAll || now - w.last >= stallAfter || now - start >= deadline) {
+                    // a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+                    if (failed || saidAll || now - w.last >= stallAfter || now - start >= deadline) {
                         String text;
                         synchronized (gate) { text = w.text.toString(); }
                         count("cut_replies");
-                        log("cut", name, kind + ": " + (saidAll ? "inner part late" : now - start < deadline ? "stalled" : "deadline") + " after " + Py.fixed(now - start, 1) + " s; kept what was said", null);
+                        String why = failed ? "the call failed (" + w.reply.error + ")" : saidAll ? "inner part late" : now - start < deadline ? "stalled" : "deadline";
+                        log("cut", name, kind + ": " + why + " after " + Py.fixed(now - start, 1) + " s; kept what was said", null);
                         ModelReply r = new ModelReply();
                         r.ok = true; r.text = text; r.latency = now - start; r.cut = true;
                         return r;

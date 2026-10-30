@@ -10540,13 +10540,25 @@ impl Brain {
                 s(&t);
             }
             if winner.is_some() {
-                if let Some(r) = done_reply {
-                    return r;
+                let failed = done_reply.as_ref().map_or(false, |r| !r.ok && !text.is_empty());
+                if let Some(r) = &done_reply {
+                    if !failed {
+                        return r.clone();
+                    }
                 }
                 let said_all = mark.map_or(false, |m| now - m >= self.grace());
-                if said_all || now - last >= self.stall_after || now - start >= deadline {
+                // a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+                if failed || said_all || now - last >= self.stall_after || now - start >= deadline {
                     self.count("cut_replies");
-                    let why = if said_all { "inner part late" } else if now - start < deadline { "stalled" } else { "deadline" };
+                    let why = if failed {
+                        format!("the call failed ({})", done_reply.as_ref().and_then(|r| r.error.clone()).unwrap_or_default())
+                    } else if said_all {
+                        "inner part late".to_string()
+                    } else if now - start < deadline {
+                        "stalled".to_string()
+                    } else {
+                        "deadline".to_string()
+                    };
                     self.log("cut", name, &format!("{}: {} after {} s; kept what was said", kind, why, py::fixed(now - start, 1)), None);
                     let mut r = ModelReply::success(text, 0, 0, 0, now - start);
                     r.cut = true;

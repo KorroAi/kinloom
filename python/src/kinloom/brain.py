@@ -1009,16 +1009,19 @@ class Brain:
                         if show is not None:
                             show(winner["reply"].text)
             if winner is not None:
-                if winner["done"].is_set():
+                done = winner["done"].is_set()
+                if done and (winner["reply"].ok or not winner["text"]):
                     return winner["reply"]
                 said_all = winner["mark"] is not None and now - winner["mark"] >= self._grace()
-                if said_all or now - winner["last"] >= self.stall_after or now - start >= deadline:
+                # a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+                if done or said_all or now - winner["last"] >= self.stall_after or now - start >= deadline:
                     with lock:
                         text = winner["text"]
                     with self._lock:                                  # stats are shared by every thread
                         self._stats["cut_replies"] += 1
                     self._log("cut", name, "%s: %s after %.1f s; kept what was said" %
-                              (kind, "inner part late" if said_all else "stalled" if now - start < deadline else "deadline",
+                              (kind, "the call failed (%s)" % winner["reply"].error if done else "inner part late" if said_all
+                               else "stalled" if now - start < deadline else "deadline",
                                now - start))
                     r = Reply(True, text, latency=now - start)
                     r.cut = True

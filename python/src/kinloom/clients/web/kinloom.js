@@ -5310,12 +5310,15 @@ export class Brain {
             }
             const w = winner;
             if (w !== null) {
-                if (w.done)
+                const failed = w.done && !w.reply.ok && w.text !== "";
+                if (w.done && !failed)
                     return w.reply;
                 const saidAll = w.mark !== null && now - w.mark >= this.grace();
-                if (saidAll || now - w.last >= this.stallAfter || now - start >= deadline) {
+                // a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+                if (failed || saidAll || now - w.last >= this.stallAfter || now - start >= deadline) {
                     this.statsOf.cut_replies++;
-                    this.log("cut", name, kind + ": " + (saidAll ? "inner part late" : now - start < deadline ? "stalled" : "deadline") + " after " +
+                    this.log("cut", name, kind + ": " + (failed ? "the call failed (" + w.reply.error + ")" : saidAll ? "inner part late" :
+                        now - start < deadline ? "stalled" : "deadline") + " after " +
                         pyFixed(now - start, 1) + " s; kept what was said");
                     const r = modelReply(true, w.text, null, 0, 0, 0, now - start);
                     r.cut = true;

@@ -466,12 +466,15 @@ func _race(kind: String, name: String, system0: String, user: String, max_tokens
 					break
 		var w = st.winner
 		if w != null:
-			if w.done:
+			var failed: bool = w.done and not w.reply.ok and w.text != ""
+			if w.done and not failed:
 				return w.reply
 			var said_all: bool = w.mark != null and now - w.mark >= _grace()
-			if said_all or now - w.last >= stall_after or now - start >= deadline:
+			# a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+			if failed or said_all or now - w.last >= stall_after or now - start >= deadline:
 				stats_of.cut_replies += 1
-				var why := "inner part late" if said_all else ("stalled" if now - start < deadline else "deadline")
+				var why: String = ("the call failed (" + str(w.reply.error) + ")") if failed else \
+						("inner part late" if said_all else ("stalled" if now - start < deadline else "deadline"))
 				_log("cut", name, kind + ": " + why + " after " + Py.fixed(now - start, 1) + " s; kept what was said")
 				var cut := M.reply(true, w.text, null, 0, 0, 0, now - start)
 				cut.cut = true

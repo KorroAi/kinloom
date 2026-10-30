@@ -18,6 +18,10 @@ Found by the launch review (2026-10-28):
 - Through a relay that cannot be reached, a character with several offline replies picked one at random, so the same
   line could come twice in a row (seen in `examples/web`). Relay clients (JavaScript/TypeScript, C#, Java, Rust, C++,
   Lua, Godot) now say them in turn, as native mode and the documentation do.
+- A spoken reply whose call ended in error after it had already streamed words (the provider's own timeout
+  falling with the reply's deadline, seen on a slow macOS CI runner) gave the offline line and lost what was said.
+  In Python and every SDK with streaming (JavaScript/TypeScript, C#, Java, Rust, C++, Godot), the words said in
+  time are now the reply, cut at a sentence, as for a stall.
 - The Codex harness (`kinloom use codex`) now passes `-` so Codex reads the prompt from stdin, the form its
   documentation gives.
 - CI runs Python 3.9, 3.12 and 3.14 on Linux, macOS and Windows, with current GitHub Actions; issue and pull request

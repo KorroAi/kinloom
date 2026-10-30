@@ -7592,11 +7592,15 @@ private:
             }
             if (show_whole && show) (*show)(whole);
             if (has_winner) {
-                if (winner_done) return done_reply;
+                bool failed = winner_done && !done_reply.ok && !text.empty();
+                if (winner_done && !failed) return done_reply;
                 bool said_all = has_mark && now - mark >= grace();
-                if (said_all || now - last >= stall_after || now - start >= deadline) {
+                // a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+                if (failed || said_all || now - last >= stall_after || now - start >= deadline) {
                     count_cut();
-                    log("cut", name, kind + ": " + (said_all ? "inner part late" : now - start < deadline ? "stalled" : "deadline") + " after " + py::fixed(now - start, 1) +
+                    std::string why = failed ? "the call failed (" + done_reply.error + ")"
+                                             : std::string(said_all ? "inner part late" : now - start < deadline ? "stalled" : "deadline");
+                    log("cut", name, kind + ": " + why + " after " + py::fixed(now - start, 1) +
                                          " s; kept what was said");
                     ModelReply r = ModelReply::success(text, 0, 0, 0, now - start);
                     r.cut = true;

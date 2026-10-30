@@ -97,6 +97,20 @@ def test_the_deadline_holds_even_when_words_keep_coming():
         assert reply == "", (reply, heard[:3])
 
 
+def test_words_said_before_the_provider_gives_up_are_kept():
+    # the provider's own timeout and the reply's deadline fall together (a slow machine): the call ends in error,
+    # but what it streamed in time is the reply, not the offline line
+    class GivesUp(Timed):
+        def complete(self, system, user, on_text=None, **kw):
+            for piece in ("One. ", "Two. "):
+                on_text(piece)
+            return Reply(False, error="timed out", latency=0.9)
+    kl = make(GivesUp())
+    kl.character("Mira", offline="Busy.")
+    assert kl.chat("Mira", "hi", timeout=1.0) == "One. Two."
+    assert kl.stats()["cut_replies"] == 1
+
+
 def test_the_inner_part_is_kept_when_the_stall_comes_after_it():
     p = Timed([(0.05, 'Out. \n~~~\n{"mood": "angry", "feel": -0.2}'), (5.0, " ")])
     kl = make(p)

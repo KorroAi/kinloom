@@ -6198,14 +6198,18 @@ namespace Kinloom
                 }
                 if (w != null)
                 {
-                    if (w.Done) return w.Reply!;
+                    bool failed;
+                    lock (gate) failed = w.Done && !w.Reply!.Ok && w.Text.Length > 0;
+                    if (w.Done && !failed) return w.Reply!;
                     bool saidAll = w.Mark != null && now - w.Mark.Value >= Grace();
-                    if (saidAll || now - w.Last >= StallAfter || now - start >= deadline)
+                    // a call that ended in error after speaking (its own timeout fell with the deadline) keeps its words
+                    if (failed || saidAll || now - w.Last >= StallAfter || now - start >= deadline)
                     {
                         string text;
                         lock (gate) text = w.Text.ToString();
                         Count("cut_replies");
-                        Log("cut", name, kind + ": " + (saidAll ? "inner part late" : now - start < deadline ? "stalled" : "deadline") + " after " + Py.Fixed(now - start, 1) + " s; kept what was said");
+                        string why = failed ? "the call failed (" + w.Reply!.Error + ")" : saidAll ? "inner part late" : now - start < deadline ? "stalled" : "deadline";
+                        Log("cut", name, kind + ": " + why + " after " + Py.Fixed(now - start, 1) + " s; kept what was said");
                         return new ModelReply { Ok = true, Text = text, Latency = now - start, Cut = true };
                     }
                     continue;
