@@ -46,6 +46,7 @@ var _declaring := {}   # relay: declarations on their way, by name
 var _decisions := {}
 var _actions := {}
 var _sources := {}
+var _offline_turns := {}   # relay: several offline replies, said in turn
 var _down_until := 0.0
 var _up_until := 0.0              # the server at _up_url answered lately: no need to check it is there
 var _up_url := ""
@@ -275,7 +276,10 @@ func _chat_once(name: String, body: Dictionary, on_piece: Callable) -> String:
 		_last_do.erase(name)
 		var o = _chars.get(name, {}).get("offline", "")
 		if o is Array:                                  # several offline replies: one of them
-			return str(o.pick_random()) if o.size() > 0 else ""
+			if o.size() == 0:
+				return ""
+			_offline_turns[name] = int(_offline_turns.get(name, 0)) + 1   # in turn, as native mode
+			return str(o[_offline_turns[name] % o.size()])
 		return str(o)
 	_redeclare(name, r)
 	var decided = r.get("do", [])

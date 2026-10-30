@@ -1,7 +1,7 @@
 # Speed with real models
 
 `python proof/speed/bench.py ollama <model>` (local, free) or `python proof/speed/bench.py openrouter` (the one
-OpenRouter model allowed, `deepseek/deepseek-v4.1-flash`, cents). One character with a soul, the player walks up,
+OpenRouter model used for every real run, `deepseek/deepseek-v4.1-flash`, cents). One character with a soul, the player walks up,
 then 11 more lines; each reply streamed. Measured: time to the first word shown, the whole reply, tokens sent and
 cached. `KINLOOM_SRC=<folder>` runs the same on another copy of Kinloom (before/after). 2026-09-29, RTX 4060 laptop
 GPU for the local models.

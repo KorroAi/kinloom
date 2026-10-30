@@ -6,7 +6,7 @@ the agent write correct Kinloom code from what `kinloom init` gave it?
 
 ## One-shot measure (`run.py`, 30 requests, 2 answers each)
 
-The model (`deepseek/deepseek-v4.1-flash` on OpenRouter, the one allowed) reads what an agent reads in a Python game
+The model (`deepseek/deepseek-v4.1-flash` on OpenRouter, the one model used for every real run) reads what an agent reads in a Python game
 (AGENTS.md written by `kinloom init`), with or without the output of `kinloom recipe "<request>"`, and writes the code.
 The code is then run offline and against a hostile scripted model, in its own process, and checked: a call that can do
 the request (lenient list per request, fixed before the runs), no hand-written HTTP/SDK/key, it runs. Prices from

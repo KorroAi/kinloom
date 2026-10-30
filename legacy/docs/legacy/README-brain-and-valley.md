@@ -48,7 +48,7 @@ foreach (var e in brain.DrainEvents()) Show(e);        // thoughts, lines, plans
 int ticket = brain.Talk("mira", "Why do you look so worried?");   // reply arrives as a "reply" event
 ```
 
-Configuration (environment): `KINLOOM_PROVIDER` = `deepseek` | `openai` | `anthropic` | `ollama` | `custom` (default: the first key found), `KINLOOM_API_KEY` (or `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`), `KINLOOM_MODEL` (required for openai, ollama, custom), `KINLOOM_BASE_URL`, `KINLOOM_CASSETTE` (record/replay LLM traffic to a file). Budget and pacing live in `BrainOptions` (`MaxConcurrent`, `TokensPerGameHour`, cooldowns, `Lockstep` for headless runs).
+Configuration (environment): `KINLOOM_PROVIDER` = `deepseek` | `openai` | `anthropic` | `ollama` | `custom` (default: the first key found), `KINLOOM_API_KEY` (or `DEEPSEEK_API_KEY` / `OPENAI_API_KEY` / `ANTHROPIC_API_KEY`), `KINLOOM_MODEL` (required for openai, ollama, custom), `KINLOOM_BASE_URL`, `KINLOOM_THINKING=off` (a reasoning model's thinking off on a `custom` endpoint), `KINLOOM_CASSETTE` (record/replay LLM traffic to a file). Budget and pacing live in `BrainOptions` (`MaxConcurrent`, `TokensPerGameHour`, cooldowns, `Lockstep` for headless runs).
 
 Headless story run: `dotnet run --project src/Kinloom.Sim -- --brain scenarios/asagiri.json packs/asagiri.pack.json 12 out/brain` prints the valley's life as it happens.
 

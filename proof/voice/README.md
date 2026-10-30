@@ -44,7 +44,7 @@ not define, a `pygame` import the test machine does not have). 12 answers per ro
 
 ## Not measured
 
-A real microphone and a human voice (the machine has one; it was not switched on without the user), the hosted voices
+A real microphone and a human voice (the machine has one; it was not used for these runs), the hosted voices
 live (no key), Pygame's microphone capture on real hardware (the code path runs with the dummy driver), Godot's
 microphone (`AudioEffectRecord`: needs Project Settings > Audio > Driver > Enable Input), latency of a hosted voice
 per sentence while a reply streams.

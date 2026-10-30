@@ -71,6 +71,7 @@ public partial class Main : Node2D
         int auto = Array.IndexOf(args, "--autoplay");
         if (auto >= 0) StartAutoplay(auto + 1 < args.Length ? args[auto + 1] : "out/valley");
         if (args.Contains("--film")) _ = RunFilm();
+        if (args.Contains("--trailer")) _ = RunTrailer();
         if (args.Contains("--clip")) _ = RunClip();
         if (args.Contains("--motioncheck")) _ = RunMotionCheck();
         int ic = Array.IndexOf(args, "--intentcheck");

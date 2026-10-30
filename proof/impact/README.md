@@ -113,14 +113,14 @@ Misses and caveats, all of them:
 - **What the weak agent did with Kinloom that was not needed:** in Ember Keep it re-validated every answer (about 60
   lines) and used `decide` (a continuous policy) for a once-per-night choice, so each night used the previous night's
   decision. The guide now says both (answers are already validated; one-off choices use `create`).
-- Not run yet: the Claude Code arms (Opus, Haiku) of the spec, which spend the user's Claude usage (`run.py agent
+- Not run yet: the Claude Code arms (Opus, Haiku) of the spec, which spend a Claude subscription (`run.py agent
   --harness claude --model haiku` is ready), and the human 5-minute test.
 
 ## Kinloom 2, the core feature: a character the player talks to (2026-09-29)
 
 Same game (`games/keep`, Ember Keep, Pygame), same request (briefs.md, "Talk: Ember Keep"): Wren, a character with a
 soul, a text box on T near the fire, replies streaming without freezing the game, the night's facts, and +3 wood if
-she likes the player. aider with `deepseek/deepseek-v4.1-flash` on OpenRouter (the one model allowed), one brief
+she likes the player. aider with `deepseek/deepseek-v4.1-flash` on OpenRouter (the one model used for every real run), one brief
 then "continue" (at most 4 turns). The game's own model is the same one. Every arm was then **played by the same
 probe** (`talk_probe.py`: walk to the fire, T, a greeting, Enter, a request for wood, Enter, Esc; screenshots and the
 longest gap between two frames) with the real model, and again with no model; `python keep.py --smoke 60` checked.
@@ -152,7 +152,7 @@ What this shows, and what it does not:
   workflow a harness could not run, then a call written without its object). Both are fixed and the last two runs
   work; the brief also answers `from kinloom import <call>` with the right line now. Two runs are not proof that
   no other wording trap is left.
-- Not measured: Claude Code, Cursor, Codex, Gemini CLI (not run: they spend the user's own subscriptions), other
+- Not measured: Claude Code, Cursor, Codex, Gemini CLI (not run: each needs its own subscription), other
   games and engines, a player's judgment of Wren against the baselines.
 
 ## Kinloom 2 after the FireRed fixes: a fresh agent, a TypeScript game (2026-10-01)

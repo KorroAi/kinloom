@@ -81,6 +81,7 @@ namespace Kinloom.Llm
     /// <summary>Builds a client from environment variables, so integrators only set a key.
     /// KINLOOM_PROVIDER = deepseek | openai | anthropic | ollama | custom | scripted (default: first key found); KINLOOM_SCRIPT = script file for "scripted";
     /// KINLOOM_API_KEY (or DEEPSEEK_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY); KINLOOM_MODEL (required for openai, ollama, custom); KINLOOM_BASE_URL;
+    /// KINLOOM_THINKING = off: turn a reasoning model's thinking off on a "custom" endpoint (OpenRouter: reasoning.enabled=false);
     /// KINLOOM_CASSETTE = path to record/replay LLM traffic.</summary>
     public static class LlmConfig
     {
@@ -115,7 +116,7 @@ namespace Kinloom.Llm
                 "deepseek" => new OpenAiCompatibleClient(baseUrl ?? "https://api.deepseek.com", Key("DEEPSEEK_API_KEY"), model ?? "deepseek-flash", disableThinking: true),
                 "openai" => model == null ? null : new OpenAiCompatibleClient(baseUrl ?? "https://api.openai.com/v1", Key("OPENAI_API_KEY"), model),
                 "ollama" => model == null ? null : new OpenAiCompatibleClient(baseUrl ?? "http://localhost:11434/v1", "", model),
-                "custom" => baseUrl == null || model == null ? null : new OpenAiCompatibleClient(baseUrl, env("KINLOOM_API_KEY") ?? "", model),
+                "custom" => baseUrl == null || model == null ? null : new OpenAiCompatibleClient(baseUrl, env("KINLOOM_API_KEY") ?? "", model, disableThinking: env("KINLOOM_THINKING") == "off"),
                 "anthropic" => new AnthropicClient(Key("ANTHROPIC_API_KEY"), model ?? "claude-opus-5", baseUrl ?? "https://api.anthropic.com"),
                 "scripted" => string.IsNullOrEmpty(env("KINLOOM_SCRIPT")) ? null : ScriptFile.Load(env("KINLOOM_SCRIPT")!),
                 _ => null,

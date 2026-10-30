@@ -247,6 +247,17 @@ class Shape:
         return json.dumps(_plain(self.example), sort_keys=True)
 
 
+def missing_choices(shape, args):
+    """The fields of an action's object shape whose example is a choice (options or a range) that args leave out
+    (absent in any letter case, or null). Data may take the example's value; an action must not get a decision nobody
+    made (the first option would be a sale no one agreed to)."""
+    if shape is None or shape.kind != "object" or not isinstance(args, dict):
+        return []
+    given = {str(k).lower(): v for k, v in args.items()}
+    return [name for name, field in shape.info["fields"].items()
+            if field.kind in ("options", "range") and given.get(name.lower()) is None]
+
+
 def _plain(x):
     if isinstance(x, tuple):
         return {"__range__": list(x)}

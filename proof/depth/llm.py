@@ -1,6 +1,6 @@
 """Minds that learn with a real model vs without one: the `kinloom demo` skirmish, same seeds, same simulated minutes.
 
-    python proof/depth/llm.py openrouter 0 1 2        # seeds; the one OpenRouter model the user allowed (cents)
+    python proof/depth/llm.py openrouter 0 1 2        # seeds; the one OpenRouter model used for every real run (cents)
     python proof/depth/llm.py offline 0 1 2           # the same runs with no model
 
 With a model, the model writes the first variants and rewrites the worst one at each learning step; when a call
@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(HERE, "..", "..", "python", "src"))
 from kinloom import Kinloom, demo  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 PRICES = {"input": 0.30, "cached_input": 0.30, "output": 1.20,
           "source": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints, read on 2026-10-01: providers charge $0.0243-$0.60 in and $0.40-$2.40 out per million; most charge $0.30 / $1.20 (used here; the key's billed usage that day matched it, the /models price is the cheapest provider's)"}
 MINUTES = 30

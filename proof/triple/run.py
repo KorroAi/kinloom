@@ -4,7 +4,7 @@ rule (the first chat of each question is plain, to count how often the model bre
 
     python proof/triple/run.py [label]
 
-The one model the user allowed for these runs: OpenRouter `deepseek/deepseek-v4.1-flash` (OPENROUTER_API_KEY). The
+The one model used for every real-model run here: OpenRouter `deepseek/deepseek-v4.1-flash` (OPENROUTER_API_KEY). The
 key's billed usage is read before and after (GET /api/v1/key, 20 s after the last call: OpenRouter counts with a
 delay) so the real cost is reported; the key is never printed. Writes results-<label>.json.
 """
@@ -20,7 +20,7 @@ sys.path.insert(0, os.environ.get("KINLOOM_SRC") or os.path.join(HERE, "..", "..
 from kinloom import Kinloom  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 PART = {"kind": ["house", "well", "harbour", "tower", "market"], "x": [0, 40], "name": "Gull House"}
 TOWNS = ["the buildings of a fishing village, west to east", "the stalls of a night market, along the main street",
          "the camps of a desert caravan, from the oasis outward"]

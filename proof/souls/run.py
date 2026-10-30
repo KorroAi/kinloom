@@ -1,5 +1,5 @@
 """Souls with a real model: transcripts, latency, manipulation, long memory, and a blind comparison with a naive prompt.
-Spends real money: only run with the user's go-ahead. OpenRouter with exactly one model (the one the user allowed).
+Spends real money (cents). OpenRouter with exactly one model, the one used for every real run here.
 
     OPENROUTER_API_KEY=... python proof/souls/run.py            # every scene; results.json + blind.html
     OPENROUTER_API_KEY=... python proof/souls/run.py C          # some scenes (A B C D E M L N), results-C.json
@@ -24,7 +24,7 @@ from kinloom import Kinloom  # noqa: E402
 from kinloom.brain import _STAGE, _unstage  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-MODEL = "deepseek/deepseek-v4.1-flash"          # allowed by the user on 2026-09-29, and only this one
+MODEL = "deepseek/deepseek-v4.1-flash"          # the one model used for every real-model run here
 PRICES = {"input": 0.30, "cached_input": 0.006, "output": 1.20,
           "source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-09-29"}
 SOULS = {

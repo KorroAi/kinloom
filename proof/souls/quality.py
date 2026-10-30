@@ -1,5 +1,5 @@
 """Does a Kinloom soul read more like a real person than a plain prompt? A model stand-in for the human blind test,
-used to compare versions of Kinloom's prompt, not to replace a human verdict. Spends cents (the one allowed model).
+used to compare versions of Kinloom's prompt, not to replace a human verdict. Spends cents (one OpenRouter model).
 
     python proof/souls/quality.py [label]        # writes quality-<label>.json
 

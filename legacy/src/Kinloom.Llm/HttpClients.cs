@@ -60,7 +60,8 @@ namespace Kinloom.Llm
                         else { w.WriteStartObject("response_format"); w.WriteString("type", "json_object"); w.WriteEndObject(); }
                         // JSON mode is refused unless the prompt says "json" (DeepSeek, OpenAI): make sure it does.
                         string system = request.HasTools || MentionsJson(request) ? request.System : request.System + "\nAnswer with a single JSON object.";
-                        if (_disableThinking) { w.WriteStartObject("thinking"); w.WriteString("type", "disabled"); w.WriteEndObject(); }
+                        if (_disableThinking && _url.Contains("openrouter.ai")) { w.WriteStartObject("reasoning"); w.WriteBoolean("enabled", false); w.WriteEndObject(); }
+                        else if (_disableThinking) { w.WriteStartObject("thinking"); w.WriteString("type", "disabled"); w.WriteEndObject(); }
                         w.WriteStartArray("messages");
                         w.WriteStartObject(); w.WriteString("role", "system"); w.WriteString("content", system); w.WriteEndObject();
                         w.WriteStartObject(); w.WriteString("role", "user"); w.WriteString("content", request.User); w.WriteEndObject();

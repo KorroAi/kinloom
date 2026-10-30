@@ -178,6 +178,7 @@ export declare class Kinloom {
     private decisions;
     private actions;
     private sources;
+    private offlineTurns;
     private lastDo;
     private decideRefused;
     private decideOk;
@@ -397,6 +398,9 @@ export declare const CUT = "the answer was cut off before its end: write it shor
 export declare function cutOff(text: unknown): boolean;
 /** The first JSON object or array in a model answer, or null. Never throws. */
 export declare function findJson(text: unknown, limit?: number): any;
+/** The fields of an action's object shape whose example is a choice (options or a range) that args leave out (absent
+ * in any letter case, or null). Data may take the example's value; an action must not get a decision nobody made. */
+export declare function missingChoices(shape: Shape | null, args: any): string[];
 export declare class Shape {
     kind: string;
     example: any;

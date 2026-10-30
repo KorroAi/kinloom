@@ -2,7 +2,7 @@
 
     python proof/v1/live.py [label]
 
-The one model the user allowed for these runs: OpenRouter `deepseek/deepseek-v4.1-flash` (OPENROUTER_API_KEY). The
+The one model used for every real-model run here: OpenRouter `deepseek/deepseek-v4.1-flash` (OPENROUTER_API_KEY). The
 key's billed usage is read before and after (GET /api/v1/key) so the real cost is reported; the key is never printed.
 Writes results-<label>.json and prints the transcript.
 """
@@ -18,7 +18,7 @@ sys.path.insert(0, os.environ.get("KINLOOM_SRC") or os.path.join(HERE, "..", "..
 from kinloom import Kinloom  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 PRICES = {"input": 0.30, "cached_input": 0.30, "output": 1.20,
           "source": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints, read on 2026-10-01 (most "
                     "providers charge $0.30 / $1.20 per million; the key's billed usage is the real figure)"}

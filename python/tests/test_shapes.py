@@ -155,4 +155,4 @@ def test_free_numbers_are_bounded():
 
 def test_bidi_overrides_are_removed():
     from kinloom.shapes import clean_text
-    assert clean_text("abc‮dcba⁦x") == "abcdcbax"
+    assert clean_text("abc\u202edcba\u2066x") == "abcdcbax"

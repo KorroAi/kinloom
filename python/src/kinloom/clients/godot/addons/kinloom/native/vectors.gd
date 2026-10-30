@@ -47,6 +47,8 @@ static func vector(fn: String, args: Array) -> Variant:
 		"shape_error":
 			var r: Array = ShapeLib.Shape.of(args[0])
 			return null if r[0] != null else r[1]
+		"missing_choices":
+			return ShapeLib.Shape.missing_choices(ShapeLib.Shape.of(args[0])[0], args[1])
 		"find_json":
 			return Py.find_json(args[0])
 		"parse":

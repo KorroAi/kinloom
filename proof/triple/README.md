@@ -1,7 +1,7 @@
 # Items as they are written, passer-by lines, the game's rules on talk (real model)
 
-`python proof/triple/run.py <label>` with OpenRouter `deepseek/deepseek-v4.1-flash` (the one model allowed for these
-runs), 2026-10-07. Three town lists (`create(..., [item], each=, check=)`, the check refuses parts past x=30), eight
+`python proof/triple/run.py <label>` with OpenRouter `deepseek/deepseek-v4.1-flash` (the one model used for every
+real run), 2026-10-07. Three town lists (`create(..., [item], each=, check=)`, the check refuses parts past x=30), eight
 events for `remark(about, who=, facts=)`, six questions to a gatekeeper with a rule the model is never told
 (`chat(..., check=)`: never mention who hired him, the king). Files: `results-run1.json`, `results-run2.json`.
 

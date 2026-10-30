@@ -229,6 +229,7 @@ export class Kinloom {
   private decisions = new Map<string, Decision>();
   private actions = new Map<string, Pending>();
   private sources = new Map<string, string>();
+  private offlineTurns = new Map<string, number>();   // several offline replies, said in turn
   private lastDo = new Map<string, Action[]>();                       // the actions of name's last reply (chat's check)
   private decideRefused = new Map<string, { decision: any; why: string }>();   // decide's check: what was refused
   private decideOk = new Map<string, any>();                          // and what was last accepted
@@ -358,7 +359,11 @@ export class Kinloom {
       this.sources.set(name, "offline");
       this.lastDo.set(name, []);
       const o = this.chars.get(name)?.offline;
-      return Array.isArray(o) ? (o.length ? String(o[Math.floor(Math.random() * o.length)]) : "") : String(o ?? "");
+      if (!Array.isArray(o)) return String(o ?? "");
+      if (!o.length) return "";
+      const turn = (this.offlineTurns.get(name) ?? 0) + 1;   // in turn, as native mode: never the same twice in a row
+      this.offlineTurns.set(name, turn);
+      return String(o[turn % o.length]);
     }
     this.redeclare(name, r);
     this.sources.set(name, String(r.source ?? "model"));
@@ -1428,8 +1433,6 @@ function pyFloatText(s: string): number | null {
   return Number(t.replace(/_/g, ""));
 }
 
-function isNum(v: unknown): v is number { return typeof v === "number"; }
-function isInt(v: unknown): v is number { return typeof v === "number" && Number.isInteger(v); }
 function isObj(v: unknown): v is Record<string, any> {
   return typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Uint8Array) && !(v instanceof ArrayBuffer);
 }
@@ -1476,7 +1479,7 @@ export function sha1(text: string): string {
 
 // ---------------- text cleaning and JSON in answers ----------------
 
-const CONTROL = /[\x00-\x08\x0b-\x1f\x7f‪-‮⁦-⁩]/g;
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g;
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 
 /** One tidy line: control characters (terminal escapes, NUL...) removed, whitespace collapsed. */
@@ -1585,6 +1588,17 @@ const MAX_DEPTH = 12, MAX_LIST = 50, MAX_TEXT = 200, MAX_INT = 2 ** 31 - 1, MAX_
 const COLOR = /^#?([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 function fmtNum(n: number): string { return Number.isInteger(n) ? String(n) : pyG(n); }
+
+/** The fields of an action's object shape whose example is a choice (options or a range) that args leave out (absent
+ * in any letter case, or null). Data may take the example's value; an action must not get a decision nobody made. */
+export function missingChoices(shape: Shape | null, args: any): string[] {
+  if (shape === null || shape === undefined || shape.kind !== "object" || !isObj(args)) return [];
+  const given: Record<string, any> = {};
+  for (const [k, v] of Object.entries(args)) given[String(k).toLowerCase()] = v;
+  return Object.entries(shape.info.fields as Record<string, Shape>)
+    .filter(([name, f]) => (f.kind === "options" || f.kind === "range") && (given[name.toLowerCase()] ?? null) === null)
+    .map(([name]) => name);
+}
 
 export class Shape {
   kind: string;
@@ -5395,6 +5409,8 @@ export class Brain {
       const [shape] = c.tools[tool];
       const args = isObj(item.args) ? item.args : {};
       if (shape === null) { out.push([tool, {}]); continue; }
+      const missing = missingChoices(shape, args);
+      if (missing.length) { this.log("refused", c.name, tool + ": missing " + missing.join(", ")); continue; }
       const [ok, value, error] = shape.check(args);
       if (ok && !this.allowed(value)) this.log("refused", c.name, tool + ": blocked by the content filter");
       else if (ok) out.push([tool, value]);
@@ -6647,6 +6663,7 @@ export function vector(fn: string, args: any[]): any {
   switch (fn) {
     case "shape": { const s = Shape.of(args[0]); const [ok, value, error] = s.check(args[1]); return { ok, value, error, describe: s.describe(), default: s.default() }; }
     case "shape_error": try { Shape.of(args[0]); return null; } catch (e: any) { return e.message; }
+    case "missing_choices": return missingChoices(Shape.of(args[0]), args[1]);
     case "find_json": return findJson(args[0]);
     case "parse": { const [ok, value, error] = Shape.of(args[0]).parse(args[1]); return { ok, value, error }; }
     case "clean_text": return cleanText(args[0]);

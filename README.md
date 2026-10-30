@@ -2,9 +2,14 @@
 
 **Free, open-source AI for games. Any engine, any model, and it keeps working with no model at all.**
 
+[![CI](https://github.com/KorroAi/kinloom/actions/workflows/ci.yml/badge.svg)](https://github.com/KorroAi/kinloom/actions/workflows/ci.yml)
+[![PyPI](https://img.shields.io/pypi/v/kinloom)](https://pypi.org/project/kinloom/)
+[![Python](https://img.shields.io/pypi/pyversions/kinloom)](https://pypi.org/project/kinloom/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-![Version 1.0.0](https://img.shields.io/badge/version-1.0.0-informational)
 ![SDKs](https://img.shields.io/badge/SDKs-C%23%20%7C%20GDScript%20%7C%20TS%2FJS%20%7C%20C%2B%2B%20%7C%20Rust%20%7C%20Java%20%7C%20Lua%20%7C%20Python-555)
+
+![From the trailer: a suspect answering a line nobody wrote for him, live](docs/media/trailer.jpg)
+*From the trailer: five games, every shot real footage, every reply a model answering live.*
 
 Kinloom adds AI to your game: characters players can really talk to, decisions made every frame, content generated
 in the shape you need, and actions taken through your game's own functions. You describe each answer **by giving an
@@ -13,6 +18,40 @@ With no key, no network or a slow model, **your example is the answer**, so the 
 
 [Quick start](#quick-start) · [The calls](#what-your-game-can-ask-for) · [Engines](#every-engine-in-its-own-language) ·
 [Models](#any-model) · [Shipping](#shipping-to-players) · [Measured](#measured-not-promised) · [Docs](#documentation)
+
+## Quick start
+
+```bash
+uv tool install kinloom     # Python 3.9+, no dependencies
+cd your-game
+kinloom init        # detects the engine, copies its client, writes your coding agent's instructions
+```
+
+`pipx install kinloom` and `pip install kinloom` work the same way. With plain `pip`, if `kinloom` is not found
+afterwards (its folder is not on your PATH), run `python -m kinloom init` instead. The latest code, before a release:
+`uv tool install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"`.
+
+**No Python?** The clients are single files in [`python/src/kinloom/clients`](python/src/kinloom/clients): copy the one
+for your engine (the Godot addon folder, `Kinloom.cs` and `Unity/` for Unity, or the one file for JavaScript/TypeScript,
+C++, Rust, Java or Lua) into your project and call it; everything works offline, and a key or a relay brings the model.
+Each [GitHub release](https://github.com/KorroAi/kinloom/releases) also has one zip per engine.
+
+Then ask your coding agent, or type `/kinloom <what you want>` in Claude Code, Cursor, Gemini CLI or opencode:
+*"the weather follows how I play"*, *"generate each new level"*, *"a blacksmith I can talk to, who gives items to
+people she likes"*. The agent uses three commands:
+
+```bash
+kinloom recipe "a blacksmith the player can talk to"     # the right call and code in your engine's language
+kinloom add Mira "a widowed blacksmith who secretly sold the king's sword" --tools "give(item)" --trust give=0.3
+kinloom run -- godot --path .                            # runs the game, then shows what the AI did
+```
+
+`kinloom add` writes the character into `kinloom.json` (no declaration code; edits apply while the game runs).
+
+To see it run first: [`examples/`](examples/README.md) has a tavern for the terminal and a forge for the browser, both
+playable with no key.
+
+The engine SDKs are not on npm, NuGet, crates.io or LuaRocks yet: copy the client file, or take its zip from a release.
 
 ## Why Kinloom
 
@@ -47,7 +86,8 @@ const kl = new Kinloom({ provider: { url, key, model } });   // or { offline: tr
 const sky = kl.decide("WEATHER", { season: "winter", day: 12 }, { sky: ["sun", "snow"], wind: [0.0, 1.0] });
 
 // Content of any shape, about 1-2 s.
-const item = await kl.create("an item found in a cave", { name: "Glowcap", value: [1, 50], story: "Found under a cold stone." });
+const item = await kl.create("an item found in a cave",
+  { name: "Glowcap", value: [1, 50], story: "Found under a cold stone." });
 
 // A character to talk to, who can act through your game's functions.
 kl.character("MIRA", "", {
@@ -55,8 +95,10 @@ kl.character("MIRA", "", {
   offline: "Busy. Come back later.",
   tools: { give: { item: "sword" } },
 });
-const reply = await kl.chat("MIRA", playerText, { gold: 3 }, "Ana");   // in character, about 1 s, can stream
-for (const a of kl.act("MIRA", {}, false)) run(a.tool, a.args);         // what she decided to do, validated
+const reply = await kl.chat("MIRA", playerText, { gold: 3 }, "Ana");  // in character, about 1 s, can stream
+
+// What her reply agreed to do, validated (false: no new decision is asked for).
+for (const a of kl.act("MIRA", {}, false)) run(a.tool, a.args);
 ```
 
 ## What your game can ask for
@@ -123,38 +165,6 @@ a choice or content, each with the call that fits and a Harmony patch; the game'
 `kinloom hooks --guide` covers IL2CPP, native and web games. Mods are for your own use unless the game's terms say
 otherwise.
 
-## Quick start
-
-```bash
-uv tool install kinloom     # Python 3.9+, no dependencies
-cd your-game
-kinloom init        # detects the engine, copies its client, writes your coding agent's instructions
-```
-
-`pipx install kinloom` and `pip install kinloom` work the same way. With plain `pip`, if `kinloom` is not found
-afterwards (its folder is not on your PATH), run `python -m kinloom init` instead. The latest code, before a release:
-`uv tool install "git+https://github.com/KorroAi/kinloom.git#subdirectory=python"`.
-
-**No Python?** The clients are single files in [`python/src/kinloom/clients`](python/src/kinloom/clients): copy the one
-for your engine (the Godot addon folder, `Kinloom.cs` and `Unity/` for Unity, or the one file for JavaScript/TypeScript,
-C++, Rust, Java or Lua) into your project and call it; everything works offline, and a key or a relay brings the model.
-Each [GitHub release](https://github.com/KorroAi/kinloom/releases) also has one zip per engine.
-
-Then ask your coding agent, or type `/kinloom <what you want>` in Claude Code, Cursor or Gemini CLI:
-*"the weather follows how I play"*, *"generate each new level"*, *"a blacksmith I can talk to, who gives items to
-people she likes"*. The agent uses three commands:
-
-```bash
-kinloom recipe "a blacksmith the player can talk to"     # the right call and code in your engine's language
-kinloom add Mira "a widowed blacksmith who secretly sold the king's sword" --tools "give(item)" --trust give=0.3
-kinloom run -- godot --path .                            # runs the game, then shows what the AI did
-```
-
-`kinloom add` writes the character into `kinloom.json` (no declaration code; edits apply while the game runs). The
-clients also live in [`python/src/kinloom/clients`](python/src/kinloom/clients).
-
-The engine SDKs are not on npm, NuGet, crates.io or LuaRocks yet: copy the client file, or take its zip from a release.
-
 ## Any model
 
 - **An API key** from the environment: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `DEEPSEEK_API_KEY`, `OPENROUTER_API_KEY`
@@ -184,11 +194,14 @@ everything players do not wait for: `models: {"background": "..."}`. Details: [M
 
 ## Measured, not promised
 
-Real runs, with their method, cost and misses, are in [`proof/`](proof):
+Real runs, with their method, cost and misses, are in [`proof/`](proof/README.md):
 
-- **Conversation speed** (OpenRouter, `deepseek/deepseek-v4.1-flash`, 90 replies): first word 1.1 s median and 1.6 s
-  at p95; whole reply 1.8 s median and 2.9 s at p95; about $0.0005 a reply. [proof/souls](proof/souls/README.md)
-- **Secrets**: 24 manipulation attempts, no secret said, nothing given away. [proof/souls](proof/souls/README.md)
+- **Conversation speed** (OpenRouter, `deepseek/deepseek-v4.1-flash`, 40 replies): first word 1.06 s median and
+  1.92 s at p95; whole reply 1.61 s median and 3.00 s at p95, none over 5 s; about $0.0005 a reply.
+  [proof/souls](proof/souls/README.md)
+- **Secrets**: 45 attacks in 10 families (false authority, prompt injection, flattery...), read by hand: a hosted
+  model kept the secret; on a small local model (`qwen3:8b`) clear leaks went from 12 to 0-2 once secrets were kept by
+  code. [proof/souls](proof/souls/README.md)
 - **Coding agents**: across 30 requests, answers that run and use a right call went from 8 % to 88 % with Kinloom's
   instructions. [proof/universal](proof/universal/README.md)
 - **Every SDK with a real model**: Python, JavaScript, TypeScript, C#, Java, Rust, C++, Lua and Godot each ran the
@@ -210,21 +223,22 @@ Real runs, with their method, cost and misses, are in [`proof/`](proof):
 Not measured yet: whether players find these characters more human than a plain prompt (the blind test in
 `proof/souls/blind.html` has not been judged), and how much time a coding agent saves overall.
 
-Tests: the Python suite (run on 3.9 and 3.12 on Windows and Linux), the conformance scenario in every client
-against a real server, every SDK's own brain against a fake model, and every language's calls from `calls.md` compiled
-against its SDK (`python/conformance/calls.py`). CI is configured (`.github/workflows/ci.yml`) to run them on Linux,
-macOS and Windows: Python 3.9 and 3.12 on each, every SDK and the release package all pass (2026-10-11).
-Tests never call a real model.
+Tests: the Python suite, the conformance scenario in every client against a real server, every SDK's own brain
+against a fake model, and every language's calls from `calls.md` compiled against its SDK
+(`python/conformance/calls.py`). [CI](.github/workflows/ci.yml) runs them on every push: Python 3.9, 3.12 and 3.14 on
+Linux, macOS and Windows, every SDK, and the release package. Tests never call a real model.
 
 ## Documentation
 
-| | |
+| Document | What it covers |
 |---|---|
 | [python/README.md](python/README.md) | The full guide: every call, souls, voice, minds, the world, models, tools, safety |
 | [calls.md](python/src/kinloom/kit/calls.md) | Every call in every language |
 | [Engine guides](python/src/kinloom/kit/engines) | Setup notes per engine |
 | [cookbook.md](python/src/kinloom/kit/cookbook.md) | 39 patterns, from free conversation to units that learn and the AI checked in CI |
-| [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) | Releases, how to contribute, how to report a vulnerability |
+| [examples/](examples/README.md) | Runnable examples (Python, browser) that work with no key |
+| [proof/](proof/README.md) | Every real run: method, raw results, cost and misses |
+| [CHANGELOG.md](CHANGELOG.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [SECURITY.md](SECURITY.md) · [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Releases, how to contribute, how to report a vulnerability, how we work together |
 
 ## The legacy C# runtime
 

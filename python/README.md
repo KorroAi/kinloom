@@ -20,10 +20,10 @@ kinloom init                 # in your game folder: engine client + instructions
 ## The first minute
 
 Install, `kinloom init` in the game folder (a short wizard when you run it yourself; agents get no questions), then
-ask your usual coding agent (Claude Code, Codex, Cursor, aider...), or type `/kinloom <request>` in Claude Code, Cursor
-or Gemini CLI, in plain words, whatever you need: *"the weather follows how I play"*, *"generate each new level"*, *"a blacksmith I can
+ask your usual coding agent (Claude Code, Codex, Cursor, aider...), or type `/kinloom <request>` in Claude Code, Cursor,
+Gemini CLI or opencode, in plain words, whatever you need: *"the weather follows how I play"*, *"generate each new level"*, *"a blacksmith I can
 talk to, who gives items to people she likes"*. The instructions
-`init` wrote (about 3 KB, read in every session) make it do three things:
+`init` wrote (about 6 KB, read in every session) make it do three things:
 
 ```bash
 kinloom recipe "a blacksmith the player can talk to"   # the call, the closest patterns, code in this game's language
@@ -84,7 +84,7 @@ often and how long ago you talked. With no key, characters answer with their off
   inside the game); shipped, the same code talks to your online server with `Kinloom(url=..., token=...)` (or
   `KINLOOM_URL`), offline answers when it cannot be reached.
 
-What is measured, and what is not (2026-09-29; details and every number in `proof/`):
+What is measured, and what is not (details and every number in `proof/`):
 
 - **Speed** (`proof/speed`, `proof/souls`): on `deepseek/deepseek-v4.1-flash` (OpenRouter), 40 replies: first word
   1.06 s median / 1.92 s p95, whole reply 1.61 s / 3.00 s, none over 5 s, about $0.0005 a reply (the median is the
@@ -100,10 +100,13 @@ What is measured, and what is not (2026-09-29; details and every number in `proo
 - **Quality** (`proof/souls/quality.py`, a model as a stand-in judge, 6 scenes): the old prompt scored below a
   plain five-minute prompt (-0.45 of 10); the reworked one is level with it at the same reply length and wins the
   pairs the judge is consistent on (6-1). Not a human verdict.
-- **Not measured**: Claude Code, Cursor, Codex or Gemini CLI sessions; engines other than the conformance hosts in a
-  real game; the online server on a real host; **whether players find the characters more human than a plain prompt**:
-  that is the blind test's to say (`proof/souls/blind.html`, not judged yet). Ready UI: Godot `AIDialogue`, web
-  `kinloom-talk.js`, Pygame `PygameTalkBox`.
+- **Coding agents end to end** (`proof/v1`): aider (DeepSeek) and Claude Code (haiku) each built a working dialogue
+  with reply choices in an existing game. **Real engines** (`proof/engines`): Godot 4.7, LÖVE 11.5, the Unity 6000.3
+  and 6000.6 editors and a Windows IL2CPP player.
+- **Not measured**: Cursor, Codex or Gemini CLI sessions; Unreal, Defold, Bevy, consoles, mobile and WebGL builds;
+  the online server on a real host; **whether players find the characters more human than a plain prompt**: that is
+  the blind test's to say (`proof/souls/blind.html`, not judged yet). Ready UI: Godot `AIDialogue`, web
+  `kinloom-talk.js`, Pygame `PygameTalkBox`, Unity `KinloomDialogue`.
 
 Lines for events, instantly:
 
@@ -122,7 +125,7 @@ Not in Python? Every engine gets the same calls from a one-file client that `kin
 | Engine / language | Client | Checked here |
 |---|---|---|
 | Godot 4 (GDScript or C#) | `addons/kinloom` + the no-code **AIDialogue**, **AICharacter** and **AIMind** nodes and an editor dock | contract suite in Godot 4.7 headless |
-| Unity, MonoGame, FNA, Stride, any .NET | `Kinloom.cs` | contract suite (.NET 10), compiles as netstandard2.1 / C# 9 |
+| Unity, MonoGame, FNA, Stride, any .NET | `Kinloom.cs` + Unity's `KinloomDialogue` | contract suite (.NET 10), compiles as netstandard2.1 / C# 9; Unity 6000.3 and 6000.6 editors, an IL2CPP player (`proof/engines`) |
 | Web: Phaser, Three.js, PixiJS, Babylon... (JS/TS), Node, Deno, Bun | `kinloom.js` + `.d.ts` + `kinloom-talk.js` (dialogue box) | contract suite (Node) |
 | Python: Pygame, Arcade, Ren'Py, Panda3D... | the package itself, copied next to the game by `kinloom init` (ships with it); `PygameTalkBox` (ready dialogue box), `Talk` (any engine) | unit tests + contract suite + 5 agent trials in a Pygame game |
 | Rust: Bevy, macroquad, ggez | `kinloom.rs` (no crates) | contract suite (cargo) |
@@ -132,8 +135,9 @@ Not in Python? Every engine gets the same calls from a one-file client that `kin
 | Unreal | `kinloom.hpp` from a module | compiles as C++17; untested inside Unreal |
 | Anything with HTTP | `POST /v1/<verb>` JSON | the HTTP contract (see `kinloom guide other`) |
 
-Clients talk to `kinloom serve` on your machine (the Godot addon starts it when it is installed). Keys stay in the server's
-environment, never in the game.
+Each client runs Kinloom inside the game (native: it calls the model with a key), or asks `kinloom serve` (relay: the
+key stays in the server's environment, never in the game; the Godot addon starts it when it is installed), or never
+calls a model (offline). See [Every engine](#every-engine-the-whole-sdk-in-its-language).
 
 ## The calls
 
@@ -243,7 +247,8 @@ talk. What characters know and feel goes into everything they say, decide and an
 
 **Shapes by example:** `["a", "b"]` one of; `[0.0, 1.0]` a number in range; `[1, 10]` a whole number; `0.5`, `3`,
 `True`, `"text"`, `"#ff7a45"` (a color) that type; `[example]` a list; `{...}` an object. Every answer is validated
-and clamped against the example; one repair; then the example.
+and clamped against the example; one repair; then the example. A tool's arguments are stricter: an action that leaves
+out an option or a range (`{"item": ["horseshoe", "dagger"]}`) is refused, never given the first option.
 
 ## Why it stays fast, cheap and safe
 
@@ -342,8 +347,8 @@ kinloom use codex | gemini-cli | opencode # the same with those agents; `kinloom
 
 Measured with Claude Code (haiku, one soul character, `proof/agents`): first word 0.8-1.7 s, a whole reply 1.5-2.6 s,
 0 failures in 16 calls, a picture seen (two runs). Kinloom starts the agent ahead (a cold start took 5.2 s), without
-its tools, in an empty folder, with thinking off (on, it took 8-12 s a reply). Codex, Gemini CLI and opencode follow
-their `--help` (not run here: no login). A player's machine has no developer plan: ship with a key on a server
+its tools, in an empty folder, with thinking off (on, it took 8-12 s a reply). Codex, Gemini CLI and opencode are called with
+the flags their documentation gives (checked 2026-10-28; not run here: no login). A player's machine has no developer plan: ship with a key on a server
 (`kinloom deploy`) or the player's own key.
 
 Any model, hosted or on your machine, found from the environment and never guessing a model name:
@@ -366,8 +371,7 @@ Any model, hosted or on your machine, found from the environment and never guess
 - Small models' habits are read: the `~~~` marker written first, `mood: calm` lines instead of JSON, prompt labels
   copied into the reply (asked again), the player's lines written by the model (cut there).
 
-Checked with real models: DeepSeek, OpenRouter (`deepseek/deepseek-v4.1-flash`, the one allowed for these tests),
-Ollama `qwen3:8b` and `llama3.2:1b`. Anthropic, OpenAI and the other services above are covered by tests against
+Checked with real models: DeepSeek, OpenRouter (`deepseek/deepseek-v4.1-flash`), Ollama `qwen3:8b` and `llama3.2:1b`. Anthropic, OpenAI and the other services above are covered by tests against
 fake endpoints only (no key here). `KINLOOM_OFFLINE=1` forces offline answers. An optional `kinloom.json` sets the
 provider, model, language, budget and your prices (cost is only shown when you declare prices).
 

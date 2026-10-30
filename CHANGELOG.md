@@ -1,9 +1,30 @@
 # Changelog
 
-## 1.0.0 (2026-10-28)
+## 1.0.0 (2026-10-30)
 
 First public release: `pip install kinloom`, and one zip per engine on each GitHub release. What changed since
 the 1.0 features were settled (2026-10-03, below):
+
+Found by the launch review (2026-10-28):
+
+- `kinloom init` wrote the description of the Claude Code skill, the Claude Code `/kinloom` command and the opencode
+  command as unquoted YAML holding ": ", which is not valid YAML: depending on the agent, the description was lost or
+  the file refused. Descriptions are now quoted; a test parses every header `init` writes (and the Gemini command as
+  TOML).
+- An action whose arguments left out an option or a range was run with the example's value: a reply that agreed to
+  "a sale" without naming the item sold the first item of the list (found with `examples/web`). In Python and every
+  SDK, a tool argument that is a choice (options or a range) must now be given; otherwise the action is refused and
+  the journal says `sell: missing item`. Single example values still fill in. Shared vectors: `missing_choices`.
+- Through a relay that cannot be reached, a character with several offline replies picked one at random, so the same
+  line could come twice in a row (seen in `examples/web`). Relay clients (JavaScript/TypeScript, C#, Java, Rust, C++,
+  Lua, Godot) now say them in turn, as native mode and the documentation do.
+- The Codex harness (`kinloom use codex`) now passes `-` so Codex reads the prompt from stdin, the form its
+  documentation gives.
+- CI runs Python 3.9, 3.12 and 3.14 on Linux, macOS and Windows, with current GitHub Actions; issue and pull request
+  templates and a code of conduct.
+- Legacy C# runtime: `KINLOOM_THINKING=off` turns a reasoning model's thinking off on a `custom` endpoint
+  (OpenRouter takes `reasoning.enabled=false`, DeepSeek `thinking.type=disabled`); without it, a reasoning model on
+  OpenRouter could spend the whole token budget thinking and answer nothing.
 
 Mods of games with no source (2026-10-11):
 

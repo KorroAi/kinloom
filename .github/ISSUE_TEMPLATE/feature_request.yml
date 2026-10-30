@@ -1,0 +1,26 @@
+name: Feature request
+description: Something your game needs that Kinloom cannot do yet.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What your game needs
+      description: The moment in your game, and what it needs back from the AI. Kinloom stays genre-free, so the need matters more than a proposed API.
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: The calls you used (`decide`, `create`, `chat`, `act`, `say`...) and where they fall short.
+  - type: input
+    id: engine
+    attributes:
+      label: Engine and language
+      placeholder: "Unity (C#), Godot (GDScript), a web game (TypeScript)..."
+  - type: textarea
+    id: offline
+    attributes:
+      label: With no model
+      description: Every Kinloom call has an answer that needs no model. What should this one do offline?

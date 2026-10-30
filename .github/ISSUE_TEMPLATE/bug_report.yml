@@ -1,0 +1,71 @@
+name: Bug report
+description: Something in Kinloom does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. Never paste an API key: Kinloom reads keys from environment variables only.
+        A security problem? Please report it privately from the Security tab instead.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest code or commands that show it.
+      render: text
+    validations:
+      required: true
+  - type: dropdown
+    id: sdk
+    attributes:
+      label: SDK or tool
+      options:
+        - Python package / CLI
+        - GDScript (Godot)
+        - C# (Unity, .NET)
+        - TypeScript / JavaScript
+        - C++
+        - Rust
+        - Java
+        - Lua
+        - kinloom serve (relay)
+        - kinloom init / coding agent instructions
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: Mode
+      options:
+        - native (the game calls the model)
+        - relay (through kinloom serve)
+        - offline (no model)
+        - not sure
+  - type: input
+    id: versions
+    attributes:
+      label: Versions
+      description: "`kinloom --version`, your engine and its version, your operating system."
+      placeholder: "kinloom 1.0.0, Godot 4.7.2, Windows 11"
+    validations:
+      required: true
+  - type: input
+    id: model
+    attributes:
+      label: Model
+      description: Provider and model name, or "none".
+      placeholder: "OpenRouter deepseek/deepseek-v4.1-flash"
+  - type: textarea
+    id: log
+    attributes:
+      label: Journal or log
+      description: "`kinloom log -n 40`, or the error output. Check that it holds no key or personal data."
+      render: text

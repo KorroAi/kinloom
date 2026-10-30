@@ -642,6 +642,7 @@ struct State {
     decisions: HashMap<String, Decision>,
     actions: HashMap<String, Pending>,
     sources: HashMap<String, String>,
+    offline_turns: HashMap<String, usize>, // several offline replies, said in turn
     down_until: Option<Instant>,
     seed: u64,
     minds: HashMap<String, MindEntry>,
@@ -718,6 +719,7 @@ impl Kinloom {
                     decisions: HashMap::new(),
                     actions: HashMap::new(),
                     sources: HashMap::new(),
+                    offline_turns: HashMap::new(),
                     down_until: None,
                     seed,
                     minds: HashMap::new(),
@@ -807,10 +809,10 @@ impl Kinloom {
         let offline = st.chars.get(name).map(|c| c.get("offline").clone()).unwrap_or(Json::Null);
         match offline {
             Json::Arr(many) if !many.is_empty() => {
-                st.seed ^= st.seed << 13;
-                st.seed ^= st.seed >> 7;
-                st.seed ^= st.seed << 17;
-                many[(st.seed % many.len() as u64) as usize].as_str().to_string()
+                // in turn, as native mode: never the same twice in a row
+                let turn = st.offline_turns.get(name).copied().unwrap_or(0) + 1;
+                st.offline_turns.insert(name.to_string(), turn);
+                many[turn % many.len()].as_str().to_string()
             }
             other => other.as_str().to_string(),
         }
@@ -4055,6 +4057,28 @@ impl Shape {
 
     pub fn bare(kind: &'static str, example: Json) -> Shape {
         Shape { kind, example, lo: 0.0, hi: 0.0, whole: false, max: 0, options: Vec::new(), item: None, fields: Map::new() }
+    }
+
+    /// The fields of an action's object shape whose example is a choice (options or a range) that args leave out
+    /// (absent in any letter case, or null). Data may take the example's value; an action must not get a decision
+    /// nobody made.
+    pub fn missing_choices(shape: Option<&Shape>, args: &Json) -> Vec<String> {
+        let (shape, map) = match (shape, args) {
+            (Some(s), Json::Obj(m)) if s.kind == "object" => (s, m),
+            _ => return Vec::new(),
+        };
+        let mut given: Map<&Json> = Map::new();
+        for (k, v) in map.iter() {
+            given.insert(k.to_lowercase(), v);
+        }
+        shape
+            .fields
+            .iter()
+            .filter(|(name, f)| {
+                (f.kind == "options" || f.kind == "range") && matches!(given.get(&name.to_lowercase()), None | Some(Json::Null))
+            })
+            .map(|(name, _)| name.clone())
+            .collect()
     }
 
     fn fmt(n: f64) -> String {
@@ -11750,6 +11774,11 @@ impl Brain {
                     continue;
                 }
             };
+            let missing = Shape::missing_choices(Some(&shape), &args);
+            if !missing.is_empty() {
+                self.log("refused", &c.name, &format!("{}: missing {}", t, missing.join(", ")), None);
+                continue;
+            }
             match shape.check(&args, "value") {
                 Ok(v) if !self.allowed(&v) => self.log("refused", &c.name, &format!("{}: blocked by the content filter", t), None),
                 Ok(v) => out.push((t, v)),
@@ -14527,6 +14556,9 @@ pub mod vectors {
                 Ok(_) => Json::Null,
                 Err(e) => Json::Str(e),
             },
+            "missing_choices" => {
+                Json::Arr(Shape::missing_choices(Shape::of(&arg(0)).ok().as_ref(), &arg(1)).into_iter().map(Json::Str).collect())
+            }
             "find_json" => match arg(0) {
                 Json::Str(s) => text::find_json(&s),
                 _ => Json::Null,

@@ -5,13 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "kinloom"
 version = "1.0.0"
-description = "Deep AI in any game, any engine, any model, in minutes: characters that talk, answer, decide, act and create."
+description = "Free, open-source AI for games: any engine, any model, and it keeps working with no model at all."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = []
-keywords = ["game", "ai", "llm", "npc", "godot", "unity", "procedural"]
+keywords = ["game", "gamedev", "game-ai", "ai", "llm", "npc", "dialogue", "procedural-generation", "godot", "unity", "agents"]
 classifiers = [
   "Environment :: Console",
   "Intended Audience :: Developers",
@@ -31,6 +31,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/KorroAi/kinloom"
+Documentation = "https://github.com/KorroAi/kinloom/blob/main/python/README.md"
 Repository = "https://github.com/KorroAi/kinloom"
 Changelog = "https://github.com/KorroAi/kinloom/blob/main/CHANGELOG.md"
 Issues = "https://github.com/KorroAi/kinloom/issues"

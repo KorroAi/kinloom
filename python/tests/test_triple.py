@@ -9,7 +9,7 @@ import pytest
 from kinloom import Kinloom, prompts
 from kinloom.providers import Reply, Scripted
 from kinloom.shapes import Items
-from test_brain import make, model, task
+from test_brain import make, model
 from test_remote import online
 from test_server import call
 

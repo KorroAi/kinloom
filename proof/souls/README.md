@@ -1,6 +1,6 @@
 # Souls with a real model
 
-Kinloom souls against a real model, 2026-09-29, with the user's go-ahead: OpenRouter, `deepseek/deepseek-v4.1-flash`
+Kinloom souls against a real model, 2026-09-29: OpenRouter, `deepseek/deepseek-v4.1-flash`
 only (reasoning turned off by Kinloom). Prices from `https://openrouter.ai/api/v1/models` read the same day: $0.30 / M
 input tokens, $0.006 / M cached input, $1.20 / M output.
 

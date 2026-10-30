@@ -79,7 +79,7 @@ def proxy(fake_base):
                     status, ctype, out = r.status, r.headers.get("Content-Type", ""), r.read()
             except urllib.error.HTTPError as e:
                 status, ctype, out = e.code, e.headers.get("Content-Type", ""), e.read()
-            except Exception as e:                                    # noqa: BLE001: reported, the SDK sees a 502
+            except Exception as e:                                    # noqa: BLE001 (reported, the SDK sees a 502)
                 status, ctype, out = 502, "text/plain", str(e).encode("utf-8")
             if chat is not None:
                 tokens = {}

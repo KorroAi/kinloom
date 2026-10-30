@@ -58,6 +58,7 @@ namespace Kinloom
         private readonly Dictionary<string, Pending> _actions = new Dictionary<string, Pending>();
         private readonly Dictionary<string, string> _sources = new Dictionary<string, string>();
         private readonly System.Random _random = new System.Random();
+        private readonly Dictionary<string, int> _offlineTurns = new Dictionary<string, int>();   // several offline replies, said in turn
         private DateTime _downUntil = DateTime.MinValue;
         private DateTime _upUntil = DateTime.MinValue;   // the server at _upUrl answered lately: no connection check
         private string _upUrl = "";
@@ -287,7 +288,13 @@ namespace Kinloom
                 lock (_gate)
                 {
                     if (!_chars.TryGetValue(name, out var c) || !c.TryGetValue("offline", out var o)) return "";
-                    if (o is IList many) return many.Count == 0 ? "" : many[_random.Next(many.Count)]?.ToString() ?? "";
+                    if (o is IList many)
+                    {
+                        if (many.Count == 0) return "";
+                        var turn = (_offlineTurns.TryGetValue(name, out var was) ? was : 0) + 1;   // in turn, as native mode
+                        _offlineTurns[name] = turn;
+                        return many[turn % many.Count]?.ToString() ?? "";
+                    }
                     return o as string ?? "";
                 }
             }
@@ -2387,6 +2394,21 @@ namespace Kinloom
         public Dictionary<string, Shape> Fields = new Dictionary<string, Shape>();
 
         public Shape(string kind, object? example) { Kind = kind; Example = example; }
+
+        /// <summary>The fields of an action's object shape whose example is a choice (options or a range) that args
+        /// leave out (absent in any letter case, or null). Data may take the example's value; an action must not get a
+        /// decision nobody made.</summary>
+        public static List<string> MissingChoices(Shape? shape, object? args)
+        {
+            var output = new List<string>();
+            if (shape == null || shape.Kind != "object" || !(args is IDictionary<string, object> map)) return output;
+            var given = new Dictionary<string, object?>();
+            foreach (var p in map) given[p.Key.ToLowerInvariant()] = p.Value;
+            foreach (var f in shape.Fields)
+                if ((f.Value.Kind == "options" || f.Value.Kind == "range") && (!given.TryGetValue(f.Key.ToLowerInvariant(), out var v) || v == null))
+                    output.Add(f.Key);
+            return output;
+        }
 
         private static string Fmt(double n) => n == Math.Floor(n) && Math.Abs(n) < 1e15 ? ((long)n).ToString(CultureInfo.InvariantCulture) : Py.G(n);
 
@@ -7041,6 +7063,8 @@ namespace Kinloom
                 var (shape, _) = c.Tools[ts];
                 var args = it.GetValueOrDefault("args") as Dictionary<string, object> ?? new Dictionary<string, object>();
                 if (shape == null) { output.Add((ts, new Dictionary<string, object>())); continue; }
+                var missing = Shape.MissingChoices(shape, args);
+                if (missing.Count > 0) { Log("refused", c.Name, ts + ": missing " + string.Join(", ", missing)); continue; }
                 var (ok, value, error) = shape.Check(args);
                 if (ok && !Allowed(value)) Log("refused", c.Name, ts + ": blocked by the content filter");
                 else if (ok) output.Add((ts, (Dictionary<string, object>)value!));
@@ -8677,6 +8701,7 @@ namespace Kinloom
                     return new Dictionary<string, object?> { ["ok"] = ok, ["value"] = value, ["error"] = error, ["describe"] = s.Describe(), ["default"] = s.Default() };
                 }
                 case "shape_error": try { Shape.Of(a[0]); return null; } catch (ArgumentException e) { return e.Message; }
+                case "missing_choices": return Shape.MissingChoices(Shape.Of(a[0]), a[1]).Cast<object>().ToList();
                 case "find_json": return Text.FindJson(a[0]);
                 case "parse":
                 {

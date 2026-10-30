@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Report a vulnerability
+    url: https://github.com/KorroAi/kinloom/security/advisories/new
+    about: Please report security problems privately, not in a public issue.
+  - name: Documentation
+    url: https://github.com/KorroAi/kinloom/blob/main/python/README.md
+    about: Every call, souls, voice, minds, the world, models and shipping.

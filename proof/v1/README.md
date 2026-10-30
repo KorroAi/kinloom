@@ -1,7 +1,7 @@
 # Kinloom 1.0: what was run for real
 
-Date: 2026-10-03. The ten additions of 1.0 are listed in the [CHANGELOG](../../CHANGELOG.md#100-2026-10-03).
-Real-model runs used only OpenRouter `deepseek/deepseek-v4.1-flash` (the model the user allowed for tests); costs are
+Date: 2026-10-03. The ten additions of 1.0 are listed in the [CHANGELOG](../../CHANGELOG.md#the-10-features-2026-10-03).
+Real-model runs used only OpenRouter `deepseek/deepseek-v4.1-flash` (the one model used for every real run); costs are
 the key's billed usage (`GET /api/v1/key`), read before and after.
 
 ## With a real model: `python proof/v1/live.py <label>`

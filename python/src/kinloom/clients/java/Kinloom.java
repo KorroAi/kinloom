@@ -75,6 +75,7 @@ public final class Kinloom {
     private final Map<String, Pending> actions = new ConcurrentHashMap<>();
     private final Map<String, String> sources = new ConcurrentHashMap<>();
     private final Random random = new Random();
+    private final Map<String, Integer> offlineTurns = new HashMap<>();   // several offline replies, said in turn
     private volatile long downUntil = 0;
     private volatile int failures = 0;
     private volatile long busyUntil = 0;           // the server said 429 (too many requests): offline answers until then
@@ -394,7 +395,12 @@ public final class Kinloom {
             Object o = c == null ? null : c.get("offline");
             if (o instanceof List) {
                 List<?> many = (List<?>) o;
-                return many.isEmpty() ? "" : str(many.get(random.nextInt(many.size())));
+                if (many.isEmpty()) return "";
+                synchronized (offlineTurns) {                  // in turn, as native mode: never the same twice in a row
+                    int turn = offlineTurns.getOrDefault(name, 0) + 1;
+                    offlineTurns.put(name, turn);
+                    return str(many.get(turn % many.size()));
+                }
             }
             return str(o);
         }
@@ -2397,6 +2403,21 @@ public final class Kinloom {
         final Map<String, Shape> fields = new LinkedHashMap<>();
 
         Shape(String kind, Object example) { this.kind = kind; this.example = example; }
+
+        /** The fields of an action's object shape whose example is a choice (options or a range) that args leave out
+         *  (absent in any letter case, or null). Data may take the example's value; an action must not get a decision
+         *  nobody made. */
+        static List<String> missingChoices(Shape shape, Object args) {
+            List<String> out = new ArrayList<>();
+            Map<String, Object> map = Py.asMap(args);
+            if (shape == null || !"object".equals(shape.kind) || map == null) return out;
+            Map<String, Object> given = new HashMap<>();
+            for (Map.Entry<String, Object> e : map.entrySet()) given.put(String.valueOf(e.getKey()).toLowerCase(Locale.ROOT), e.getValue());
+            for (Map.Entry<String, Shape> f : shape.fields.entrySet())
+                if (("options".equals(f.getValue().kind) || "range".equals(f.getValue().kind)) && given.get(f.getKey().toLowerCase(Locale.ROOT)) == null)
+                    out.add(f.getKey());
+            return out;
+        }
 
         private static String fmt(double n) { return n == Math.floor(n) && Math.abs(n) < 1e15 ? Long.toString((long) n) : Py.g(n); }
 
@@ -7155,6 +7176,8 @@ public final class Kinloom {
                 Shape shape = (Shape) c.tools.get(tool)[0];
                 Map<String, Object> args = Py.asMap(it.get("args")) != null ? Py.asMap(it.get("args")) : new LinkedHashMap<>();
                 if (shape == null) { out.add(new Object[] {tool, new LinkedHashMap<String, Object>()}); continue; }
+                List<String> missing = Shape.missingChoices(shape, args);
+                if (!missing.isEmpty()) { log("refused", c.name, tool + ": missing " + String.join(", ", missing), null); continue; }
                 Object[] r = shape.check(args);
                 if ((Boolean) r[0] && !allowed(r[1])) log("refused", c.name, tool + ": blocked by the content filter", null);
                 else if ((Boolean) r[0]) out.add(new Object[] {tool, r[1]});
@@ -8817,6 +8840,7 @@ public final class Kinloom {
                     return map("ok", r[0], "value", r[1], "error", r[2], "describe", s.describe(), "default", s.defaultValue());
                 }
                 case "shape_error": try { Shape.of(a.get(0)); return null; } catch (IllegalArgumentException e) { return e.getMessage(); }
+                case "missing_choices": return new ArrayList<Object>(Shape.missingChoices(Shape.of(a.get(0)), a.get(1)));
                 case "find_json": return Text.findJson(a.get(0));
                 case "parse": {
                     Object[] p = Shape.of(a.get(0)).parse((String) a.get(1));

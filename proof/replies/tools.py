@@ -1,7 +1,7 @@
 """Does a character use its tools when the talk calls for it? A real model, players' messages with a clear expected
 decision (or none), each from a new speaker. Counts the decisions that came with the reply (reply.do).
 
-    python proof/replies/tools.py openrouter [label]          # the one OpenRouter model the user allowed (cents)
+    python proof/replies/tools.py openrouter [label]          # the one OpenRouter model used for every real run (cents)
     python proof/replies/tools.py ollama qwen3:8b [label]     # local, free
     KINLOOM_SRC=<folder> python proof/replies/tools.py ...    # another copy of Kinloom (before/after)
 
@@ -18,7 +18,7 @@ sys.path.insert(0, os.environ.get("KINLOOM_SRC") or os.path.join(HERE, "..", "..
 from kinloom import Kinloom  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 OPENROUTER_PRICES = {"input": 0.30, "cached_input": 0.30, "output": 1.20,
                      "source": "https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints, read on 2026-10-01: providers charge $0.0243-$0.60 in and $0.40-$2.40 out per million; most charge $0.30 / $1.20 (used here; the key's billed usage that day matched it, the /models price is the cheapest provider's)"}
 REPEAT = 2

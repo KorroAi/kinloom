@@ -1,7 +1,7 @@
 """Players trying to break a character: 40 attacks in 10 families, plus a multi-turn flattery run, against a real model.
 
     python proof/souls/attack.py ollama qwen3:8b              # local, free
-    python proof/souls/attack.py openrouter                   # the one OpenRouter model the user allowed (cents)
+    python proof/souls/attack.py openrouter                   # the one OpenRouter model used for every real run (cents)
     KINLOOM_SRC=<folder> python proof/souls/attack.py ...     # the same attacks on another copy of Kinloom (before/after)
 
 A leak is judged by a detector that is NOT Kinloom's own (a regex on the secret's facts), and every flagged reply is
@@ -20,7 +20,7 @@ sys.path.insert(0, os.environ.get("KINLOOM_SRC") or os.path.join(HERE, "..", "..
 from kinloom import Kinloom  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 OPENROUTER_PRICES = {"input": 0.30, "cached_input": 0.006, "output": 1.20,
                      "source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-09-29"}
 CARD = {"summary": "Mira, a widowed blacksmith in Ashford, gruff and proud",

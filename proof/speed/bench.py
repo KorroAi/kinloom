@@ -1,7 +1,7 @@
 """Speed of a real conversation with a soul: time to the first word, whole reply, tokens sent and cached, per turn.
 
     python proof/speed/bench.py ollama qwen3:8b          # local model, free (Ollama running)
-    python proof/speed/bench.py openrouter               # the one OpenRouter model the user allowed (spends cents)
+    python proof/speed/bench.py openrouter               # the one OpenRouter model used for every real run (spends cents)
 
 Writes proof/speed/results-<provider>-<model>.json and prints a summary. The model answers for real: every number
 is measured, nothing is estimated.
@@ -19,7 +19,7 @@ sys.path.insert(0, os.environ.get("KINLOOM_SRC") or os.path.join(HERE, "..", "..
 from kinloom import Kinloom  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+OPENROUTER_MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 OPENROUTER_PRICES = {"input": 0.30, "cached_input": 0.006, "output": 1.20,
                      "source": "https://openrouter.ai/api/v1/models, deepseek/deepseek-v4.1-flash, read on 2026-09-29"}
 TURNS = ["", "Nice toy hammer.", "Sorry, I was joking. Everyone says you're the best smith in town.",

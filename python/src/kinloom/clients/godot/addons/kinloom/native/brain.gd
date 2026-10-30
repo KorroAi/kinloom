@@ -1359,6 +1359,10 @@ func _valid_actions(c, text: String) -> Array:
 		if shape == null:
 			out.append([tool, {}])
 			continue
+		var missing: Array = ShapeLib.Shape.missing_choices(shape, args)
+		if not missing.is_empty():
+			_log("refused", c.name, tool + ": missing " + ", ".join(PackedStringArray(missing)))
+			continue
 		var r: Array = shape.check(args)
 		if r[0] and not _allowed(r[1]):
 			_log("refused", c.name, tool + ": blocked by the content filter")

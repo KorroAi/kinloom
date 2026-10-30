@@ -135,6 +135,7 @@ export class Kinloom {
         this.decisions = new Map();
         this.actions = new Map();
         this.sources = new Map();
+        this.offlineTurns = new Map(); // several offline replies, said in turn
         this.lastDo = new Map(); // the actions of name's last reply (chat's check)
         this.decideRefused = new Map(); // decide's check: what was refused
         this.decideOk = new Map(); // and what was last accepted
@@ -267,7 +268,13 @@ export class Kinloom {
             this.sources.set(name, "offline");
             this.lastDo.set(name, []);
             const o = this.chars.get(name)?.offline;
-            return Array.isArray(o) ? (o.length ? String(o[Math.floor(Math.random() * o.length)]) : "") : String(o ?? "");
+            if (!Array.isArray(o))
+                return String(o ?? "");
+            if (!o.length)
+                return "";
+            const turn = (this.offlineTurns.get(name) ?? 0) + 1; // in turn, as native mode: never the same twice in a row
+            this.offlineTurns.set(name, turn);
+            return String(o[turn % o.length]);
         }
         this.redeclare(name, r);
         this.sources.set(name, String(r.source ?? "model"));
@@ -1516,8 +1523,6 @@ function pyFloatText(s) {
         return null;
     return Number(t.replace(/_/g, ""));
 }
-function isNum(v) { return typeof v === "number"; }
-function isInt(v) { return typeof v === "number" && Number.isInteger(v); }
 function isObj(v) {
     return typeof v === "object" && v !== null && !Array.isArray(v) && !(v instanceof Uint8Array) && !(v instanceof ArrayBuffer);
 }
@@ -1575,7 +1580,7 @@ export function sha1(text) {
     return [h0, h1, h2, h3, h4].map((x) => (x >>> 0).toString(16).padStart(8, "0")).join("");
 }
 // ---------------- text cleaning and JSON in answers ----------------
-const CONTROL = /[\x00-\x08\x0b-\x1f\x7f‪-‮⁦-⁩]/g;
+const CONTROL = /[\x00-\x08\x0b-\x1f\x7f\u202a-\u202e\u2066-\u2069]/g;
 const ANSI = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 /** One tidy line: control characters (terminal escapes, NUL...) removed, whitespace collapsed. */
 export function cleanText(text) {
@@ -1712,6 +1717,18 @@ function noTrailingCommas(t) {
 const MAX_DEPTH = 12, MAX_LIST = 50, MAX_TEXT = 200, MAX_INT = 2 ** 31 - 1, MAX_NUMBER = 1e9;
 const COLOR = /^#?([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 function fmtNum(n) { return Number.isInteger(n) ? String(n) : pyG(n); }
+/** The fields of an action's object shape whose example is a choice (options or a range) that args leave out (absent
+ * in any letter case, or null). Data may take the example's value; an action must not get a decision nobody made. */
+export function missingChoices(shape, args) {
+    if (shape === null || shape === undefined || shape.kind !== "object" || !isObj(args))
+        return [];
+    const given = {};
+    for (const [k, v] of Object.entries(args))
+        given[String(k).toLowerCase()] = v;
+    return Object.entries(shape.info.fields)
+        .filter(([name, f]) => (f.kind === "options" || f.kind === "range") && (given[name.toLowerCase()] ?? null) === null)
+        .map(([name]) => name);
+}
 export class Shape {
     constructor(kind, example, info = {}) {
         this.kind = kind;
@@ -6073,6 +6090,11 @@ export class Brain {
                 out.push([tool, {}]);
                 continue;
             }
+            const missing = missingChoices(shape, args);
+            if (missing.length) {
+                this.log("refused", c.name, tool + ": missing " + missing.join(", "));
+                continue;
+            }
             const [ok, value, error] = shape.check(args);
             if (ok && !this.allowed(value))
                 this.log("refused", c.name, tool + ": blocked by the content filter");
@@ -7524,6 +7546,7 @@ export function vector(fn, args) {
         catch (e) {
             return e.message;
         }
+        case "missing_choices": return missingChoices(Shape.of(args[0]), args[1]);
         case "find_json": return findJson(args[0]);
         case "parse": {
             const [ok, value, error] = Shape.of(args[0]).parse(args[1]);

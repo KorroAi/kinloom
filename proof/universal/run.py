@@ -1,4 +1,4 @@
-"""Universality: does any request, in any words, turn into correct Kinloom code? Spends cents (the one allowed model).
+"""Universality: does any request, in any words, turn into correct Kinloom code? Spends cents (one OpenRouter model).
 
     python proof/universal/run.py <label> [--src HEAD|path] [--samples N] [--only id,id]   writes results-<label>.json
     python proof/universal/run.py report                                                     the table of every run

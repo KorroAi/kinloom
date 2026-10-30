@@ -1,0 +1,86 @@
+<!doctype html>
+<!--
+  A forge in the browser: talk with Mira, who may give you something if she comes to like you.
+
+    python -m http.server 8000          (from the repository's root folder)
+    open http://localhost:8000/examples/web/
+
+  With no server, Mira answers offline with her own lines and the page still works. For the model, run
+  `kinloom serve` in another terminal (with a key in its environment): the key stays in the server, never in the page.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kinloom: the forge</title>
+<link rel="icon" href="data:,">
+<style>
+  :root { --ink: #0c0b0a; --paper: #f3f1ec; --muted: rgba(243, 241, 236, 0.62); --ember: #e2783c; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at 50% 120%, #3a1d10 0%, var(--ink) 60%); color: var(--paper);
+         font: 16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 760px; margin: 0 auto; padding: 48px 16px 260px; }
+  h1 { margin: 0; font-size: 40px; letter-spacing: -0.03em; }
+  p { color: var(--muted); }
+  .hud { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 24px; }
+  .chip { border: 1px solid rgba(243, 241, 236, 0.18); border-radius: 999px; padding: 6px 14px; font-size: 14px; }
+  .chip b { color: var(--ember); }
+  #mode { font-family: ui-monospace, Consolas, monospace; }
+  button { background: var(--ember); color: var(--ink); border: 0; border-radius: 10px; padding: 12px 18px; font: inherit;
+           font-weight: 600; cursor: pointer; margin-top: 24px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>The forge</h1>
+  <p>Mira is the town's blacksmith: gruff, proud, and she has a secret about the king's sword. Talk to her. She can give
+     you something, but only once she likes you enough.</p>
+  <div class="hud">
+    <span class="chip">Gold <b id="gold">3</b></span>
+    <span class="chip">Inventory <b id="items">nothing</b></span>
+    <span class="chip" id="mode">connecting…</span>
+  </div>
+  <button id="talk">Talk to Mira</button>
+</main>
+<script type="module">
+  import { Kinloom } from "../../python/src/kinloom/clients/web/kinloom.js";
+  import { talkBox } from "../../python/src/kinloom/clients/web/kinloom-talk.js";
+
+  // A relay: `kinloom serve` on this machine (or ?relay=<url>). With none running, every call answers offline.
+  const relay = new URLSearchParams(location.search).get("relay");
+  const kl = new Kinloom(relay ? { url: relay } : {});
+  const state = { gold: 3, items: [] };
+
+  kl.character("Mira", "", {
+    soul: "a widowed blacksmith, gruff and proud, who secretly sold the king's sword to pay her debts",
+    offline: ["Busy. Come back later.", "If you're not buying, you're blocking the light."],
+    tools: {
+      sell: { item: ["horseshoe", "dagger", "sword"], price: [1, 10] },   // a price the game keeps between 1 and 10
+      give: { item: ["horseshoe", "dagger", "sword"] },
+    },
+    trust: { give: 0.3 },                     // she gives for free only to people she likes at least this much
+  });
+
+  const show = () => {
+    document.getElementById("gold").textContent = state.gold;
+    document.getElementById("items").textContent = state.items.join(", ") || "nothing";
+  };
+  const box = talkBox(kl, "Mira", {
+    speaker: "Traveler",
+    facts: () => ({ gold: state.gold }),     // what she knows about the player right now
+    onAction: (tool, args) => {               // what her reply agreed to do, already validated against her tools
+      if (tool === "sell" && state.gold >= args.price) { state.gold -= args.price; state.items.push(args.item); }
+      if (tool === "give") state.items.push(args.item);
+      show();
+    },
+  });
+  document.getElementById("talk").onclick = () => box.open();
+
+  // Say what answers: the model through the relay, or the offline lines.
+  kl.status().then((s) => {
+    document.getElementById("mode").textContent =
+      s.mode === "unreachable" ? "offline · no server" : s.mode === "offline" ? "offline · the server has no model" : "live · kinloom serve";
+  });
+</script>
+</body>
+</html>

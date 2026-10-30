@@ -24,6 +24,22 @@ class Shape:
 		s.example = example_
 		return s
 
+	## The fields of an action's object shape whose example is a choice (options or a range) that args leave out
+	## (absent in any letter case, or null). Data may take the example's value; an action must not get a decision
+	## nobody made.
+	static func missing_choices(shape: Variant, args: Variant) -> Array:
+		var out := []
+		if shape == null or shape.kind != "object" or not (args is Dictionary):
+			return out
+		var given := {}
+		for k in args:
+			given[Py.lower(str(k))] = args[k]
+		for name in shape.fields:
+			var f = shape.fields[name]
+			if (f.kind == "options" or f.kind == "range") and given.get(Py.lower(str(name))) == null:
+				out.append(name)
+		return out
+
 	static func fmt(n: float) -> String:
 		if n == floorf(n) and absf(n) < 1e15:
 			return str(int(n))

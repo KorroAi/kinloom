@@ -6,7 +6,7 @@
   use_repo_map: true
   extra_params:
     max_tokens: 65536
-# The only OpenRouter model the user allowed (2026-09-29), for the talk trials (DeepSeek balance empty).
+# The one OpenRouter model used for every real-model run here, for the talk trials.
 - name: openai/deepseek/deepseek-v4.1-flash
   edit_format: diff
   use_repo_map: true

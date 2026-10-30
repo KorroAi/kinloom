@@ -1,0 +1,6 @@
+# GitHub's language bar and diffs only (no line-ending rules here).
+legacy/** linguist-vendored
+proof/** linguist-documentation
+python/src/kinloom/clients/web/kinloom.js linguist-generated
+python/src/kinloom/clients/web/kinloom.d.ts linguist-generated
+python/conformance/vectors.json linguist-generated

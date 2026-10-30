@@ -42,6 +42,42 @@ public class ToolCallTests
     }
 
     [Fact]
+    public async Task Thinking_off_uses_the_reasoning_switch_on_openrouter_and_the_thinking_one_elsewhere()
+    {
+        var openrouter = new FakeHandler("""{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}""");
+        await new OpenAiCompatibleClient("https://openrouter.ai/api/v1", "k", "m", disableThinking: true, http: new HttpClient(openrouter))
+            .CompleteAsync(new LlmRequest("t", "sys", "user"));
+        var a = JsonNode.Parse(openrouter.Body!)!;
+        Assert.False(a["reasoning"]!["enabled"]!.GetValue<bool>());
+        Assert.Null(a["thinking"]);
+
+        var deepseek = new FakeHandler("""{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}""");
+        await new OpenAiCompatibleClient("https://api.deepseek.com", "k", "m", disableThinking: true, http: new HttpClient(deepseek))
+            .CompleteAsync(new LlmRequest("t", "sys", "user"));
+        var b = JsonNode.Parse(deepseek.Body!)!;
+        Assert.Equal("disabled", b["thinking"]!["type"]!.GetValue<string>());
+        Assert.Null(b["reasoning"]);
+    }
+
+    [Fact]
+    public async Task A_custom_provider_turns_thinking_off_only_when_asked()
+    {
+        async Task<JsonNode> BodyWith(string? thinking)
+        {
+            var env = new Dictionary<string, string?> { ["KINLOOM_PROVIDER"] = "custom", ["KINLOOM_BASE_URL"] = "https://openrouter.ai/api/v1",
+                ["KINLOOM_MODEL"] = "m", ["KINLOOM_THINKING"] = thinking };
+            var client = (OpenAiCompatibleClient)LlmConfig.FromEnvironment(k => env.TryGetValue(k, out var v) ? v : null)!;
+            var handler = new FakeHandler("""{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}""");
+            var field = typeof(OpenAiCompatibleClient).GetField("_http", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
+            field.SetValue(client, new HttpClient(handler));
+            await client.CompleteAsync(new LlmRequest("t", "sys", "user"));
+            return JsonNode.Parse(handler.Body!)!;
+        }
+        Assert.False((await BodyWith("off"))["reasoning"]!["enabled"]!.GetValue<bool>());
+        Assert.Null((await BodyWith(null))["reasoning"]);
+    }
+
+    [Fact]
     public async Task OpenAi_keeps_json_mode_without_tools()
     {
         var handler = new FakeHandler("""{"choices":[{"message":{"content":"{}"},"finish_reason":"stop"}]}""");

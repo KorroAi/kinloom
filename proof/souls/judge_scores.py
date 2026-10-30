@@ -1,5 +1,5 @@
 """More scores for judge.py's single-transcript rating (no pairs: the pairs only measured position bias): each scene's
-Kinloom souls and naive transcripts rated N times by the one allowed OpenRouter model. Not a verdict: the human
+Kinloom souls and naive transcripts rated N times by the same OpenRouter model. Not a verdict: the human
 blind test (blind.html) is.
 
     python proof/souls/judge_scores.py 15      # 3 scenes x 2 sides x 15 = 90 short calls (about $0.002)

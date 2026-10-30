@@ -8,6 +8,7 @@ Numbers in examples are never floats with nothing after the point (1.0): JavaScr
 numbers, Python does not; the SDKs agree on everything else.
 """
 import json
+import re
 import os
 import sys
 
@@ -19,6 +20,7 @@ from kinloom.brain import (_DIGIT, _NUMBER, _PLACEHOLDER, Brain, Character, _all
                            _event_key, _number_ok, _speech_only, fill, format_value)
 from kinloom.memory import Memory  # noqa: E402
 from kinloom.shapes import Shape, clean_text, find_json  # noqa: E402
+from kinloom.shapes import missing_choices  # noqa: E402
 from kinloom.voice import stable_pick  # noqa: E402
 
 OUT = []
@@ -44,7 +46,7 @@ SHAPES = [
     (0.5, [0.25, "1.5", 1e10, "nan"]),
     (True, [False, "yes", "No", 1, "maybe"]),
     ("#ff7a45", ["#00FF00", "a0b0c0", "#12345678", "red"]),
-    ("Win clean", ["Ghost  mode\n", 42, "", "x" * 250, "\x1b[31mred\x1b[0m", "‮evil"]),
+    ("Win clean", ["Ghost  mode\n", 42, "", "x" * 250, "\x1b[31mred\x1b[0m", "\u202eevil"]),
     (["#ff0000"], [["#00ff00", "#0000ff"], [], ["x"], "x", ["#aaaaaa"] * 51]),
     ([{"name": "Ana", "hp": [0, 100]}], [[{"name": "Bo", "hp": 120}], [{"hp": 5}], [{"name": 3}]]),
     ({"challenge": "Win clean", "sky": "#ff7a45"}, [{"challenge": "Ghost mode", "sky": "#000000"},
@@ -70,6 +72,13 @@ for bad in ([], {}, [[[[[[[[[[[[[[["deep"]]]]]]]]]]]]]]]):
         add("shape_error", [bad], None)
     except ValueError as e:
         add("shape_error", [bad], str(e))
+
+# an action's choices the model left out (absent in any letter case, or null): the action is refused
+SELL = {"item": ["horseshoe", "dagger"], "price": [1, 10], "note": "thanks"}
+for example, given in [(SELL, {}), (SELL, {"price": 3}), (SELL, {"ITEM": "x", "note": "y"}), (SELL, {"item": None, "price": 2}),
+                       (SELL, {"Item": "dagger", "PRICE": 3}), (SELL, ["item"]), (SELL, "item"), ({"what": "stick"}, {}),
+                       (["a", "b"], {}), ({"speed": [0.5, 3.0], "mode": ["fast", "slow"]}, {"mode": "fast"})]:
+    add("missing_choices", [example, given], missing_choices(Shape.of(example), given))
 
 # ---------------- finding JSON in answers ----------------
 
@@ -99,7 +108,7 @@ for example, text in [({"say": "Done.", "actions": [{"op": "build"}]}, '{"say": 
     ok, value, error = Shape.of(example).parse(text)
     add("parse", [example, text], {"ok": ok, "value": value, "error": error})
 
-for text in ["  hello   world ", "tab\tnew\nline", "\x00bell\x07", "\x1b[1mbold\x1b[0m", "bidi‮ok⁦", "é à ü 漢字"]:
+for text in ["  hello   world ", "tab\tnew\nline", "\x00bell\x07", "\x1b[1mbold\x1b[0m", "bidi\u202eok\u2066", "é à ü 漢字"]:
     add("clean_text", [text], clean_text(text))
 
 # ---------------- filling lines ----------------
@@ -483,5 +492,7 @@ for name, args in [("senses_error", [{"hp": [1, 1]}]), ("senses_error", [{"bad n
         add(name, args, str(e))
 
 with open(os.path.join(HERE, "vectors.json"), "w", encoding="utf-8", newline="\n") as f:
-    json.dump(plain(OUT), f, ensure_ascii=False, indent=0)
+    text = json.dumps(plain(OUT), ensure_ascii=False, indent=0)
+    # bidirectional controls stay escaped (\u202e...): GitHub flags a file holding a literal one (Trojan Source)
+    f.write(re.sub("[\u202a-\u202e\u2066-\u2069]", lambda m: "\\u%04x" % ord(m.group()), text))
 print("vectors.json: %d vectors" % len(OUT))

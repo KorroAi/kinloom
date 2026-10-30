@@ -2670,6 +2670,22 @@ struct Shape {
         s.example = example;
         return s;
     }
+
+    /// The fields of an action's object shape whose example is a choice (options or a range) that args leave out
+    /// (absent in any letter case, or null). Data may take the example's value; an action must not get a decision
+    /// nobody made.
+    static std::vector<std::string> missing_choices(const Shape* shape, const Json& args) {
+        std::vector<std::string> out;
+        if (!shape || shape->kind != "object" || args.type() != Json::Object) return out;
+        std::unordered_map<std::string, const Json*> given;
+        for (auto& kv : args.fields()) given[uni::lower(kv.first)] = &kv.second;
+        for (auto& f : shape->fields) {
+            if (f.second.kind != "options" && f.second.kind != "range") continue;
+            auto g = given.find(uni::lower(f.first));
+            if (g == given.end() || g->second->type() == Json::Null) out.push_back(f.first);
+        }
+        return out;
+    }
     static std::string fmt(double n) { return n == std::floor(n) && std::fabs(n) < 1e15 ? std::to_string((long long)n) : py::g(n); }
 
     /// The shape of an example, or why it cannot be one (err).
@@ -8613,6 +8629,8 @@ private:
             if (tool.type() != Json::String || !c.tool(tool.str(), spec)) { log("refused", c.name, "unknown tool " + py::py_repr(tool)); continue; }
             Json args = item["args"].type() == Json::Object ? item["args"] : Json(OrderedMap<Json>{});
             if (!spec.has_shape) { out.push_back({tool.str(), Json(OrderedMap<Json>{})}); continue; }
+            std::vector<std::string> missing = Shape::missing_choices(&spec.shape, args);
+            if (!missing.empty()) { log("refused", c.name, tool.str() + ": missing " + py::join(missing, ", ")); continue; }
             Json v;
             std::string err;
             if (spec.shape.check(args, "value", v, err)) {
@@ -10837,6 +10855,11 @@ inline bool run(const std::string& fn, const std::vector<Json>& a, Json& out, st
         bool ok = shape.check(arg(1), "value", v, e);
         out = obj({{"ok", ok}, {"value", ok ? v : Json()}, {"error", ok ? Json() : Json(e)}, {"describe", shape.describe()}, {"default", shape.default_value()}});
     } else if (fn == "shape_error") out = Shape::of(arg(0), shape, err) ? Json() : Json(err);
+    else if (fn == "missing_choices") {
+        std::vector<Json> names;
+        if (Shape::of(arg(0), shape, err)) for (auto& n : Shape::missing_choices(&shape, arg(1))) names.push_back(Json(n));
+        out = Json(names);
+    }
     else if (fn == "find_json") out = arg(0).type() == Json::String ? text::find_json(arg(0).str()) : Json();
     else if (fn == "parse") {
         if (!Shape::of(arg(0), shape, err)) return false;
@@ -11774,6 +11797,7 @@ private:
         std::map<std::string, std::shared_ptr<SayFetch>> say_fetching;
         std::mt19937 rng{std::random_device{}()};
         std::map<std::string, uint64_t> last_do;   // chat's check: the tag of the last reply's actions, taken back
+        std::map<std::string, size_t> offline_turns;   // several offline replies, said in turn
         uint64_t reply_tag = 0;
         std::map<std::string, Json> decide_refused, decide_ok;
         std::map<std::string, size_t> remark_turns;
@@ -11791,7 +11815,9 @@ private:
             const Json& offline = it->second["offline"];
             if (offline.type() == Json::Array) {
                 const auto& many = offline.items();
-                return many.empty() ? "" : many[std::uniform_int_distribution<size_t>(0, many.size() - 1)(in_->rng)].str();
+                if (many.empty()) return "";
+                size_t turn = ++in_->offline_turns[name];   // in turn, as native mode: never the same twice in a row
+                return many[turn % many.size()].str();
             }
             return offline.str();
         }

@@ -2,7 +2,7 @@
 orders, and say which character feels more like a real person. Only a human verdict (blind.html) settles it.
 
     python proof/souls/judge.py ollama qwen3:8b       # local judge, free
-    python proof/souls/judge.py openrouter            # the one allowed OpenRouter model (cents; it also wrote the replies)
+    python proof/souls/judge.py openrouter            # the same OpenRouter model (cents; it also wrote the replies)
 """
 import json
 import os

@@ -3,7 +3,7 @@ game's rules in the loop (the plan must fit the free tiles and stand next to som
 
     python proof/rules/run.py [label]
 
-The one model the user allowed for these runs: OpenRouter `deepseek/deepseek-v4.1-flash` (OPENROUTER_API_KEY). The
+The one model used for every real-model run here: OpenRouter `deepseek/deepseek-v4.1-flash` (OPENROUTER_API_KEY). The
 key's billed usage is read before and after (GET /api/v1/key) so the real cost is reported; the key is never printed.
 Writes results-<label>.json and prints one line per request.
 """
@@ -18,7 +18,7 @@ sys.path.insert(0, os.environ.get("KINLOOM_SRC") or os.path.join(HERE, "..", "..
 from kinloom import Kinloom  # noqa: E402
 from kinloom.providers import detect  # noqa: E402
 
-MODEL = "deepseek/deepseek-v4.1-flash"      # the only OpenRouter model the user allowed (2026-09-29)
+MODEL = "deepseek/deepseek-v4.1-flash"      # the one model used for every real-model run here (comparable, cheap)
 FREE_TILES = 16                             # one 4 x 4 hole left on the plot
 TOWN = ["Old Well", "Oak", "Tavern"]
 EXAMPLE = {"name": "Cottage", "width": [1, 12], "depth": [1, 12], "near": "Old Well", "say": "A cozy cottage."}

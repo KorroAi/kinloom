@@ -628,7 +628,7 @@ true,
 "fn": "shape",
 "args": [
 "Win clean",
-"‮evil"
+"\u202eevil"
 ],
 "out": {
 "ok": true,
@@ -1360,6 +1360,196 @@ true,
 "out": "example nested too deeply (max 12 levels)"
 },
 {
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+{}
+],
+"out": [
+"item",
+"price"
+]
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+{
+"price": 3
+}
+],
+"out": [
+"item"
+]
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+{
+"ITEM": "x",
+"note": "y"
+}
+],
+"out": [
+"price"
+]
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+{
+"item": null,
+"price": 2
+}
+],
+"out": [
+"item"
+]
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+{
+"Item": "dagger",
+"PRICE": 3
+}
+],
+"out": []
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+[
+"item"
+]
+],
+"out": []
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"item": [
+"horseshoe",
+"dagger"
+],
+"price": [
+1,
+10
+],
+"note": "thanks"
+},
+"item"
+],
+"out": []
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"what": "stick"
+},
+{}
+],
+"out": []
+},
+{
+"fn": "missing_choices",
+"args": [
+[
+"a",
+"b"
+],
+{}
+],
+"out": []
+},
+{
+"fn": "missing_choices",
+"args": [
+{
+"speed": [
+0.5,
+3.0
+],
+"mode": [
+"fast",
+"slow"
+]
+},
+{
+"mode": "fast"
+}
+],
+"out": [
+"speed"
+]
+},
+{
 "fn": "find_json",
 "args": [
 "{\"a\": 1}"
@@ -1906,7 +2096,7 @@ true,
 {
 "fn": "clean_text",
 "args": [
-"bidi‮ok⁦"
+"bidi\u202eok\u2066"
 ],
 "out": "bidiok"
 },

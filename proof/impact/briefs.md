@@ -100,7 +100,7 @@ Add a night director to this game: before each night it decides, from how I play
 ## Talk: Ember Keep (Python, Pygame), the core feature, 2 runs per arm
 
 `games/trials/keep-v2-talk<run>` (Kinloom 2) and `games/trials/keep-b-talk<run>` (baseline). aider's own model and the
-game's model are the same (`deepseek/deepseek-v4.1-flash` on OpenRouter, the one model the user allowed).
+game's model are the same (`deepseek/deepseek-v4.1-flash` on OpenRouter, the one model used for every real run).
 
 ### Kinloom
 

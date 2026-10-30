@@ -37,7 +37,7 @@ from . import voice as _voice
 from .memory import Memory
 from .providers import Reply
 from .providers import complete as _complete
-from .shapes import CUT, Items, Shape, clean_text, find_json
+from .shapes import CUT, Items, Shape, clean_text, find_json, missing_choices
 
 _PLACEHOLDER = re.compile(r"\{([A-Za-z_][A-Za-z0-9_]*)\}")
 _DIGIT = re.compile(r"\d")
@@ -1866,6 +1866,10 @@ class Brain:
             args = item.get("args") if isinstance(item.get("args"), dict) else {}
             if shape is None:
                 out.append((tool, {}))
+                continue
+            missing = missing_choices(shape, args)
+            if missing:
+                self._log("refused", c.name, "%s: missing %s" % (tool, ", ".join(missing)))
                 continue
             ok, value, error = shape.check(args)
             if ok and not self._allowed(value):

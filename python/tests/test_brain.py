@@ -202,6 +202,32 @@ def test_act_returns_validated_actions_once():
     assert kl.act("BLAZE", {"gap": 0.3}) == []
 
 
+def test_an_action_never_gets_a_choice_the_model_did_not_make():
+    # Options and ranges are decisions: left out, the action is refused (the first option would be a sale nobody
+    # agreed to). A single example value is a default and still fills in.
+    p = model(act={"actions": [{"tool": "sell", "args": {"price": 3}}, {"tool": "sell", "args": {"item": "dagger"}},
+                               {"tool": "sell", "args": {"Item": "dagger", "price": 3}}, {"tool": "pay", "args": {"coins": 2}}]})
+    kl = make(p)
+    kl.character("MIRA", "smith", tools={"sell": {"item": ["horseshoe", "dagger"], "price": [1, 10]},
+                                         "pay": {"coins": [1, 10], "note": "thanks"}})
+    kl.act("MIRA", {})
+    kl.wait_idle(5)
+    assert kl.act("MIRA", {}) == [("sell", {"item": "dagger", "price": 3}), ("pay", {"coins": 2, "note": "thanks"})]
+    refused = [j["text"] for j in kl.journal(50) if j["kind"] == "refused"]
+    assert "sell: missing item" in refused and "sell: missing price" in refused
+
+
+def test_missing_choices():
+    from kinloom.shapes import Shape, missing_choices
+    s = Shape.of({"item": ["horseshoe", "dagger"], "price": [1, 10], "note": "thanks"})
+    assert missing_choices(s, {}) == ["item", "price"]
+    assert missing_choices(s, {"ITEM": "x", "note": "y"}) == ["price"]
+    assert missing_choices(s, {"item": None, "price": 2}) == ["item"]
+    assert missing_choices(Shape.of({"what": "stick"}), {}) == []
+    assert missing_choices(Shape.of(["a", "b"]), {}) == []          # not an object: the shape check decides
+    assert missing_choices(None, {}) == []
+
+
 def test_python_functions_are_tools():
     calls = []
 

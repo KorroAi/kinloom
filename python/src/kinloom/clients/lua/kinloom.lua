@@ -2289,6 +2289,19 @@ function Shape.of(example, depth)
   return nil, format("unsupported example %s (use text, numbers, true/false, lists, ranges or objects)", Py.py_repr(example))
 end
 
+-- The fields of an action's object shape whose example is a choice (options or a range) that args leave out (absent
+-- in any letter case, or null). Data may take the example's value; an action must not get a decision nobody made.
+function Shape.missing_choices(shape, args)
+  local out = {}
+  if not shape or shape.kind ~= "object" or not Py.is_obj(args) then return out end
+  local given = {}
+  for k, v in Py.items(args) do given[Py.lower(tostring(k))] = v end
+  for name, field in Py.items(shape.fields) do
+    if (field.kind == "options" or field.kind == "range") and Py.is_null(given[Py.lower(name)]) then out[#out + 1] = name end
+  end
+  return out
+end
+
 function Shape:default()
   local kind = self.kind
   if kind == "options" then return self.options[1] end
@@ -7246,8 +7259,11 @@ function Brain:_valid_actions(c, text)
       else
         local shape = c.tools[tool][1]
         local args = Py.is_obj(item.args) and item.args or Py.obj()
+        local missing = Shape.missing_choices(shape, args)
         if not shape then
           out[#out + 1] = { tool, Py.obj() }
+        elseif #missing > 0 then
+          self:_log("refused", c.name, tool .. ": missing " .. concat(missing, ", "))
         else
           local ok, value, why = shape:check(args)
           if ok and not self:_allowed(value) then self:_log("refused", c.name, tool .. ": blocked by the content filter")
@@ -9161,6 +9177,8 @@ function Vectors.vector(fn, a)
   elseif fn == "shape_error" then
     local s, why = Shape.of(a[1])
     return s == nil and why or nil
+  elseif fn == "missing_choices" then
+    return Py.arr(Shape.missing_choices(Shape.of(a[1]), a[2]))
   elseif fn == "find_json" then return Py.find_json(a[1])
   elseif fn == "parse" then
     local ok, value, why = Shape.of(a[1]):parse(a[2])
@@ -9684,7 +9702,12 @@ function Kinloom:_chat_once(name, body, on_piece, callback)
     else
       self._last_do[name] = nil
       local o = (self._chars[name] or {}).offline or ""
-      if type(o) == "table" then o = #o > 0 and tostring(o[math.random(#o)]) or "" end   -- several offline replies
+      if type(o) == "table" then                    -- several offline replies, said in turn (as native mode)
+        self.offline_turns = self.offline_turns or {}
+        local turn = (self.offline_turns[name] or 0) + 1
+        self.offline_turns[name] = turn
+        o = #o > 0 and tostring(o[turn % #o + 1]) or ""
+      end
       result = o
     end
     if callback then callback(result) end

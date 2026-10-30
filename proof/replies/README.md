@@ -5,7 +5,7 @@ character's reply carry that action (`reply.do`)? Found while building FireRed w
 let's battle" and no battle started, so the game fell back on reading the player's own words.
 
 `tools.py`: 20 messages (13 that call for a tool, 7 that call for none), each from a new speaker, twice (40 replies),
-two characters with three tools each. Model: `deepseek/deepseek-v4.1-flash` on OpenRouter, the only one allowed.
+two characters with three tools each. Model: `deepseek/deepseek-v4.1-flash` on OpenRouter, the one model used for every real run here.
 Cost at $0.30 per million input tokens and $1.20 per million output tokens: what most of the providers OpenRouter
 routes this model to charge (https://openrouter.ai/api/v1/models/deepseek/deepseek-v4.1-flash/endpoints, read on
 2026-10-01: $0.0243-$0.60 in, $0.40-$2.40 out). The cheaper price `/models` shows is the cheapest provider's: the
