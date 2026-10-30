@@ -8,16 +8,43 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![SDKs](https://img.shields.io/badge/SDKs-C%23%20%7C%20GDScript%20%7C%20TS%2FJS%20%7C%20C%2B%2B%20%7C%20Rust%20%7C%20Java%20%7C%20Lua%20%7C%20Python-555)
 
-[![The trailer: every shot real footage, every reply a model answering live](docs/media/trailer.jpg)](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4)
-*[Watch the trailer](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4) (60 s): every shot is real footage, every reply a model answering live.*
+<a href="https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4"><img src="docs/media/trailer.webp" width="100%" alt="The Kinloom trailer: an island built from sentences, an interrogation, a Pokémon FireRed fan mod, a Binding of Isaac mod, a coding agent wiring an announcer"></a>
+
+**[▶ Watch the trailer with sound (60 s)](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4)**: every shot is real footage, every reply a model
+answering live.
 
 Kinloom adds AI to your game: characters players can really talk to, decisions made every frame, content generated
 in the shape you need, and actions taken through your game's own functions. You describe each answer **by giving an
 example**. Kinloom asks the model, checks the answer against your example, and hands your game only what passes.
 With no key, no network or a slow model, **your example is the answer**, so the game never stalls or breaks.
 
-[Quick start](#quick-start) · [The calls](#what-your-game-can-ask-for) · [Engines](#every-engine-in-its-own-language) ·
+[What it does](#what-it-already-does-in-real-games) · [Quick start](#quick-start) · [The calls](#what-your-game-can-ask-for) · [Engines](#every-engine-in-its-own-language) ·
 [Models](#any-model) · [Shipping](#shipping-to-players) · [Measured](#measured-not-promised) · [Docs](#documentation)
+
+## What it already does in real games
+
+Real footage, with `deepseek/deepseek-v4.1-flash` answering live. Each ▶ is 30 seconds of gameplay, nothing added.
+
+- **Talk to anyone, even in a game from 2004.** In a Pokémon FireRed fan mod, type *"Fight me. Winner gets your
+  hat."* and the trainer answers in his own words (*"My hat?! This is regulation sailor gear, pal. But I never turn
+  down a battle."*), then the game starts the battle. The other trainers chat with each other on their own.
+  [▶ FireRed](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/gameplay-firered.mp4)
+- **A sentence becomes a room you fight in.** In a Binding of Isaac mod, describe a room and the Carpenter carves it:
+  enemies, layout, darkness, a second wave. He remembers your earlier runs, every character has a voice, and a wish
+  becomes a real item with stats (*"Pigeon's Last Wish"*: flight, burning tears). [▶ Isaac](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/gameplay-isaac.mp4)
+- **A village that saw what you did.** Do something terrible in the square of *Asagiri Valley*: a guard arrests you,
+  word spreads, and a ten-year-old tells you *"You killed Yuki and Ren and you want me quiet?!"*. Bandits raid on
+  their own. [▶ Asagiri Valley](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/gameplay-asagiri-valley.mp4)
+- **A suspect who lies, then cracks.** In *The Box*, ask Frank if he is a lizard person, show him the door log and the
+  contract: his trust drops, his story changes, and he confesses. [▶ The Box](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/gameplay-the-box.mp4)
+- **Type it, it's built.** In *The Plot*, *"a lighthouse made of cheese"*, *"a castle for my cat, with a moat full of
+  milk"*, then *"make the castle twice as tall"*. [▶ The Plot](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/gameplay-the-plot.mp4)
+- **Your coding agent wires it.** Given one brief, aider with DeepSeek added rivals that change how they drive, a race
+  engineer you can talk to, a commentator and a race director to a Godot racer in 4.5 minutes; the game still ran with
+  no key and with 50 hostile answers. [proof/impact](proof/impact/README.md)
+
+*Asagiri Valley* is in [`legacy/`](legacy); *The Box* and *The Plot* are our demo games; the FireRed and Isaac mods are
+fan mods shown as examples, not distributed here.
 
 ## Quick start
 
