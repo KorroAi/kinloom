@@ -11,7 +11,7 @@
 <a href="https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4"><img src="docs/media/trailer.webp" width="100%" alt="The Kinloom trailer: an island built from sentences, an interrogation, a Pokémon FireRed fan mod, a Binding of Isaac mod, a coding agent wiring an announcer"></a>
 
 **[▶ Watch the trailer with sound (60 s)](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4)**: every shot is real footage, every reply a model
-answering live.
+answering live. The story behind it, with every game in motion: [korrocorp.com/devlog/kinloom](https://korrocorp.com/devlog/kinloom).
 
 Kinloom adds AI to your game: characters players can really talk to, decisions made every frame, content generated
 in the shape you need, and actions taken through your game's own functions. You describe each answer **by giving an
