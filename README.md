@@ -8,8 +8,8 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![SDKs](https://img.shields.io/badge/SDKs-C%23%20%7C%20GDScript%20%7C%20TS%2FJS%20%7C%20C%2B%2B%20%7C%20Rust%20%7C%20Java%20%7C%20Lua%20%7C%20Python-555)
 
-![From the trailer: a suspect answering a line nobody wrote for him, live](docs/media/trailer.jpg)
-*From the trailer: five games, every shot real footage, every reply a model answering live.*
+[![The trailer: every shot real footage, every reply a model answering live](docs/media/trailer.jpg)](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4)
+*[Watch the trailer](https://github.com/KorroAi/kinloom/releases/download/v1.0.0/Kinloom-trailer.mp4) (60 s): every shot is real footage, every reply a model answering live.*
 
 Kinloom adds AI to your game: characters players can really talk to, decisions made every frame, content generated
 in the shape you need, and actions taken through your game's own functions. You describe each answer **by giving an
